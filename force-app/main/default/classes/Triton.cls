@@ -4,15 +4,10 @@
  * This file is part of Pharos Triton.
  *
  * Pharos Triton is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
+ * it under the terms of the MIT License.
+ * See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
  */
 
-/**
-    @decription main Triton Log class for all things Apex
- */
 public without sharing class Triton {
 
     /** key field names for setting attributes on log records */
