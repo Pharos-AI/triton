@@ -30,6 +30,5 @@ For support and further inquiries:
 
 ## License
 
-Pharos Triton is licensed under the GNU General Public License (GPL) version 3 or later. You are free to use, modify, and distribute this software under the terms of the GPL, provided that all copies and derivative works are also licensed under the GPL.
-
+Pharos Triton is licensed under MIT License. 
 See the LICENSE file for more details.
