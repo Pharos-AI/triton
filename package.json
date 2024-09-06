@@ -1,0 +1,26 @@
+{
+  "name": "triton",
+  "version": "1.0.0",
+  "description": "Triton allows you to create, manage, and analyze logs generated from Salesforce automation product Pharos",
+  "main": "index.js",
+  "scripts": {
+    "test": "test",
+    "apexdocs": "apexdocs-generate -p public private -s ./force-app/main/default/classes -t ./docs"
+  },
+  "devDependencies": {
+    "@cparra/apexdocs": "2.25.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Pharos-AI/triton.git"
+  },
+  "keywords": [
+    "salesforce"
+  ],
+  "author": "Pharos.ai",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Pharos-AI/triton/issues"
+  },
+  "homepage": "https://github.com/Pharos-AI/triton#readme"
+}

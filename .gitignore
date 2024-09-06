@@ -3,3 +3,4 @@
 .vscode/
 
 **/lwc/jsconfig.json
+node_modules/*
