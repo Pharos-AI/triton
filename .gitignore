@@ -1,0 +1,5 @@
+.sf/
+.sfdx/
+.vscode/
+
+**/lwc/jsconfig.json
