@@ -180,7 +180,7 @@ export default class Triton extends LightningElement {
 /** AREA */
 export const AREA = {
     ACCOUNTS: 'ACCOUNTS',
-    Community: 'COMMUNITY',
+    COMMUNITY: 'COMMUNITY',
     LEAD_CONVERSION: 'LEAD_CONVERSION',
     OPPORTUNITY_MANAGEMENT: 'OPPORTUNITY_MANAGEMENT',
     REST_API: 'REST_API'
