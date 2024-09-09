@@ -277,6 +277,33 @@ private class TritonTest {
         System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
     }
 
+    @IsTest
+    private static void test_flow_error() {
+        assertBefore();
+
+        Test.startTest();
+        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
+        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
+        flowLog.category = 'test category';
+        flowLog.type = 'test type';
+        flowLog.area = 'test area';
+        flowLog.summary = 'test';
+        flowLog.details = 'test';
+        flowLog.level = 'test';
+        flowLog.additionalFields = '{bad_json "test"}';
+        flowLogs.add(flowLog);
+        TritonFlow.log(flowLogs);
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
+        pharos__Log__c log = logs.get(0);
+        System.assertEquals(1, logs.size());
+        System.assertEquals('test summary', log.pharos__Summary__c);
+        System.assert(log.pharos__Details__c.contains('Unable to locate log level'), 'Log level error should be present');
+        System.assert(log.pharos__Details__c.contains('failed to parse json input'), 'Additional fields parse error should be present');
+    }
+
+
     public static final String TEST_ENDPOINT = 'https://test.endpoint';
 
     public static Map<String, HttpCalloutMock> createEndpoint2TestResp() {

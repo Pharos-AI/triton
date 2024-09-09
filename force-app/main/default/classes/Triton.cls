@@ -20,6 +20,7 @@ public without sharing class Triton {
     public static final String RELATED_OBJECTS = 'pharos__Related_Objects__c';
     public static final String STACKTRACE_PARSE_RESULT = 'pharos__Stacktrace_Parse_Result__c';
     public static final String USER_ID = 'pharos__User_Id__c';
+    public static final String FLOW_API_NAME = 'pharos__Flow_API_Name__c';
 
     public static final String SPACE_SEP = '\n\n';
     

@@ -22,16 +22,24 @@ public with sharing class TritonFlow {
     @InvocableMethod(Category='TritonLogging' Label='Add Log' Description='Creates a log for a flow or process builder')
     public static void log(List<FlowLog> flowLogs) {
         for (FlowLog flowLog : flowLogs) {
+            FlowTypes.Level level = TritonTypes.Level.INFO;
+            String flowDetails = flowLog.details;
+            try {
+                level = TritonTypes.Level.valueOf(flowLog.level);
+            } catch (Exception e) {
+                flowDetails += '\nUnable to locate log level: ' + flowLog.level + '. Default INFO level will be used.'; 
+            }
             Pharos.LogBuilder builder = Triton.makeBuilder();
             builder
                     .category(TritonTypes.Category.Flow.name())
                     .type(flowLog.type)
                     .area(flowLog.area)
                     .summary(flowLog.summary)
-                    .details(flowLog.details)
+                    .details(flowDetails)
                     .transactionId(Triton.instance.TRANSACTION_ID)
                     .attribute(Triton.INTERVIEW_GUID, flowLog.interviewGUID)
-                    .attribute(Triton.LOG_LEVEL, TritonTypes.Level.INFO.name());
+                    .attribute(Triton.FLOW_API_NAME, flowLog.flowApiName)
+                    .attribute(Triton.LOG_LEVEL, level.name());
 
             if (String.isNotBlank(flowLog.additionalFields)) {
                 try {
@@ -40,7 +48,7 @@ public with sharing class TritonFlow {
                         builder.attribute(field, mapAdditionalFields.get(field));
                     }
                 } catch (Exception e) {
-                    builder.details(flowLog.details + '\nAdditional Information (failed to parse json input to invokable):' + '\n' + flowLog.additionalFields);
+                    builder.details(flowDetails + '\nAdditional Information (failed to parse json input to invokable):' + '\n' + flowLog.additionalFields);
                 }
             }
             Triton.instance.add(builder.build());
@@ -65,6 +73,10 @@ public with sharing class TritonFlow {
         public String details;
         @InvocableVariable(Required=true Label='Interview GUID')
         public String interviewGUID;
+        @InvocableVariable(Required=false Label='Flow API Name')
+        public String flowApiName;
+        @InvocableVariable(Required=false Label='Level')
+        public String level;
         @InvocableVariable(Required=false Label='Additional Fields')
         public String additionalFields;
     }
