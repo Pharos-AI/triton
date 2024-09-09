@@ -51,6 +51,14 @@ A wrapper class for passing log data from flow
 
 `INVOCABLEVARIABLE` 
 
+##### `public flowApiName` → `String`
+
+`INVOCABLEVARIABLE` 
+
+##### `public level` → `String`
+
+`INVOCABLEVARIABLE` 
+
 ##### `public additionalFields` → `String`
 
 `INVOCABLEVARIABLE` 
