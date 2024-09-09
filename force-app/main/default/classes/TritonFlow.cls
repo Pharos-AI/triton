@@ -22,7 +22,7 @@ public with sharing class TritonFlow {
     @InvocableMethod(Category='TritonLogging' Label='Add Log' Description='Creates a log for a flow or process builder')
     public static void log(List<FlowLog> flowLogs) {
         for (FlowLog flowLog : flowLogs) {
-            FlowTypes.Level level = TritonTypes.Level.INFO;
+            TritonTypes.Level level = TritonTypes.Level.INFO;
             String flowDetails = flowLog.details;
             try {
                 level = TritonTypes.Level.valueOf(flowLog.level);
