@@ -287,7 +287,7 @@ private class TritonTest {
         flowLog.category = 'test category';
         flowLog.type = 'test type';
         flowLog.area = 'test area';
-        flowLog.summary = 'test';
+        flowLog.summary = 'test summary';
         flowLog.details = 'test';
         flowLog.level = 'test';
         flowLog.additionalFields = '{bad_json "test"}';
@@ -295,7 +295,7 @@ private class TritonTest {
         TritonFlow.log(flowLogs);
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Details__c, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
         pharos__Log__c log = logs.get(0);
         System.assertEquals(1, logs.size());
         System.assertEquals('test summary', log.pharos__Summary__c);
