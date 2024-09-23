@@ -84,6 +84,13 @@ public with sharing class TritonHelper {
     }
 
     /**
+     * Builder class for constructing Pharos pre processing settings
+     */
+    public class PreProcessingControlsBuilder {
+    }
+
+
+    /**
      * Builder class for constructing Pharos post processing settings
      */
     public class PostProcessingControlsBuilder {
@@ -93,7 +100,7 @@ public with sharing class TritonHelper {
         private final String AUDIT_TRAIL_KEY = 'auditTrail';
         private final String DEPLOY_RESULT_KEY = 'deployResult';
         private final String INSTALLED_PACKAGES_KEY = 'installedPackages';
-        private final String OBJECT_INFO_KEY = 'objectInfo';
+        private final String AREA_KEY = 'objectInfo';
         private final String PENDING_JOBS_KEY = 'pendingJobs';
         private final String RELATED_OBJECTS_KEY = 'relatedObjects';
         private final String STACK_TRACE_KEY = 'stackTrace';
@@ -106,7 +113,7 @@ public with sharing class TritonHelper {
                     AUDIT_TRAIL_KEY => false,
                     DEPLOY_RESULT_KEY => false,
                     INSTALLED_PACKAGES_KEY => false,
-                    OBJECT_INFO_KEY => false,
+                    AREA_KEY => false,
                     PENDING_JOBS_KEY => false,
                     RELATED_OBJECTS_KEY => false,
                     STACK_TRACE_KEY => false,
@@ -147,10 +154,10 @@ public with sharing class TritonHelper {
         }
         
         /**
-         * Controls whether Pharos fetches User name
+         * Controls whether Pharos automatically sets functional area
          */
-        public PostProcessingControlsBuilder objectInfo(Boolean value) {
-            controls.put(OBJECT_INFO_KEY, value);
+        public PostProcessingControlsBuilder area(Boolean value) {
+            controls.put(AREA_KEY, value);
             return this;
         }
 
