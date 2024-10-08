@@ -161,17 +161,16 @@ public without sharing class Triton {
     */
     public void addError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         add(
-                makeBuilder()
-                        .category(TritonTypes.Category.Apex.name())
-                        .type(type.name())
-                        .area(area.name())
-                        .summary(summary)
-                        .details(details)
-                        .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
-                        .transactionId(TRANSACTION_ID)
-                        .createIssue()
-                        .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
-                        .build());
+            Triton.basicBuild()
+                .area(area.name())
+                .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
+                .createIssue()
+                .details(details)
+                .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
+                .summary(summary)
+                .type(type.name())
+                .build()
+        );
     }
 
     /**
@@ -196,20 +195,17 @@ public without sharing class Triton {
     */
     public void addError(TritonTypes.Area area, Exception e, Set<String> relatedObjectIds) {
         add(
-                makeBuilder()
-                        .category(TritonTypes.Category.Apex.name())
-                        //use exception type, Backend if blank
-                        .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
-                        .area(area.name())
-                        .summary(e.getMessage())
-                        .stackTrace(e.getStackTraceString())
-                        .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
-                        .transactionId(TRANSACTION_ID)
-                        .attribute(RELATED_OBJECTS, relatedObjectIds?.size() > 0 ? 
-                                        JSON.serialize(relatedObjectIds) : null)
-                        .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
-                        .createIssue()
-                        .build());
+            Triton.basicBuild()
+                .area(area.name())
+                .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
+                .attribute(RELATED_OBJECTS, relatedObjectIds?.size() > 0 ? JSON.serialize(relatedObjectIds) : null)
+                .createIssue()
+                .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
+                .stackTrace(e.getStackTraceString())
+                .summary(e.getMessage())
+                .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
+                .build()
+        );
     }
 
     /**
@@ -242,7 +238,6 @@ public without sharing class Triton {
         error(area, e, null);
     }
 
-
     /**
     * Add Log with Warning Category.
     * This method will not save a stacktrace.
@@ -253,21 +248,20 @@ public without sharing class Triton {
     */
     public void addWarning(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         add(
-                makeBuilder()
-                        .category(TritonTypes.Category.Warning.name())
-                        .type(type.name())
-                        .area(area.name())
-                        .summary(summary)
-                        .details(details)
-                        .postProcessing(
-                                new TritonHelper.PostProcessingControlsBuilder()
-                                        .stackTrace(true)
-                                        .userInfo(true)
-                                        .objectInfo(true)
-                                        .build())
-                        .transactionId(TRANSACTION_ID)
-                        .attribute(LOG_LEVEL, TritonTypes.Level.WARNING.name())
-                        .build());
+            Triton.basicBuild()
+                .area(area.name())
+                .attribute(LOG_LEVEL, TritonTypes.Level.WARNING.name())
+                .category(TritonTypes.Category.Warning.name())
+                .details(details)
+                .postProcessing(new TritonHelper.PostProcessingControlsBuilder()
+                    .stackTrace(true)
+                    .userInfo(true)
+                    .objectInfo(true)
+                    .build())
+                .summary(summary)
+                .type(type.name())
+                .build()
+        );
     }
 
     /**
@@ -291,22 +285,21 @@ public without sharing class Triton {
     */
     public void addDebug(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         add(
-                makeBuilder()
-                        .category(TritonTypes.Category.Debug.name())
-                        .type(type.name())
-                        .area(area.name())
-                        .summary(summary)
-                        .details(details)
-                        .postProcessing(
-                                new TritonHelper.PostProcessingControlsBuilder()
-                                        .stackTrace(true)
-                                        .userInfo(true)
-                                        .objectInfo(true)
-                                        .build())
-                        .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
-                        .transactionId(TRANSACTION_ID)
-                        .attribute(LOG_LEVEL, TritonTypes.Level.DEBUG.name())
-                        .build());
+            Triton.basicBuild()
+                .area(area.name())
+                .attribute(LOG_LEVEL, TritonTypes.Level.DEBUG.name())
+                .category(TritonTypes.Category.Debug.name())
+                .details(details)
+                .postProcessing(new TritonHelper.PostProcessingControlsBuilder()
+                    .stackTrace(true)
+                    .userInfo(true)
+                    .objectInfo(true)
+                    .build())
+                .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
+                .summary(summary)
+                .type(type.name())
+                .build()
+        );
     }
 
     /**
@@ -335,23 +328,22 @@ public without sharing class Triton {
         Decimal duration
     ) {
         add(
-                makeBuilder()
-                        .category(TritonTypes.Category.Debug.name())
-                        .type(type.name())
-                        .area(area.name())
-                        .summary(summary)
-                        .details(details)
-                        .postProcessing(
-                                new TritonHelper.PostProcessingControlsBuilder()
-                                        .stackTrace(true)
-                                        .userInfo(true)
-                                        .objectInfo(true)
-                                        .build())
-                        .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
-                        .transactionId(TRANSACTION_ID)
-                        .attribute(LOG_LEVEL, TritonTypes.Level.DEBUG.name())
-                        .attribute(Triton.DURATION, duration)
-                        .build());
+            Triton.basicBuild()
+                .area(area.name())
+                .attribute(LOG_LEVEL, TritonTypes.Level.DEBUG.name())
+                .attribute(Triton.DURATION, duration)
+                .category(TritonTypes.Category.Debug.name())
+                .details(details)
+                .postProcessing(new TritonHelper.PostProcessingControlsBuilder()
+                    .stackTrace(true)
+                    .userInfo(true)
+                    .objectInfo(true)
+                    .build())
+                .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
+                .summary(summary)
+                .type(type.name())
+                .build()
+        );
     }
 
     /**
@@ -381,21 +373,21 @@ public without sharing class Triton {
         String details
     ) {
         add(
-                makeBuilder()
-                        .category(TritonTypes.Category.Event.name())
-                        .type(type.name())
-                        .area(area.name())
-                        .summary(summary)
-                        .details(details)
-                        .postProcessing(
-                                new TritonHelper.PostProcessingControlsBuilder()
-                                        .stackTrace(true)
-                                        .userInfo(true)
-                                        .objectInfo(true)
-                                        .build())
-                        .transactionId(TRANSACTION_ID)
-                        .attribute(LOG_LEVEL, level.name())
-                        .build());
+            Triton.basicBuild()
+                .category(TritonTypes.Category.Event.name())
+                .type(type.name())
+                .area(area.name())
+                .summary(summary)
+                .details(details)
+                .postProcessing(
+                        new TritonHelper.PostProcessingControlsBuilder()
+                                .stackTrace(true)
+                                .userInfo(true)
+                                .objectInfo(true)
+                                .build())
+                .transactionId(TRANSACTION_ID)
+                .attribute(LOG_LEVEL, level.name())
+                .build());
     }
     /**
     * Immediate
@@ -448,19 +440,21 @@ public without sharing class Triton {
     */
     public void addIntegrationError(TritonTypes.Area area, Exception e, HttpRequest request, HttpResponse response) {
         add(
-                makeBuilder()
-                        .category(TritonTypes.Category.Integration.name())
-                        //Use Backend as default type
-                        .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
-                        .area(area.name())
-                        .summary(e.getMessage())
-                        .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
-                        .stackTrace(e.getStackTraceString())
-                        .createIssue()
-                        //Set the system field with a json serialized request/response value
-                        .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request, response))
-                        .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
-                        .build());
+            Triton.basicBuild()
+                .area(area.name())
+                .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
+                //Set the system field with a json serialized request/response value
+                .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request, response))
+                
+                .category(TritonTypes.Category.Integration.name())
+                .createIssue()
+                .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
+                .summary(e.getMessage())
+                .stackTrace(e.getStackTraceString())
+                //Use Backend as default type
+                .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
+                .build()
+        );
     }
 
     /**
@@ -484,17 +478,18 @@ public without sharing class Triton {
     */
     public void addIntegrationError(TritonTypes.Area area, Exception e, RestRequest request, RestResponse response) {
         add(
-                makeBuilder()
-                        .category(TritonTypes.Category.Integration.name())
-                        .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
-                        .area(area.name())
-                        .summary(e.getMessage())
-                        .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
-                        .stackTrace(e.getStackTraceString())
-                        .createIssue()
-                        .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request, response))
-                        .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
-                        .build());
+            makeBuilder()
+                .area(area.name())
+                .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request, response))
+                .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
+                .category(TritonTypes.Category.Integration.name())
+                .createIssue()
+                .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
+                .stackTrace(e.getStackTraceString())
+                .summary(e.getMessage())
+                .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
+                .build()
+        );
     }
 
     /**
@@ -528,17 +523,18 @@ public without sharing class Triton {
     ) {
         incStackOffset();
         add(
-                makeBuilder()
-                        .category(TritonTypes.Category.Integration.name())
-                        .type(type.name())
-                        .area(area.name())
-                        .summary(summary)
-                        .details(details)
-                        .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
-                        .createIssue()
-                        .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request,response))
-                        .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
-                        .build());
+            Triton.basicBuild()
+                .area(area.name())
+                .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request,response))
+                .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
+                .category(TritonTypes.Category.Integration.name())
+                .createIssue()
+                .details(details)
+                .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
+                .summary(summary)
+                .type(type.name())
+                .build()
+        );
         resetStackOffset();
     }
 
@@ -578,17 +574,18 @@ public without sharing class Triton {
         RestResponse response
     ) {
         add(
-                makeBuilder()
-                        .category(TritonTypes.Category.Integration.name())
-                        .type(type.name())
-                        .area(area.name())
-                        .summary(summary)
-                        .details(details)
-                        .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
-                        .createIssue()
-                        .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request, response))
-                        .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
-                        .build());
+            Triton.basicBuild()
+                .area(area.name())
+                .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request, response))
+                .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
+                .category(TritonTypes.Category.Integration.name())
+                .createIssue()
+                .details(details)
+                .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
+                .summary(summary)
+                .type(type.name())
+                .build()
+        );
     }
 
     /**
@@ -636,5 +633,17 @@ public without sharing class Triton {
         }
 
         return false;
+    }
+
+    private static pharos.LogBuilder basicBuild() {
+        Triton tritonObj = Triton.instance;
+        tritonObj.startTransaction();
+        
+        return Triton.makeBuilder()
+            .area(TritonTypes.Area.Accounts.name())
+            .attribute(LOG_LEVEL, TritonTypes.Level.INFO.name())
+            .category(TritonTypes.Category.Apex.name())
+            .transactionId(tritonObj.TRANSACTION_ID)
+            .type(TritonTypes.Type.Backend.name());
     }
 }
