@@ -34,6 +34,16 @@ public without sharing class Triton {
         private set;
     }
 
+    public static pharos.LogBuilder builderTemplate {
+        get {
+            if (builderTemplate == null) {
+                builderTemplate = pharos.LogBuilder.getInstance();
+            }
+            return builderTemplate;
+        }
+        private set;
+    }
+
     //singleton instance
     private final pharos.Logger logger;
 
@@ -100,13 +110,6 @@ public without sharing class Triton {
     }
 
     /**
-    * Shorthand method for creating a new builder
-    */
-    public static pharos.LogBuilder makeBuilder() {
-        return pharos.LogBuilder.getInstance();
-    }
-
-    /**
      * This value can be passed around to trace a complex process spanning multiple Salesforce transactions
      * Can be used between LWC/Apex/Flow transitions when complex tracing is required.
      */
@@ -152,51 +155,17 @@ public without sharing class Triton {
     */
 
     /**
-    * Add Log with Error Category.
-    * This method will automatically get the stacktrace and save it on the log record.
-    * @param type -- log record TritonTypes.Type (see Type enum)
-    * @param area -- log record Functional TritonTypes.Area (see Area enum)
-    * @param summary -- summary of the issue. Saves to log record Summary field
-    * @param details -- details of the issue. Saves to log record Details field
-    */
-    public void addError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
-        add(
-            Triton.basicBuild()
-                .area(area.name())
-                .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
-                .createIssue()
-                .details(details)
-                .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
-                .summary(summary)
-                .type(type.name())
-                .build()
-        );
-    }
-
-    /**
-    * Immediate
-    */
-    public void error(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
-        incStackOffset();
-        addError(type, area, summary, details);
-        flush();
-    }
-
-
-    /**
     * Add Log with Error Category and related records.
     * This method will automatically get the stacktrace from Exception.
     * Type will be obtained from Exception. If blank, a default Backend Type will be saved
     * Summary is the Exception message.
     * Details will be a combination of Exception String and stacktrace
-    * @param area -- log record Functional TritonTypes.Area (see Area enum)
     * @param e -- instance of an Exception
     * @param relatedObjectIds -- a set of related records to associate with this log
     */
-    public void addError(TritonTypes.Area area, Exception e, Set<String> relatedObjectIds) {
+    public void addError(Exception e, Set<String> relatedObjectIds) {
         add(
-            Triton.basicBuild()
-                .area(area.name())
+            Triton.builderTemplate
                 .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
                 .attribute(RELATED_OBJECTS, relatedObjectIds?.size() > 0 ? JSON.serialize(relatedObjectIds) : null)
                 .createIssue()
@@ -217,25 +186,25 @@ public without sharing class Triton {
     * @param area -- log record Functional TritonTypes.Area (see Area enum)
     * @param e -- instance of an Exception
     */
-    public void addError(TritonTypes.Area area, Exception e) {
+    public void addError(Exception e) {
         incStackOffset();
-        addError(area, e, null);
+        addError(e, null);
         resetStackOffset();
     }
 
     /**
     * Immediate
     */
-    public void error(TritonTypes.Area area, Exception e, Set<String> relatedObjectIds) {
+    public void error(Exception e, Set<String> relatedObjectIds) {
         incStackOffset();
-        addError(area, e, relatedObjectIds);
+        addError(e, relatedObjectIds);
         flush();
         resetStackOffset();
     }
 
-    public void error(TritonTypes.Area area, Exception e) {
+    public void error(Exception e) {
         incStackOffset();
-        error(area, e, null);
+        error(e, null);
     }
 
     /**
@@ -635,11 +604,11 @@ public without sharing class Triton {
         return false;
     }
 
-    private static pharos.LogBuilder basicBuild() {
+    public static pharos.LogBuilder setBuilderTemplate() {
         Triton tritonObj = Triton.instance;
         tritonObj.startTransaction();
         
-        return Triton.makeBuilder()
+        return Triton.builderTemplate
             .area(TritonTypes.Area.Accounts.name())
             .attribute(LOG_LEVEL, TritonTypes.Level.INFO.name())
             .category(TritonTypes.Category.Apex.name())
