@@ -72,6 +72,11 @@ Used to create the Json structure that combines http objects
 
 ---
 
+### PreProcessingControlsBuilder
+
+Builder class for constructing Pharos pre processing settings
+
+
 ### PostProcessingControlsBuilder
 
 Builder class for constructing Pharos post processing settings
@@ -93,7 +98,7 @@ Builder class for constructing Pharos post processing settings
 ##### `private INSTALLED_PACKAGES_KEY` → `String`
 
 
-##### `private OBJECT_INFO_KEY` → `String`
+##### `private AREA_KEY` → `String`
 
 
 ##### `private PENDING_JOBS_KEY` → `String`
@@ -129,9 +134,9 @@ Controls whether Pharos fetches recent deployments
 
 Controls whether Pharos fetches the number of currently installed packages
 
-##### `public PostProcessingControlsBuilder objectInfo(Boolean value)`
+##### `public PostProcessingControlsBuilder area(Boolean value)`
 
-Controls whether Pharos fetches User name
+Controls whether Pharos automatically sets functional area
 
 ##### `public PostProcessingControlsBuilder pendingJobs(Boolean value)`
 
