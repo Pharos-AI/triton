@@ -211,5 +211,9 @@ public with sharing class TritonHelper {
             controls.put(TOTAL_ACTIVE_SESSION_KEY, value);
             return this;
         }
-    }    
+    }
+
+    public class NebulaLogger {
+        
+    }  
 }

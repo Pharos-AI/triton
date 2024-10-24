@@ -637,4 +637,13 @@ public without sharing class Triton {
 
         return false;
     }
+
+    /**
+    * This method will accept a serialized version of the nebula logger class
+    * and save a pharos log record
+    * @param String -- json version of the nebula logger class 
+    */
+    public static void nebula(String pLogger) {
+        Triton tObj = Triton.instance;
+    }
 }
