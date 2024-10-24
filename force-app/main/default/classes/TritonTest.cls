@@ -303,6 +303,25 @@ private class TritonTest {
         System.assert(log.pharos__Details__c.contains('failed to parse json input'), 'Additional fields parse error should be present');
     }
 
+    @IsTest
+    private static void testLog() {
+        Triton tritonObj = Triton.instance;
+
+        pharos.LogBuilder builder = Triton.setBuilderTemplate();
+
+        builder.details('Some test details');
+        Test.startTest();
+        tritonObj.log();
+        tritonObj.flush();
+        Test.stopTest();
+
+        pharos__Log__c log = [SELECT Id, pharos__Details__c, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c limit 1];
+        System.assert(
+            log.pharos__Details__c == 'Some test details',
+            'Failure: log record was not saved'
+        );
+    }
+
 
     public static final String TEST_ENDPOINT = 'https://test.endpoint';
 
