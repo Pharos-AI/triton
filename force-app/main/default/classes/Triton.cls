@@ -257,7 +257,6 @@ public without sharing class Triton {
                 .postProcessing(new TritonHelper.PostProcessingControlsBuilder()
                     .stackTrace(true)
                     .userInfo(true)
-                    .objectInfo(true)
                     .build())
                 .summary(summary)
                 .type(type.name())
@@ -294,7 +293,6 @@ public without sharing class Triton {
                 .postProcessing(new TritonHelper.PostProcessingControlsBuilder()
                     .stackTrace(true)
                     .userInfo(true)
-                    .objectInfo(true)
                     .build())
                 .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                 .summary(summary)
@@ -338,7 +336,6 @@ public without sharing class Triton {
                 .postProcessing(new TritonHelper.PostProcessingControlsBuilder()
                     .stackTrace(true)
                     .userInfo(true)
-                    .objectInfo(true)
                     .build())
                 .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                 .summary(summary)
@@ -384,7 +381,6 @@ public without sharing class Triton {
                         new TritonHelper.PostProcessingControlsBuilder()
                                 .stackTrace(true)
                                 .userInfo(true)
-                                .objectInfo(true)
                                 .build())
                 .transactionId(TRANSACTION_ID)
                 .attribute(LOG_LEVEL, level.name())
@@ -670,5 +666,24 @@ public without sharing class Triton {
             .category(TritonTypes.Category.Apex.name())
             .transactionId(TritonHelper.generateUUID4())
             .type(TritonTypes.Type.Backend.name());
+    }
+
+    /**
+    * method used to take a serialized version of the Nebula Logger object and
+    * save pharos logs
+    * @param String -- JSON version of the Nebula Logger Class
+    */
+    public static void addNebulaLog(String pNebulaLogger) {
+        Map<String, Object> nebulaObjMap = (Map<String, Object>)JSON.deserializeUntyped(pNebulaLogger);
+        Triton tObj = Triton.instance;
+        
+        Triton.setBuilderTemplate()
+            .attribute(LOG_LEVEL, TritonHelper.NEBULA_LEVEL_MAP.get((String)nebulaObjMap.get('LoggingLevel__c')).name())
+            .details((String)nebulaObjMap.get('Message__c'))
+            .stackTrace((String)nebulaObjMap.get('StackTrace__c'))
+            .summary((String)nebulaObjMap.get('Message__c'));
+
+        tObj.log();
+        tObj.flush();
     }
 }
