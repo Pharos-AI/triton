@@ -23,7 +23,7 @@ public with sharing class TritonLwc {
         Triton logInstance = Triton.instance;
         for (ComponentLog componentLog : componentLogs) {
             logInstance.add(
-                Triton.setBuilderTemplate()
+                Triton.makeBuilder()
                 //area will be fetched from the componentLog directly if set. Otherwise component name will be used
                     .area(String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.component.name)
                     //apex name will be set to component.function or component.action

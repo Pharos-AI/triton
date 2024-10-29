@@ -306,19 +306,124 @@ private class TritonTest {
     @IsTest
     private static void testLog() {
         Triton tritonObj = Triton.instance;
+        tritonObj.startTransaction();
 
-        pharos.LogBuilder builder = Triton.setBuilderTemplate();
+        tritonObj.setTemplate(
+            Triton.makeBuilder()
+                .attribute(Triton.LOG_LEVEL, TritonTypes.Level.DEBUG.name())
+                .category(TritonTypes.Category.Event.name())
+                .transactionId(tritonObj.TRANSACTION_ID)
+                .type(TritonTypes.Type.Backend.name())
+        );
 
-        builder.details('Some test details');
         Test.startTest();
-        tritonObj.log();
-        tritonObj.flush();
+        tritonObj.log(
+            tritonObj.fromTemplate()
+                .details('Some test details')
+                .build()
+        );
+
         Test.stopTest();
 
-        pharos__Log__c log = [SELECT Id, pharos__Details__c, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c limit 1];
+        pharos__Log__c log = [SELECT Id, pharos__Details__c, pharos__Category__c, pharos__Hash__c FROM pharos__Log__c limit 1];
         System.assert(
             log.pharos__Details__c == 'Some test details',
             'Failure: log record was not saved'
+        );
+        System.assert(
+            log.pharos__Category__c == 'Event',
+            'Failure: the category was not set'
+        );
+        System.assert(
+            log.pharos__Hash__c != null,
+            'Failure: the hash was not set'
+        );
+    }
+
+    @IsTest
+    private static void testTemplateException() {
+        // Triton tritonObj = Triton.instance;
+        // tritonObj.startTransaction();
+
+        // tritonObj.setTemplate(
+        //     Triton.makeBuilder()
+        //         .attribute(Triton.LOG_LEVEL, TritonTypes.Level.DEBUG.name())
+        //         .category(TritonTypes.Category.Event.name())
+        //         .type(TritonTypes.Type.Backend.name())
+        // );
+
+        // Test.startTest();
+
+        // try {
+        //     insert new Account();
+        // } catch(Exception e) {
+        //     tritonObj.log(tritonObj.fromException(e).build());
+        // }
+
+        // Test.stopTest();
+
+        // pharos__Log__c log = [SELECT Id, pharos__Category__c FROM pharos__Log__c limit 1];
+        // System.assert(
+        //     log.pharos__Category__c == 'Error',
+        //     'Failure: Category did not change from the template'
+        // );
+    }
+
+    @IsTest
+    private static void testLogHttpRequest() {
+        Triton tritonObj = Triton.instance;
+        tritonObj.startTransaction();
+
+        tritonObj.setTemplate(
+            Triton.makeBuilder()
+                .attribute(Triton.LOG_LEVEL, TritonTypes.Level.DEBUG.name())
+                .category(TritonTypes.Category.Event.name())
+                .type(TritonTypes.Type.Backend.name())
+        );
+        HttpRequest req = new HttpRequest();
+        req.setBody('{ \"testReq\": \"test\" }');
+        HttpResponse res = new HttpResponse();
+        res.setBody('{ \"testRes\": \"test\" }');
+
+        Test.startTest();
+
+        tritonObj.log(tritonObj.fromRequestResponse(req, res).build());
+
+        Test.stopTest();
+
+        pharos__Log__c log = [SELECT Id, pharos__Category__c FROM pharos__Log__c limit 1];    
+        System.assert(
+            log.pharos__Category__c == 'Integration',
+            'Failure: Category did not change from the template'
+        );
+    }
+
+    @IsTest
+    private static void testLogRestRequest() {
+        Triton tritonObj = Triton.instance;
+        tritonObj.startTransaction();
+
+        tritonObj.setTemplate(
+            Triton.makeBuilder()
+                .attribute(Triton.LOG_LEVEL, TritonTypes.Level.DEBUG.name())
+                .category(TritonTypes.Category.Event.name())
+                .type(TritonTypes.Type.Backend.name())
+        );
+        RestRequest req = new RestRequest();
+        req.requestBody = Blob.valueOf('{ \"testReq\": \"test\" }');
+        RestResponse res = new RestResponse();
+        res.responseBody = Blob.valueOf('{ \"testRes\": \"test\" }');
+
+        Test.startTest();
+
+        tritonObj.log(tritonObj.fromRequestResponse(req, res).build());
+
+        Test.stopTest();
+
+        pharos__Log__c log = [SELECT Id, pharos__Category__c FROM pharos__Log__c limit 1];    
+        System.assert(
+            log.pharos__Category__c == 'Integration',
+            'Failure: Category did not change from the template'
         );
     }
 

@@ -40,6 +40,7 @@ public with sharing class TritonTypes {
     */
     public enum Category {
         Apex,
+        Error,
         Flow,
         Warning,
         Event,

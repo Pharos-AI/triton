@@ -34,14 +34,64 @@ public without sharing class Triton {
         private set;
     }
 
-    public static pharos.LogBuilder builderTemplate {
+    public pharos.LogBuilder template {
         get {
-            if (builderTemplate == null) {
-                builderTemplate = pharos.LogBuilder.getInstance();
+            if (this.template == null) {
+                this.startTransaction();
+                this.template = Triton.makeBuilder()
+                    .attribute(LOG_LEVEL, TritonTypes.Level.FINE.name())
+                    .category(TritonTypes.Category.Event.name())
+                    .transactionId(TRANSACTION_ID)
+                    .type(TritonTypes.Type.Backend.name());
             }
-            return builderTemplate;
+
+            return this.template;
         }
-        private set;
+        set; 
+    }
+
+    /**
+    * Initialize the builder with your desired defaults.
+    * This is a convenience method to set up the builder with common defaults.
+    * you will want to add the appropriate attribute(s) as needed.
+    * .area()
+    * .attribute()
+    * .createIssue()
+    * .details()
+    * .stackTrace()
+    * .summary()
+    * .type()
+    */
+    public void setTemplate(pharos.LogBuilder pLogBuilder) {
+        this.template = pLogBuilder;
+    }
+
+    public pharos.LogBuilder fromTemplate() {
+        return this.template;
+    }
+
+    public pharos.LogBuilder fromException(Exception e) {
+        return this.fromTemplate()
+            .category(TritonTypes.Category.Error.name())
+            .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
+            .stackTrace(e.getStackTraceString())
+            .summary(e.getMessage())
+            .transactionId(TRANSACTION_ID)
+            .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName());
+    }
+
+    public pharos.LogBuilder fromRequestResponse(HttpRequest pReq, HttpResponse pResp) {
+        return this.fromTemplate()
+            //Set the system field with a json serialized request/response value
+            .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(pReq, pResp))
+            .category(TritonTypes.Category.Integration.name());
+    }
+
+    public pharos.LogBuilder fromRequestResponse(RestRequest pReq, RestResponse pResp) {
+        return this.fromTemplate()
+            //Set the system field with a json serialized request/response value
+            .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(pReq, pResp))
+            .category(TritonTypes.Category.Integration.name());
     }
 
     //singleton instance
@@ -110,6 +160,13 @@ public without sharing class Triton {
     }
 
     /**
+    * Shorthand method for creating a new builder
+    */
+    public static pharos.LogBuilder makeBuilder() {
+        return pharos.LogBuilder.getInstance();
+    }
+
+    /**
      * This value can be passed around to trace a complex process spanning multiple Salesforce transactions
      * Can be used between LWC/Apex/Flow transitions when complex tracing is required.
      */
@@ -164,13 +221,14 @@ public without sharing class Triton {
     */
     public void addError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         add(
-            Triton.setBuilderTemplate()
+            makeBuilder()
                 .area(area.name())
                 .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
                 .createIssue()
                 .details(details)
                 .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                 .summary(summary)
+                .transactionId(TRANSACTION_ID)
                 .type(type.name())
                 .build()
         );
@@ -196,7 +254,7 @@ public without sharing class Triton {
     */
     public void addError(TritonTypes.Area area, Exception e, Set<String> relatedObjectIds) {
         add(
-            Triton.setBuilderTemplate()
+            makeBuilder()
                 .area(area.name())
                 .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
                 .attribute(RELATED_OBJECTS, relatedObjectIds?.size() > 0 ? JSON.serialize(relatedObjectIds) : null)
@@ -204,6 +262,7 @@ public without sharing class Triton {
                 .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
                 .stackTrace(e.getStackTraceString())
                 .summary(e.getMessage())
+                .transactionId(TRANSACTION_ID)
                 .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
                 .build()
         );
@@ -249,7 +308,7 @@ public without sharing class Triton {
     */
     public void addWarning(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         add(
-            Triton.setBuilderTemplate()
+            makeBuilder()
                 .area(area.name())
                 .attribute(LOG_LEVEL, TritonTypes.Level.WARNING.name())
                 .category(TritonTypes.Category.Warning.name())
@@ -259,6 +318,7 @@ public without sharing class Triton {
                     .userInfo(true)
                     .build())
                 .summary(summary)
+                .transactionId(TRANSACTION_ID)
                 .type(type.name())
                 .build()
         );
@@ -285,7 +345,7 @@ public without sharing class Triton {
     */
     public void addDebug(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         add(
-            Triton.setBuilderTemplate()
+            makeBuilder()
                 .area(area.name())
                 .attribute(LOG_LEVEL, TritonTypes.Level.DEBUG.name())
                 .category(TritonTypes.Category.Debug.name())
@@ -296,6 +356,7 @@ public without sharing class Triton {
                     .build())
                 .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                 .summary(summary)
+                .transactionId(TRANSACTION_ID)
                 .type(type.name())
                 .build()
         );
@@ -327,7 +388,7 @@ public without sharing class Triton {
         Decimal duration
     ) {
         add(
-            Triton.setBuilderTemplate()
+            makeBuilder()
                 .area(area.name())
                 .attribute(LOG_LEVEL, TritonTypes.Level.DEBUG.name())
                 .attribute(Triton.DURATION, duration)
@@ -339,6 +400,7 @@ public without sharing class Triton {
                     .build())
                 .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                 .summary(summary)
+                .transactionId(TRANSACTION_ID)
                 .type(type.name())
                 .build()
         );
@@ -371,7 +433,7 @@ public without sharing class Triton {
         String details
     ) {
         add(
-            Triton.setBuilderTemplate()
+            makeBuilder()
                 .category(TritonTypes.Category.Event.name())
                 .type(type.name())
                 .area(area.name())
@@ -437,7 +499,7 @@ public without sharing class Triton {
     */
     public void addIntegrationError(TritonTypes.Area area, Exception e, HttpRequest request, HttpResponse response) {
         add(
-            Triton.setBuilderTemplate()
+            makeBuilder()
                 .area(area.name())
                 .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
                 //Set the system field with a json serialized request/response value
@@ -448,6 +510,7 @@ public without sharing class Triton {
                 .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
                 .summary(e.getMessage())
                 .stackTrace(e.getStackTraceString())
+                .transactionId(TRANSACTION_ID)
                 //Use Backend as default type
                 .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
                 .build()
@@ -475,7 +538,7 @@ public without sharing class Triton {
     */
     public void addIntegrationError(TritonTypes.Area area, Exception e, RestRequest request, RestResponse response) {
         add(
-            Triton.setBuilderTemplate()
+            makeBuilder()
                 .area(area.name())
                 .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request, response))
                 .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
@@ -484,6 +547,7 @@ public without sharing class Triton {
                 .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
                 .stackTrace(e.getStackTraceString())
                 .summary(e.getMessage())
+                .transactionId(TRANSACTION_ID)
                 .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
                 .build()
         );
@@ -520,7 +584,7 @@ public without sharing class Triton {
     ) {
         incStackOffset();
         add(
-            Triton.setBuilderTemplate()
+            makeBuilder()
                 .area(area.name())
                 .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request,response))
                 .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
@@ -529,6 +593,7 @@ public without sharing class Triton {
                 .details(details)
                 .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                 .summary(summary)
+                .transactionId(TRANSACTION_ID)
                 .type(type.name())
                 .build()
         );
@@ -571,7 +636,7 @@ public without sharing class Triton {
         RestResponse response
     ) {
         add(
-            Triton.setBuilderTemplate()
+            makeBuilder()
                 .area(area.name())
                 .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request, response))
                 .attribute(LOG_LEVEL, TritonTypes.Level.ERROR.name())
@@ -580,6 +645,7 @@ public without sharing class Triton {
                 .details(details)
                 .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                 .summary(summary)
+                .transactionId(TRANSACTION_ID)
                 .type(type.name())
                 .build()
         );
@@ -632,40 +698,13 @@ public without sharing class Triton {
         return false;
     }
 
-    /**
-    * used in conjunction with setBuilderTemplate() for logging through out your code.
-    * first call setBuilderTemplate() to initialize the builder with your desired defaults.
-    * then call log() to commit a log record.
-    */
-    public void log() {
-        this.add(
-            Triton.builderTemplate
-                .createIssue()
-                .build()
-        );
+    public void log(pharos__Log__c pLog) {
+        addLog(pLog);
+        flush();
     }
 
-    /**
-    * Initialize the builder with your desired defaults.
-    * This is a convenience method to set up the builder with common defaults.
-    * you will want to add the appropriate attribute(s) as needed.
-    * .area()
-    * .attribute()
-    * .createIssue()
-    * .details()
-    * .stackTrace()
-    * .summary()
-    * .type()
-    * @return -- a builder instance with the desired defaults
-    */
-    public static pharos.LogBuilder setBuilderTemplate() {
-        
-        return Triton.builderTemplate
-            .area(TritonTypes.Area.Accounts.name())
-            .attribute(LOG_LEVEL, TritonTypes.Level.INFO.name())
-            .category(TritonTypes.Category.Apex.name())
-            .transactionId(TritonHelper.generateUUID4())
-            .type(TritonTypes.Type.Backend.name());
+    public void addLog(pharos__Log__c pLog) {
+        add(pLog);
     }
 
     /**
@@ -676,14 +715,17 @@ public without sharing class Triton {
     public static void addNebulaLog(String pNebulaLogger) {
         Map<String, Object> nebulaObjMap = (Map<String, Object>)JSON.deserializeUntyped(pNebulaLogger);
         Triton tObj = Triton.instance;
+        tObj.startTransaction();
         
-        Triton.setBuilderTemplate()
-            .attribute(LOG_LEVEL, TritonHelper.NEBULA_LEVEL_MAP.get((String)nebulaObjMap.get('LoggingLevel__c')).name())
-            .details((String)nebulaObjMap.get('Message__c'))
-            .stackTrace((String)nebulaObjMap.get('StackTrace__c'))
-            .summary((String)nebulaObjMap.get('Message__c'));
+        tObj.add(
+            makeBuilder()
+                .attribute(LOG_LEVEL, TritonHelper.NEBULA_LEVEL_MAP.get((String)nebulaObjMap.get('LoggingLevel__c')).name())
+                .details((String)nebulaObjMap.get('Message__c'))
+                .stackTrace((String)nebulaObjMap.get('StackTrace__c'))
+                .summary((String)nebulaObjMap.get('Message__c'))
+                .build()
+        );
 
-        tObj.log();
         tObj.flush();
     }
 }

@@ -29,7 +29,7 @@ public with sharing class TritonFlow {
             } catch (Exception e) {
                 flowDetails += '\nUnable to locate log level: ' + flowLog.level + '. Default INFO level will be used.'; 
             }
-            pharos.LogBuilder builder = Triton.setBuilderTemplate();
+            pharos.LogBuilder builder = Triton.makeBuilder();
             builder
                 .area(flowLog.area)
                 .attribute(Triton.FLOW_API_NAME, flowLog.flowApiName)
