@@ -22,6 +22,14 @@ public with sharing class TritonLwc {
     public static void saveComponentLogs(List<ComponentLog> componentLogs) {
         Triton logInstance = Triton.instance;
         for (ComponentLog componentLog : componentLogs) {
+            Id userId = null;
+            Id relatedId = null;
+            try {
+                userId = Id.valueOf(componentLog.userId);
+                relatedId = Id.valueOf(componentLog.recordId);
+            } catch (System.StringException e) {
+                //invalid ids passed in
+            }
             logInstance.add(
                     Triton.makeBuilder()
                             //category will be fetched from the componentLog
@@ -38,16 +46,16 @@ public with sharing class TritonLwc {
                             .details(componentLog.details)
                             //transaction id will be used from the componentLog, or a new transaction id will be generated
                             .transactionId(String.isNotBlank(componentLog.transactionId) ? componentLog.transactionId : logInstance.TRANSACTION_ID)
-                            .attribute(Triton.USER_ID, componentLog.userId)
+                            .userId(userId)
                             //apex name will be set to component.function or component.action
-                            .attribute(Triton.APEX_NAME, componentLog.component.name + '.' +
+                            .operation(componentLog.component.name + '.' +
                                     (String.isNotBlank(componentLog.component.function) ? componentLog.component.function : componentLog.component.action))
-                            .attribute(Triton.RELATED_ID, componentLog.recordId)
+                            .relatedId(relatedId)
                             //created timestamp will be either set from the componentLog if provided, otherwise current timestamp will be used
-                            .attribute(Triton.CREATED_TIMESTAMP, componentLog.createdTimestamp != null ? Double.valueOf(componentLog.createdTimestamp) : Double.valueOf(System.now().getTime()))
+                            .createdTimestamp(componentLog.createdTimestamp != null ? Double.valueOf(componentLog.createdTimestamp) : Double.valueOf(System.now().getTime()))
                             //log level will be taken from the componentLog if provided, otherwise INFO will be used
-                            .attribute(Triton.LOG_LEVEL, String.isNotBlank(componentLog.level) ? componentLog.level : TritonTypes.Level.INFO.name())
-                            .attribute(Triton.DURATION, componentLog.duration)
+                            .attribute(TritonBuilder.LOG_LEVEL, String.isNotBlank(componentLog.level) ? componentLog.level : TritonTypes.Level.INFO.name())
+                            .duration(componentLog.duration)
                             .build());
         }
         logInstance.flush();
