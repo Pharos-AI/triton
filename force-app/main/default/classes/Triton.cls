@@ -697,4 +697,13 @@ public without sharing class Triton {
 
         return false;
     }
+
+    public void log(pharos__Log__c pLog) {
+        addLog(pLog);
+        flush();
+    }
+
+    public void addLog(pharos__Log__c pLog) {
+        add(pLog);
+    }
 }
