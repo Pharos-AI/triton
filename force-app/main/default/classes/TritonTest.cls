@@ -303,7 +303,6 @@ private class TritonTest {
         System.assert(log.pharos__Details__c.contains('failed to parse json input'), 'Additional fields parse error should be present');
     }
 
-
     public static final String TEST_ENDPOINT = 'https://test.endpoint';
 
     public static Map<String, HttpCalloutMock> createEndpoint2TestResp() {

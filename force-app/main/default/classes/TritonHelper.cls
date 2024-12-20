@@ -13,6 +13,16 @@
  */
 public with sharing class TritonHelper {
 
+    public static final Map<String, TritonTypes.Level> NEBULA_LEVEL_MAP = new Map<String, TritonTypes.Level> {
+        'ERROR' => TritonTypes.Level.ERROR,
+        'WARNING' => TritonTypes.Level.WARNING,
+        'INFO' => TritonTypes.Level.INFO,
+        'DEBUG' => TritonTypes.Level.DEBUG,
+        'FINE' => TritonTypes.Level.FINE,
+        'FINER' => TritonTypes.Level.FINER,
+        'FINEST' => TritonTypes.Level.FINEST
+    };
+
     /**
     * Creates a key for log level based on:
     * @param category -- log category field
@@ -211,5 +221,119 @@ public with sharing class TritonHelper {
             controls.put(TOTAL_ACTIVE_SESSION_KEY, value);
             return this;
         }
-    }    
+    }
+
+    /*
+    {
+        "attributes": {
+            "type": "LogEntryEvent__e"
+        },
+        "LoggingLevel__c": "ERROR",
+        "LoggingLevelOrdinal__c": 8,
+        "OriginType__c": "Apex",
+        "TriggerIsExecuting__c": false,
+        "TriggerOperationType__c": null,
+        "TriggerSObjectType__c": null,
+        "LimitsAggregateQueriesMax__c": 300,
+        "LimitsAsyncCallsMax__c": 200,
+        "LimitsCalloutsMax__c": 100,
+        "LimitsCpuTimeMax__c": 10000,
+        "LimitsDmlRowsMax__c": 10000,
+        "LimitsDmlStatementsMax__c": 150,
+        "LimitsEmailInvocationsMax__c": 10,
+        "LimitsFutureCallsMax__c": 50,
+        "LimitsHeapSizeMax__c": 6000000,
+        "LimitsMobilePushApexCallsMax__c": 10,
+        "LimitsPublishImmediateDmlStatementsMax__c": 150,
+        "LimitsQueueableJobsMax__c": 50,
+        "LimitsSoqlQueriesMax__c": 100,
+        "LimitsSoqlQueryLocatorRowsMax__c": 10000,
+        "LimitsSoqlQueryRowsMax__c": 50000,
+        "LimitsSoslSearchesMax__c": 20,
+        "LimitsAggregateQueriesUsed__c": 0,
+        "LimitsAsyncCallsUsed__c": 0,
+        "LimitsCalloutsUsed__c": 0,
+        "LimitsCpuTimeUsed__c": 15,
+        "LimitsDmlRowsUsed__c": 0,
+        "LimitsDmlStatementsUsed__c": 0,
+        "LimitsEmailInvocationsUsed__c": 0,
+        "LimitsFutureCallsUsed__c": 0,
+        "LimitsMobilePushApexCallsUsed__c": 0,
+        "LimitsQueueableJobsUsed__c": 0,
+        "LimitsPublishImmediateDmlStatementsUsed__c": 0,
+        "LimitsSoqlQueriesUsed__c": 0,
+        "LimitsSoqlQueryLocatorRowsUsed__c": 0,
+        "LimitsSoqlQueryRowsUsed__c": 0,
+        "LimitsSoslSearchesUsed__c": 0,
+        "LimitsHeapSizeUsed__c": 11096,
+        "EpochTimestamp__c": 1729808545107,
+        "Timestamp__c": "2024-10-24T22:22:25.107+0000",
+        "TimestampString__c": "1729808545107",
+        "OriginLocation__c": "AnonymousBlock",
+        "OriginSourceActionName__c": null,
+        "OriginSourceApiName__c": null,
+        "OriginSourceMetadataType__c": "AnonymousBlock",
+        "StackTrace__c": "AnonymousBlock: line 1, column 1",
+        "ApiVersion__c": "v62.0",
+        "EntryScenario__c": null,
+        "LoggerVersionNumber__c": "v4.14.14",
+        "OrganizationApiVersion__c": "v62.0",
+        "OrganizationDomainUrl__c": "https://onepagecom-dev-ed.develop.my.salesforce.com",
+        "RequestId__c": "SLB:82a3dd3d1b131f12001ebe3d2ec20012",
+        "SystemMode__c": "ANONYMOUS",
+        "TransactionEntryNumber__c": 1,
+        "TransactionId__c": "04584565-91f3-489c-9106-629b45ce1bfb",
+        "UserLoggingLevel__c": "FINEST",
+        "UserLoggingLevelOrdinal__c": 2,
+        "Message__c": "error message",
+        "MessageMasked__c": false,
+        "MessageTruncated__c": false,
+        "Locale__c": "en_US",
+        "LoggedById__c": "005ak000002TGoDAAW",
+        "LoggedByUsername__c": "mike@onepage.com",
+        "ProfileId__c": "00eak000002XMLbAAO",
+        "ThemeDisplayed__c": "Theme3",
+        "TimeZoneId__c": "America/Los_Angeles",
+        "TimeZoneName__c": "(GMT-07:00) Pacific Daylight Time (America/Los_Angeles)",
+        "UserRoleId__c": null,
+        "UserType__c": "Standard",
+        "LoginApplication__c": "Browser",
+        "LoginBrowser__c": "Chrome 129",
+        "LoginHistoryId__c": "0Yaak00000BbJ3SCAV",
+        "LoginPlatform__c": "Mac OSX",
+        "LoginType__c": "Application",
+        "LogoutUrl__c": null,
+        "ParentSessionId__c": "0Akak00000EegmPCAR",
+        "SessionId__c": "0Akak00000EjZI0CAN",
+        "SessionSecurityLevel__c": "STANDARD",
+        "SessionType__c": "UI",
+        "SourceIp__c": "107.141.175.191",
+        "LoggedByFederationIdentifier__c": null,
+        "ProfileName__c": "System Administrator",
+        "UserLicenseDefinitionKey__c": "SFDC",
+        "UserLicenseId__c": "100ak000005YRSjAAO",
+        "UserLicenseName__c": "Salesforce",
+        "UserRoleName__c": null,
+        "OrganizationEnvironmentType__c": "Production",
+        "OrganizationId__c": "00Dak000003lUSLEA2",
+        "OrganizationInstanceName__c": "USA840",
+        "OrganizationName__c": "N/A",
+        "OrganizationNamespacePrefix__c": null,
+        "OrganizationType__c": "Developer Edition"
+    }
+
+    code sample:
+    public static void saveLog(String saveMethodName) {
+  
+   
+        for (LogEntryEventBuilder logEntryEventBuilder : LOG_ENTRIES_BUFFER) {
+            if (logEntryEventBuilder.shouldSave()) {
+                Triton.addNebulaLog(JSON.serialize(logEntryEventBuilder.getLogEntryEvent()));
+            }
+        } 
+        
+        if (Triton_Nebula_Integration__mdt.getInstance('Triton').Deactivate_Nebula__c) {
+            return;
+        }
+    */
 }

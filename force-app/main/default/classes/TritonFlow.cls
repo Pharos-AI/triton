@@ -29,17 +29,17 @@ public with sharing class TritonFlow {
             } catch (Exception e) {
                 flowDetails += '\nUnable to locate log level: ' + flowLog.level + '. Default INFO level will be used.'; 
             }
-            Pharos.LogBuilder builder = Triton.makeBuilder();
+            pharos.LogBuilder builder = Triton.makeBuilder();
             builder
-                    .category(TritonTypes.Category.Flow.name())
-                    .type(flowLog.type)
-                    .area(flowLog.area)
-                    .summary(flowLog.summary)
-                    .details(flowDetails)
-                    .transactionId(Triton.instance.TRANSACTION_ID)
-                    .attribute(Triton.INTERVIEW_GUID, flowLog.interviewGUID)
-                    .attribute(Triton.FLOW_API_NAME, flowLog.flowApiName)
-                    .attribute(Triton.LOG_LEVEL, level.name());
+                .area(flowLog.area)
+                .attribute(Triton.FLOW_API_NAME, flowLog.flowApiName)
+                .attribute(Triton.INTERVIEW_GUID, flowLog.interviewGUID)
+                .attribute(Triton.LOG_LEVEL, level.name())
+                .category(TritonTypes.Category.Flow.name())
+                .details(flowDetails)
+                .summary(flowLog.summary)
+                .transactionId(Triton.instance.TRANSACTION_ID)
+                .type(flowLog.type);
 
             if (String.isNotBlank(flowLog.additionalFields)) {
                 try {

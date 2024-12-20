@@ -23,32 +23,53 @@ public with sharing class TritonLwc {
         Triton logInstance = Triton.instance;
         for (ComponentLog componentLog : componentLogs) {
             logInstance.add(
-                    Triton.makeBuilder()
-                            //category will be fetched from the componentLog
-                            .category(String.isNotBlank(componentLog.category) ? componentLog.category : componentLog.component.category)
-                            //type will be fetched from the componentLog directly, of from the error. If neither are set, Frontend will be used
-                            .type(String.isNotBlank(componentLog.type) ? componentLog.type :
-                                    componentLog.error != null ? componentLog.error.type : TritonTypes.Type.Frontend.name())
-                            //area will be fetched from the componentLog directly if set. Otherwise component name will be used
-                            .area(String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.component.name)
-                            //summary will be fetched from the componentLog directly if set. Otherwise, error message will be used if provided.
-                            .summary(String.isNotBlank(componentLog.summary) ? componentLog.summary :
-                                    componentLog.error != null ? componentLog.error.message : null)
-                            .stackTrace(componentLog.stack)
-                            .details(componentLog.details)
-                            //transaction id will be used from the componentLog, or a new transaction id will be generated
-                            .transactionId(String.isNotBlank(componentLog.transactionId) ? componentLog.transactionId : logInstance.TRANSACTION_ID)
-                            .attribute(Triton.USER_ID, componentLog.userId)
-                            //apex name will be set to component.function or component.action
-                            .attribute(Triton.APEX_NAME, componentLog.component.name + '.' +
-                                    (String.isNotBlank(componentLog.component.function) ? componentLog.component.function : componentLog.component.action))
-                            .attribute(Triton.RELATED_ID, componentLog.recordId)
-                            //created timestamp will be either set from the componentLog if provided, otherwise current timestamp will be used
-                            .attribute(Triton.CREATED_TIMESTAMP, componentLog.createdTimestamp != null ? Double.valueOf(componentLog.createdTimestamp) : Double.valueOf(System.now().getTime()))
-                            //log level will be taken from the componentLog if provided, otherwise INFO will be used
-                            .attribute(Triton.LOG_LEVEL, String.isNotBlank(componentLog.level) ? componentLog.level : TritonTypes.Level.INFO.name())
-                            .attribute(Triton.DURATION, componentLog.duration)
-                            .build());
+                Triton.makeBuilder()
+                //area will be fetched from the componentLog directly if set. Otherwise component name will be used
+                    .area(String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.component.name)
+                    //apex name will be set to component.function or component.action
+                    .attribute(
+                        Triton.APEX_NAME,
+                        componentLog.component.name + '.' +
+                        (String.isNotBlank(componentLog.component.function) ?
+                            componentLog.component.function :
+                            componentLog.component.action
+                        )
+                    )
+                    //created timestamp will be either set from the componentLog if provided, otherwise current timestamp will be used
+                    .attribute(
+                        Triton.CREATED_TIMESTAMP,
+                        componentLog.createdTimestamp != null ?
+                            Double.valueOf(componentLog.createdTimestamp) :
+                            Double.valueOf(System.now().getTime())
+                    )
+                    .attribute(Triton.DURATION, componentLog.duration)
+                    //log level will be taken from the componentLog if provided, otherwise INFO will be used
+                    .attribute(
+                        Triton.LOG_LEVEL,
+                        String.isNotBlank(componentLog.level) ? componentLog.level : TritonTypes.Level.INFO.name()
+                    )
+                    .attribute(Triton.RELATED_ID, componentLog.recordId)
+                    .attribute(Triton.USER_ID, componentLog.userId)
+                    //category will be fetched from the componentLog
+                    .category(String.isNotBlank(componentLog.category) ? componentLog.category : componentLog.component.category)
+                    .details(componentLog.details)
+                    .stackTrace(componentLog.stack)
+                    //summary will be fetched from the componentLog directly if set. Otherwise, error message will be used if provided.
+                    .summary(String.isNotBlank(componentLog.summary) ?
+                        componentLog.summary :
+                        componentLog.error != null ? componentLog.error.message : null
+                    )
+                    //transaction id will be used from the componentLog, or a new transaction id will be generated
+                    .transactionId(String.isNotBlank(componentLog.transactionId) ?
+                        componentLog.transactionId : logInstance.TRANSACTION_ID
+                    )
+                    //type will be fetched from the componentLog directly, of from the error. If neither are set, Frontend will be used
+                    .type(String.isNotBlank(componentLog.type) ? 
+                        componentLog.type :
+                        componentLog.error != null ? componentLog.error.type : TritonTypes.Type.Frontend.name()
+                    )
+                    .build()
+            );
         }
         logInstance.flush();
     }
