@@ -69,7 +69,7 @@ public without sharing class Triton {
     * @return builder -- Pharos builder previously saved as a template
     */
     public TritonBuilder fromTemplate() {
-        return this.template.clone();
+        return this.template.clone().transactionId(TRANSACTION_ID);
     }
 
     /**
@@ -163,6 +163,10 @@ public without sharing class Triton {
     * @param builder -- Pharos builder 
     */
     public void addLog(TritonBuilder builder) {
+        //get the stacktrace if one isn't provided
+        if(String.isBlank(builder.build().pharos__Stacktrace__c)) {
+            builder.stackTrace(this.logger.getCurrentStackTrace(stackOffset));
+        }
         add(builder.build());
     }
 
