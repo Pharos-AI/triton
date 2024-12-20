@@ -49,7 +49,6 @@ public without sharing class Triton {
 
     private TritonBuilder template;
 
-
     // Constructor
     private Triton(pharos.Logger logger) {
         this.logger = logger;

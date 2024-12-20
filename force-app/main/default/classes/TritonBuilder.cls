@@ -22,61 +22,65 @@ public with sharing class TritonBuilder extends pharos.LogBuilder {
     public static final String USER_ID = 'pharos__User_Id__c';
     public static final String FLOW_API_NAME = 'pharos__Flow_API_Name__c';
 
-    public TritonBuilder() {
+    public static TritonBuilder getInstance() {
+		return new TritonBuilder();
+	}
 
+    protected TritonBuilder() {
+        super();
     }
 
     public TritonBuilder category(TritonTypes.Category c) {
-        return category(c.name());
+        return (TritonBuilder)category(c.name());
     }
 
     public TritonBuilder type(TritonTypes.Type t) {
-        return type(t.name());
+        return (TritonBuilder)type(t.name());
     }
 
     public TritonBuilder area(TritonTypes.Area a) {
-        return area(a.name());
+        return (TritonBuilder)area(a.name());
     }
 
     public TritonBuilder level(TritonTypes.Level l) {
-        return attribute(LOG_LEVEL, l.name());
+        return (TritonBuilder)attribute(LOG_LEVEL, l.name());
     }
 
     public TritonBuilder operation(String operation) {
-        return attribute(APEX_NAME, operation);
+        return (TritonBuilder)attribute(APEX_NAME, operation);
     }
 
     public TritonBuilder userId(Id userId) {
-        return attribute(USER_ID, userId);
+        return (TritonBuilder)attribute(USER_ID, userId);
     }
 
     public TritonBuilder relatedObject(Id objectId) {
-        return relatedObjects(new Id[]{objectId});
+        return (TritonBuilder)relatedObjects(new Id[]{objectId});
     }
 
     public TritonBuilder createdTimestamp(Double timestamp) {
-        return attribute(CREATED_TIMESTAMP, timestamp);
+        return (TritonBuilder)attribute(CREATED_TIMESTAMP, timestamp);
     }
 
-    public TritonBuilder relatedObjects(Set<Id> relatedObjects) {
-        return attribute(RELATED_OBJECTS, relatedObjectIds?.size() > 0 ? 
+    public TritonBuilder relatedObjects(Set<Id> relatedObjectIds) {
+        return (TritonBuilder)attribute(RELATED_OBJECTS, relatedObjectIds?.size() > 0 ? 
                                         JSON.serialize(relatedObjectIds) : null);
     }
 
     public TritonBuilder relatedObjects(Id[] relatedObjects) {
-        return relatedObjects(new Set<Id>(relatedObjects));
+        return (TritonBuilder)relatedObjects(new Set<Id>(relatedObjects));
     }
 
     public TritonBuilder duration(Decimal duration) {
-        return attribute(DURATION, duration);
+        return (TritonBuilder)attribute(TritonBuilder.DURATION, duration);
     }
 
     public TritonBuilder integrationPayload(HttpRequest request, HttpResponse response) {
-        return attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request, response));
+        return (TritonBuilder)attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request, response));
     }
 
-    public TritonBuilder integrationPayload(RestRequest request, RestRequest response) {
-        return attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request, response));
+    public TritonBuilder integrationPayload(RestRequest request, RestResponse response) {
+        return (TritonBuilder)attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(request, response));
     }
 
 
