@@ -1,3 +1,13 @@
+/**
+ * Copyright (C) 2024 Pharos AI, Inc.
+ *
+ * This file is part of Pharos Triton.
+ *
+ * Pharos Triton is free software: you can redistribute it and/or modify
+ * it under the terms of the MIT License.
+ * See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
+ */
+
 public with sharing class TritonBuilder extends pharos.LogBuilder {
 
     /** key field names for setting attributes on log records */
