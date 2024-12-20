@@ -34,66 +34,6 @@ public without sharing class Triton {
         private set;
     }
 
-    public pharos.LogBuilder template {
-        get {
-            if (this.template == null) {
-                this.startTransaction();
-                this.template = Triton.makeBuilder()
-                    .attribute(LOG_LEVEL, TritonTypes.Level.FINE.name())
-                    .category(TritonTypes.Category.Event.name())
-                    .transactionId(TRANSACTION_ID)
-                    .type(TritonTypes.Type.Backend.name());
-            }
-
-            return this.template;
-        }
-        set; 
-    }
-
-    /**
-    * Initialize the builder with your desired defaults.
-    * This is a convenience method to set up the builder with common defaults.
-    * you will want to add the appropriate attribute(s) as needed.
-    * .area()
-    * .attribute()
-    * .createIssue()
-    * .details()
-    * .stackTrace()
-    * .summary()
-    * .type()
-    */
-    public void setTemplate(pharos.LogBuilder pLogBuilder) {
-        this.template = pLogBuilder;
-    }
-
-    public pharos.LogBuilder fromTemplate() {
-        return this.template;
-    }
-
-    public pharos.LogBuilder fromException(Exception e) {
-        return this.fromTemplate()
-            .category(TritonTypes.Category.Error.name())
-            .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
-            .stackTrace(e.getStackTraceString())
-            .summary(e.getMessage())
-            .transactionId(TRANSACTION_ID)
-            .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName());
-    }
-
-    public pharos.LogBuilder fromRequestResponse(HttpRequest pReq, HttpResponse pResp) {
-        return this.fromTemplate()
-            //Set the system field with a json serialized request/response value
-            .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(pReq, pResp))
-            .category(TritonTypes.Category.Integration.name());
-    }
-
-    public pharos.LogBuilder fromRequestResponse(RestRequest pReq, RestResponse pResp) {
-        return this.fromTemplate()
-            //Set the system field with a json serialized request/response value
-            .attribute(STACKTRACE_PARSE_RESULT, TritonHelper.toJson(pReq, pResp))
-            .category(TritonTypes.Category.Integration.name());
-    }
-
     //singleton instance
     private final pharos.Logger logger;
 
@@ -526,7 +466,6 @@ public without sharing class Triton {
         flush();
         resetStackOffset();
     }
-
 
     /**
     * Add Log with Integration Category.
