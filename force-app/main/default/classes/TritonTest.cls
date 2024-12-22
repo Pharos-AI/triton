@@ -303,6 +303,90 @@ private class TritonTest {
         System.assert(log.pharos__Details__c.contains('failed to parse json input'), 'Additional fields parse error should be present');
     }
 
+    @IsTest
+    private static void test_triton_builder() {
+        assertBefore();
+
+        Test.startTest();
+        Triton.instance.event(TritonTypes.Level.FINEST, TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some event', 'error details');
+        Test.stopTest();
+
+        TritonBuilder builder = new TritonBuilder();
+        builder.category(TritonTypes.Category.Apex);
+        System.assertEquals(TritonTypes.Category.Apex.name(), builder.build().pharos__Category__c);
+
+        builder.type(TritonTypes.Type.Backend);
+        System.assertEquals(TritonTypes.Type.Backend.name(), builder.build().pharos__Type__c);
+
+        builder.area(TritonTypes.Area.Community);
+        System.assertEquals(TritonTypes.Area.Community.name(), builder.build().pharos__Area__c);
+
+        builder.level(TritonTypes.Level.FINE);
+        System.assertEquals(TritonTypes.Level.FINE.name(), builder.build().Log_Level__c);
+
+        builder.operation('Operation');
+        System.assertEquals('Operation', builder.build().pharos__Apex_Name__c);
+
+        builder.userId(UserInfo.getUserId());
+        System.assertEquals(UserInfo.getUserId(), builder.build().pharos__User_Id__c);
+
+        pharos__Log__c log = [select Id from pharos__Log__c limit 1];
+        builder.relatedObject(log.Id);
+        System.assertEquals(JSON.serialize(new String[]{log.Id}), builder.build().pharos__Related_Objects__c);
+
+        builder.duration(1);
+        System.assertEquals(1, builder.build().pharos__Duration__c);
+
+        RestRequest restReq = new RestRequest();
+        RestResponse restRes = new RestResponse();
+        restReq.requestURI = '/services/apexrest/Account/testId';
+        restReq.httpMethod = 'GET';
+
+        builder.integrationPayload(restReq, restRes);
+        System.assertEquals(TritonHelper.toJson(restReq, restRes), builder.build().pharos__Stacktrace_Parse_Result__c);
+
+        HttpRequest httpReq = new HttpRequest();
+        HttpResponse httpRes = new HttpResponse();
+
+        builder.integrationPayload(httpReq, httpRes);
+        System.assertEquals(TritonHelper.toJson(httpReq, httpRes), builder.build().pharos__Stacktrace_Parse_Result__c);
+    }
+
+    @IsTest
+    private static void test_template() {
+        assertBefore();
+        
+        TritonBuilder template = Triton.makeBuilder();
+        template.category(TritonTypes.Category.Apex);
+        template.type(TritonTypes.Type.Backend);
+        template.area(TritonTypes.Area.Community);
+        template.level(TritonTypes.Level.FINE);
+        Triton.instance.setTemplate(template);
+        Test.startTest();
+        Triton.instance.log(Triton.instance.fromTemplate()
+                                .summary('some event')
+                                .details('error details'));
+        Test.stopTest();
+        pharos__Log__c[] logs = [SELECT Id, 
+                                        pharos__Category__c, 
+                                        pharos__Type__c, 
+                                        pharos__Area__c, 
+                                        Log_Level__c, 
+                                        pharos__Details__c, 
+                                        pharos__Summary__c,
+                                        pharos__Stacktrace__c 
+                                        FROM pharos__Log__c];
+        pharos__Log__c log = logs.get(0);
+        System.assertEquals(1, logs.size());
+        System.assertEquals(TritonTypes.Category.Apex.name(), log.pharos__Category__c);
+        System.assertEquals(TritonTypes.Type.Backend.name(), log.pharos__Type__c);
+        System.assertEquals(TritonTypes.Area.Community.name(), log.pharos__Area__c);
+        System.assertEquals(TritonTypes.Level.FINE.name(), log.Log_Level__c);
+        System.assert(!String.isBlank(log.pharos__Stacktrace__c));
+        System.assertEquals('some event', log.pharos__Summary__c);
+        System.assertEquals('error details', log.pharos__Details__c);
+    }
+
 
     public static final String TEST_ENDPOINT = 'https://test.endpoint';
 

@@ -29,7 +29,9 @@ public with sharing class TritonTypes {
         LeadConversion,
         Community,
         RestAPI,
-        Accounts
+        Accounts,
+        LWC,
+        Flow
     }
 
     /**
@@ -41,6 +43,8 @@ public with sharing class TritonTypes {
     public enum Category {
         Apex,
         Flow,
+        LWC,
+        Aura,
         Warning,
         Event,
         Debug,

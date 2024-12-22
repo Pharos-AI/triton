@@ -68,7 +68,7 @@ public without sharing class Triton {
     * @return builder -- Pharos builder previously saved as a template
     */
     public TritonBuilder fromTemplate() {
-        return this.template.clone().transactionId(TRANSACTION_ID);
+        return (TritonBuilder)this.template.clone().transactionId(TRANSACTION_ID);
     }
 
     /**
@@ -110,6 +110,14 @@ public without sharing class Triton {
     public static TritonBuilder makeBuilder() {
         return new TritonBuilder();
     }
+
+    /**
+    * Shorthand method for creating a new post processing controls builder
+    */
+    public static TritonHelper.PostProcessingControlsBuilder makePostProcessingBuilder() {
+        return new TritonHelper.PostProcessingControlsBuilder();
+    }
+
 
     /**
      * This value can be passed around to trace a complex process spanning multiple Salesforce transactions
@@ -172,7 +180,7 @@ public without sharing class Triton {
     /**
     * Immediate
     */
-    public void error(TritonBuilder builder) {
+    public void log(TritonBuilder builder) {
         incStackOffset();
         addLog(builder);
         flush();
@@ -286,11 +294,10 @@ public without sharing class Triton {
                         .summary(summary)
                         .details(details)
                         .postProcessing(
-                                new TritonHelper.PostProcessingControlsBuilder()
-                                        .stackTrace(true)
-                                        .userInfo(true)
-                                        .relatedObjects(true)
-                                        .build())
+                                makePostProcessingBuilder()
+                                    .stackTrace(true)
+                                    .userInfo(true)
+                                    .relatedObjects(true))
                         .transactionId(TRANSACTION_ID)
                         .level(TritonTypes.Level.WARNING)
                         .build());
@@ -324,11 +331,10 @@ public without sharing class Triton {
                         .summary(summary)
                         .details(details)
                         .postProcessing(
-                                new TritonHelper.PostProcessingControlsBuilder()
-                                        .stackTrace(true)
-                                        .userInfo(true)
-                                        .relatedObjects(true)
-                                        .build())
+                                makePostProcessingBuilder()
+                                    .stackTrace(true)
+                                    .userInfo(true)
+                                    .relatedObjects(true))
                         .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                         .transactionId(TRANSACTION_ID)
                         .level(TritonTypes.Level.DEBUG)
@@ -368,11 +374,10 @@ public without sharing class Triton {
                         .summary(summary)
                         .details(details)
                         .postProcessing(
-                                new TritonHelper.PostProcessingControlsBuilder()
-                                        .stackTrace(true)
-                                        .userInfo(true)
-                                        .relatedObjects(true)
-                                        .build())
+                                makePostProcessingBuilder()
+                                    .stackTrace(true)
+                                    .userInfo(true)
+                                    .relatedObjects(true))
                         .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                         .transactionId(TRANSACTION_ID)
                         .level(TritonTypes.Level.DEBUG)
@@ -414,11 +419,10 @@ public without sharing class Triton {
                         .summary(summary)
                         .details(details)
                         .postProcessing(
-                                new TritonHelper.PostProcessingControlsBuilder()
-                                        .stackTrace(true)
-                                        .userInfo(true)
-                                        .relatedObjects(true)
-                                        .build())
+                                makePostProcessingBuilder()
+                                    .stackTrace(true)
+                                    .userInfo(true)
+                                    .relatedObjects(true))
                         .transactionId(TRANSACTION_ID)
                         .level(level)
                         .build());
