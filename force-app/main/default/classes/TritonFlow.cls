@@ -44,14 +44,14 @@ public with sharing class TritonFlow {
         try {
             level = TritonTypes.Level.valueOf(flowLog.level);
         } catch (Exception e) {
-            flowDetails += TritonHelper.SPACE_SEP + TritonHelper.formatMessage(INVALID_LOG_LEVEL, flowLog.level);
+            flowDetails += Triton.SPACE_SEP + TritonHelper.formatMessage(INVALID_LOG_LEVEL, flowLog.level);
         }
         
         TritonTypes.Category category = TritonTypes.Category.Flow;
         try {
             category = TritonTypes.Category.valueOf(flowLog.category);
         } catch (Exception e) {
-            flowDetails += TritonHelper.SPACE_SEP + TritonHelper.formatMessage(INVALID_CATEGORY, flowLog.category);
+            flowDetails += Triton.SPACE_SEP + TritonHelper.formatMessage(INVALID_CATEGORY, flowLog.category);
         }
         
         //start transaction if one isn't already in progress
@@ -76,7 +76,7 @@ public with sharing class TritonFlow {
                     builder.attribute(field, mapAdditionalFields.get(field));
                 }
             } catch (Exception e) {
-                builder.details(flowDetails + TritonHelper.SPACE_SEP + 
+                builder.details(flowDetails + Triton.SPACE_SEP + 
                     TritonHelper.formatMessage(
                         'Additional Information (failed to parse json input to invokable): {0}', 
                         flowLog.additionalFields));

@@ -31,6 +31,11 @@ private class TritonTest {
         System.assertEquals(0, countBefore);
     }
 
+    @TestSetup
+    private static void testSetup() {
+        pharos.Test_Logger.initSettings();
+    }
+
     @IsTest
     private static void test_log_levels() {
         assertBefore();
