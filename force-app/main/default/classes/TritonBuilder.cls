@@ -29,9 +29,14 @@ public with sharing virtual class TritonBuilder {
     public static final String STACKTRACE_PARSE_RESULT = 'pharos__Stacktrace_Parse_Result__c';
     public static final String USER_ID = 'pharos__User_Id__c';
     public static final String FLOW_API_NAME = 'pharos__Flow_API_Name__c';
+    public static final String DO_NOT_CREATE_ISSUE = 'pharos__Do_Not_Create_Issue__c';
+    public static final String REQUEST_ID = 'pharos__Request_Id_External__c';
 
     public TritonBuilder() {
-        this.builder = new pharos.LogBuilder();
+        this.builder = pharos.LogBuilder.getInstance().clone();
+        this.builder.attribute(CREATED_TIMESTAMP, Double.valueOf(System.now().getTime()));
+        this.builder.attribute(DO_NOT_CREATE_ISSUE, true);
+        this.builder.attribute(REQUEST_ID, System.Request.getCurrent().getRequestId());
     }
 
     /**
