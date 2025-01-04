@@ -180,6 +180,7 @@ public with sharing virtual class TritonBuilder {
     * @return this builder instance
     */
     public TritonBuilder relatedObject(Id objectId) {
+        if(objectId == null) return this;
         return relatedObjects(new Id[]{objectId});
     }
 

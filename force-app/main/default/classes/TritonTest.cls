@@ -255,6 +255,76 @@ private class TritonTest {
     }
 
     @IsTest
+    private static void test_save_component_log_negative() {
+        assertBefore();
+
+        Test.startTest();
+        List<TritonLwc.ComponentLog> componentLogs = new List<TritonLwc.ComponentLog>();
+        TritonLwc.ComponentLog componentLog = new TritonLwc.ComponentLog();
+        
+        // Set invalid values to trigger error handling
+        componentLog.userId = 'invalid-user-id';
+        componentLog.recordId = 'invalid-record-id';
+        componentLog.category = 'InvalidCategory';
+        componentLog.area = 'InvalidArea';
+        componentLog.level = 'InvalidLevel';
+        componentLog.details = 'Initial details';
+        componentLog.summary = 'Test summary';
+        
+        // Test error object handling
+        TritonLwc.Error error = new TritonLwc.Error();
+        error.message = 'Error message';
+        error.type = 'Error type';
+        error.stack = 'Error stack';
+        componentLog.error = error;
+        
+        // Test component object with invalid category
+        TritonLwc.Component component = new TritonLwc.Component();
+        component.category = 'InvalidComponentCategory';
+        component.name = 'TestComponent';
+        component.function = 'testFunction';
+        componentLog.component = component;
+        
+        componentLogs.add(componentLog);
+        TritonLwc.saveComponentLogs(componentLogs);
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [SELECT Id, 
+                                       pharos__Category__c,
+                                       pharos__Type__c,
+                                       pharos__Area__c,
+                                       Log_Level__c,
+                                       pharos__Details__c,
+                                       pharos__Summary__c,
+                                       pharos__User_Id__c,
+                                       pharos__Related_Objects__c,
+                                       pharos__Apex_Name__c
+                                FROM pharos__Log__c];
+        
+        System.assertEquals(1, logs.size(), 'One log should be created');
+        pharos__Log__c log = logs[0];
+        
+        // Verify default/fallback values are used
+        System.assertEquals(TritonTypes.Category.LWC.name(), log.pharos__Category__c, 'Should fall back to LWC category');
+        System.assertEquals(TritonTypes.Area.LWC.name(), log.pharos__Area__c, 'Should fall back to LWC area');
+        System.assertEquals(TritonTypes.Level.INFO.name(), log.Log_Level__c, 'Should fall back to INFO level');
+        System.assertEquals('Error type', log.pharos__Type__c, 'Should use error type');
+        System.assertEquals('TestComponent.testFunction', log.pharos__Apex_Name__c, 'Should combine component name and function');
+        
+        // Verify error messages in details
+        String details = log.pharos__Details__c;
+        System.assert(details.contains('Invalid User Id'), 'Should contain user ID error message');
+        System.assert(details.contains('Invalid Record Id'), 'Should contain record ID error message');
+        System.assert(details.contains('Invalid Log Category'), 'Should contain category error message');
+        System.assert(details.contains('Invalid Log Functional Area'), 'Should contain area error message');
+        System.assert(details.contains('Invalid Log Level'), 'Should contain level error message');
+        
+        // Verify null values for invalid IDs
+        System.assertEquals(UserInfo.getUserId(), log.pharos__User_Id__c, 'User ID should be current user for invalid');
+        System.assertEquals(null, log.pharos__Related_Objects__c, 'Related objects should be null for invalid input');
+    }
+
+    @IsTest
     private static void test_flow() {
         assertBefore();
 
@@ -278,7 +348,7 @@ private class TritonTest {
     }
 
     @IsTest
-    private static void test_flow_error() {
+    private static void test_flow_negative() {
         assertBefore();
         
         Test.startTest();
@@ -295,7 +365,11 @@ private class TritonTest {
         TritonFlow.log(flowLogs);
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Details__c, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
+        List<pharos__Log__c> logs = [SELECT Id, 
+                                       pharos__Details__c, 
+                                       pharos__Summary__c, 
+                                       pharos__Hash__c 
+                                FROM pharos__Log__c];
         pharos__Log__c log = logs.get(0);
         System.assertEquals(1, logs.size());
         System.assertEquals('test summary', log.pharos__Summary__c);
@@ -313,6 +387,7 @@ private class TritonTest {
 
         pharos__Log__c log = [select Id from pharos__Log__c limit 1];
         TritonBuilder builder = new TritonBuilder();
+        
         builder.category(TritonTypes.Category.Apex);
         System.assertEquals(TritonTypes.Category.Apex.name(), builder.build().pharos__Category__c);
 
@@ -331,12 +406,59 @@ private class TritonTest {
         builder.userId(UserInfo.getUserId());
         System.assertEquals(UserInfo.getUserId(), builder.build().pharos__User_Id__c);
 
-        
         builder.relatedObject(log.Id);
         System.assertEquals(JSON.serialize(new String[]{log.Id}), builder.build().pharos__Related_Objects__c);
 
         builder.duration(1);
         System.assertEquals(1, builder.build().pharos__Duration__c);
+
+        builder.summary('Test Summary');
+        System.assertEquals('Test Summary', builder.build().pharos__Summary__c);
+
+        builder.details('Test Details');
+        System.assertEquals('Test Details', builder.build().pharos__Details__c);
+
+        builder.stackTrace('Test Stack Trace');
+        System.assertEquals('Test Stack Trace', builder.build().pharos__Stacktrace__c);
+
+        builder.transactionId('test-transaction-id');
+        System.assertEquals('test-transaction-id', builder.build().pharos__Transaction_Id_External__c);
+
+        builder.createIssue();
+        System.assertEquals(false, builder.build().pharos__Do_Not_Create_Issue__c);
+
+        builder.type('CustomType');
+        System.assertEquals('CustomType', builder.build().pharos__Type__c);
+
+        builder.area('CustomArea');
+        System.assertEquals('CustomArea', builder.build().pharos__Area__c);
+
+        Set<Id> relatedIds = new Set<Id>{log.Id};
+        builder.relatedObjects(relatedIds);
+        System.assertEquals(JSON.serialize(relatedIds), builder.build().pharos__Related_Objects__c);
+
+        builder.relatedObjects(new List<Id>{log.Id});
+        System.assertEquals(JSON.serialize(relatedIds), builder.build().pharos__Related_Objects__c);
+
+        Set<String> relatedStringIds = new Set<String>{log.Id};
+        builder.relatedObjects(relatedStringIds);
+        System.assertEquals(JSON.serialize(relatedIds), builder.build().pharos__Related_Objects__c);
+
+        builder.relatedObject(log.Id.toString());
+        System.assertEquals(JSON.serialize(new String[]{log.Id}), builder.build().pharos__Related_Objects__c);
+
+        Double timestamp = System.now().getTime();
+        builder.createdTimestamp(timestamp);
+        System.assertEquals(timestamp, builder.build().pharos__Created_Timestamp__c);
+
+        builder.interviewGuid('test-guid');
+        System.assertEquals('test-guid', builder.build().pharos__Interview_GUID_External__c);
+
+        builder.flowApiName('Test_Flow');
+        System.assertEquals('Test_Flow', builder.build().pharos__Flow_API_Name__c);
+
+        builder.attribute(TritonBuilder.LOG_LEVEL, 'Custom Value');
+        System.assertEquals('Custom Value', builder.build().get(TritonBuilder.LOG_LEVEL));
 
         RestRequest restReq = new RestRequest();
         RestResponse restRes = new RestResponse();
@@ -594,5 +716,32 @@ private class TritonTest {
         }
         
         System.assertEquals(0, logs.size(), 'No logs should be created for successful DML operations');
+    }
+
+    @IsTest
+    private static void test_triton_builder_negative() {
+        TritonBuilder builder = new TritonBuilder();
+        
+        // Test invalid Id for relatedObject(String)
+        builder.relatedObject('invalid-id');
+        System.assertEquals(null, builder.build().pharos__Related_Objects__c);
+        
+        // Test invalid Ids in relatedObjects(Set<String>)
+        Set<String> invalidIds = new Set<String>{'invalid-id-1', 'invalid-id-2'};
+        builder.relatedObjects(invalidIds);
+        System.assertEquals(null, builder.build().pharos__Related_Objects__c);
+        
+        // Test null and empty sets for relatedObjects
+        builder.relatedObjects((Set<String>)null);
+        System.assertEquals(null, builder.build().pharos__Related_Objects__c);
+        
+        builder.relatedObjects(new Set<String>());
+        System.assertEquals(null, builder.build().pharos__Related_Objects__c);
+        
+        // Test mixed valid and invalid Ids
+        Id validId = UserInfo.getUserId();
+        Set<String> mixedIds = new Set<String>{validId, 'invalid-id'};
+        builder.relatedObjects(mixedIds);
+        System.assertEquals(JSON.serialize(new Set<Id>{validId}), builder.build().pharos__Related_Objects__c);
     }
 }
