@@ -9,7 +9,16 @@
  */
 
 /**
-    @description helper class for the Triton Logger project
+ * TritonHelper provides utility methods and builder classes for the Triton logging framework.
+ * This class includes functionality for:
+ * - Log level management and comparison
+ * - UUID generation for transaction tracking
+ * - HTTP request/response JSON serialization for integration logging
+ * - Pre and post-processing controls for Pharos logging configuration
+ * - Message formatting utilities
+ * 
+ * The class serves as a central utility hub for the Triton logging system, offering
+ * helper methods and builder patterns to configure and enhance logging capabilities.
  */
 public with sharing class TritonHelper {
 

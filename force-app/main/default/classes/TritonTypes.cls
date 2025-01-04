@@ -6,15 +6,18 @@
  * Pharos Triton is free software: you can redistribute it and/or modify
  * it under the terms of the MIT License.
  * See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
- */
-
-/**
-    @description Class used to store Enums for the Triton Logger
-    * Log classification.
-    * Use these enums to provide values for Category, Type and Functional Area fields on the log record.
-    * These fields are useful for analytics and should be populated on all records.
-    * Feel free to modify these or add new values as you see fit. It is best to stick to the
-    * general spirit of the definition.
+ *
+ * The TritonTypes class provides enums and constants for the Triton logging framework.
+ * It defines the classification system used to categorize and filter log entries.
+ * 
+ * Key components:
+ * - Area enum: Defines functional areas from a business perspective (e.g., OpportunityManagement, RestAPI)
+ * - Category enum: Provides high-level classification of log entries (e.g., Apex, Flow, Integration)
+ * - Level enum: Defines log severity levels from ERROR to FINEST
+ * - Type enum: Offers technical classification of log entries (e.g., Backend, Frontend, DMLResult)
+ * 
+ * These enums are used to populate Category, Type, and Functional Area fields on log records,
+ * enabling detailed analytics and filtering capabilities.
  */
 public with sharing class TritonTypes {
 
