@@ -9,7 +9,16 @@
  */
 
 /**
-    @description Triton log for Flows
+ * Provides logging capabilities for Salesforce Flows and Process Builder.
+ * This class exposes an invocable method that can be called directly from Flow Builder
+ * to create log records with customizable attributes like category, type, area, and level.
+ * 
+ * The class handles:
+ * - Log creation with default INFO level if not specified
+ * - Automatic transaction management
+ * - Custom field mapping through JSON
+ * - Flow context capture (Interview GUID, Flow API Name)
+ * - Validation and fallback for category and log level enums
  */
 public with sharing class TritonFlow {
 
