@@ -218,7 +218,7 @@ public with sharing virtual class TritonBuilder {
         for(String obj : relatedObjectIds) {
             try {
                 ids.add(Id.valueOf(obj));
-            } catch (System.StringException e) {
+            } catch (Exception e) {
                 //invalid Id, ignore
             }
         }

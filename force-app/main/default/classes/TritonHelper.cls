@@ -212,4 +212,24 @@ public with sharing class TritonHelper {
             return this;
         }
     }    
+
+    /**
+     * Formats a message by replacing {0} placeholder with the provided parameter
+     * @param template The message template containing {0} placeholder
+     * @param param The parameter to replace the placeholder with
+     * @return Formatted message
+     */
+    public static String formatMessage(String template, String param) {
+        return String.format(template, new List<String>{param});
+    }
+
+    /**
+     * Formats a message by replacing {0}, {1}, etc. placeholders with the provided parameters
+     * @param template The message template containing numbered placeholders
+     * @param params The list of parameters to replace the placeholders with
+     * @return Formatted message
+     */
+    public static String formatMessage(String template, List<String> params) {
+        return String.format(template, params);
+    }
 }

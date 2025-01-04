@@ -9,7 +9,18 @@
  */
 
 /**
-    @description Class used to log LWC errors
+ * Provides logging capabilities for Lightning Web Components (LWC).
+ * This class exposes an AuraEnabled method that can be called from LWC to create log records
+ * with customizable attributes like category, type, area, and level.
+ * 
+ * The class handles:
+ * - Log creation with default INFO level if not specified
+ * - Automatic transaction management
+ * - Component context capture (name, function, action)
+ * - Error details capture (message, stack trace, type)
+ * - User and record ID validation
+ * - Validation and fallback for category, area and log level enums
+ * - Timestamp and duration tracking
  */
 public with sharing class TritonLwc {
 
@@ -31,43 +42,43 @@ public with sharing class TritonLwc {
 
             try {
                 userId = Id.valueOf(componentLog.userId);
-            } catch (System.StringException e) {
+            } catch (Exception e) {
                 //invalid user id
-                details += '\nInvalid User Id: ' + componentLog.userId + '. This log will not be linked to a user.';
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid User Id: {0}. This log will not be linked to a user.', componentLog.userId);
             }
 
             try {
                 relatedId = Id.valueOf(componentLog.recordId);
-            } catch (System.StringException e) {
+            } catch (Exception e) {
                 //invalid record id
-                details += '\nInvalid Record Id: ' + componentLog.recordId + '. This log will not be linked to a record.';
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Record Id: {0}. This log will not be linked to a record.', componentLog.recordId);
             }
 
             String categoryStr = String.isNotBlank(componentLog.category) ? componentLog.category : componentLog.component.category;
 
             try {
                 category = TritonTypes.Category.valueOf(categoryStr);
-            } catch(System.NoSuchElementException e) {
+            } catch(Exception e) {
                 //invalid category
-                details += '\nInvalid Log Category: ' + categoryStr + '. Default LWC category will be used.';                 
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Category: {0}. Default LWC category will be used.', categoryStr);
             }
 
             String areaStr = String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.component.name;
 
             try {
                 area = TritonTypes.Area.valueOf(areaStr);
-            } catch(System.NoSuchElementException e) {
+            } catch(Exception e) {
                 //invalid area
-                details += '\nInvalid Log Functional Area: ' + areaStr + '. Default LWC area will be used.';                 
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Functional Area: {0}. Default LWC area will be used.', areaStr);
             }
 
             String levelStr = componentLog.level;
 
             try {   
                 level = TritonTypes.Level.valueOf(levelStr);
-            } catch(System.NoSuchElementException e) {
+            } catch(Exception e) {
                 //invalid log level
-                details += '\nInvalid Log Level: ' + levelStr + '. Default INFO level will be used.';                                 
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Level: {0}. Default INFO level will be used.', levelStr);
             }
 
             logInstance.add(

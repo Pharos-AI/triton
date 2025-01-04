@@ -21,7 +21,9 @@
  * - Validation and fallback for category and log level enums
  */
 public with sharing class TritonFlow {
-
+    private static final String INVALID_LOG_LEVEL = 'Unable to locate log level: {0}. Default INFO level will be used.';
+    private static final String INVALID_CATEGORY = 'Unable to locate category: {0}. Default Flow category will be used.';
+    
     /**
      * @description
      * Invocable method, that can be called via flow.
@@ -31,49 +33,56 @@ public with sharing class TritonFlow {
     @InvocableMethod(Category='TritonLogging' Label='Add Log' Description='Creates a log for a flow or process builder')
     public static void log(List<FlowLog> flowLogs) {
         for (FlowLog flowLog : flowLogs) {
-            TritonTypes.Level level = TritonTypes.Level.INFO;
-            String flowDetails = flowLog.details;
-            try {
-                level = TritonTypes.Level.valueOf(flowLog.level);
-            } catch (StringException e) {
-                flowDetails += '\nUnable to locate log level: ' + flowLog.level + '. Default INFO level will be used.'; 
-            }
-            
-            TritonTypes.Category category = TritonTypes.Category.Flow;
-            try {
-                category = TritonTypes.Category.valueOf(flowLog.category);
-            } catch (StringException e) {
-                flowDetails += '\nUnable to locate category: ' + flowLog.category + '. Default Flow category will be used.'; 
-            }
-            
-            //start transaction if one isn't already in progress
-            if(Triton.instance.TRANSACTION_ID == null) Triton.instance.startTransaction();
-            
-            TritonBuilder builder = Triton.makeBuilder();
-            builder
-                    .category(category)
-                    .type(flowLog.type)
-                    .area(flowLog.area)
-                    .summary(flowLog.summary)
-                    .details(flowDetails)
-                    .transactionId(Triton.instance.TRANSACTION_ID)
-                    .interviewGuid(flowLog.interviewGUID)
-                    .flowApiName(flowLog.flowApiName)
-                    .level(level);
-
-            if (String.isNotBlank(flowLog.additionalFields)) {
-                try {
-                    Map<String, Object> mapAdditionalFields = (Map<String, Object>)JSON.deserializeUntyped(flowLog.additionalFields);
-                    for (String field : mapAdditionalFields.keySet()) {
-                        builder.attribute(field, mapAdditionalFields.get(field));
-                    }
-                } catch (Exception e) {
-                    builder.details(flowDetails + '\nAdditional Information (failed to parse json input to invokable):' + '\n' + flowLog.additionalFields);
-                }
-            }
-            Triton.instance.add(builder.build());
+            processFlowLog(flowLog);
         }
         Triton.instance.flush();
+    }
+    
+    private static void processFlowLog(FlowLog flowLog) {
+        TritonTypes.Level level = TritonTypes.Level.INFO;
+        String flowDetails = flowLog.details;
+        try {
+            level = TritonTypes.Level.valueOf(flowLog.level);
+        } catch (Exception e) {
+            flowDetails += TritonHelper.SPACE_SEP + TritonHelper.formatMessage(INVALID_LOG_LEVEL, flowLog.level);
+        }
+        
+        TritonTypes.Category category = TritonTypes.Category.Flow;
+        try {
+            category = TritonTypes.Category.valueOf(flowLog.category);
+        } catch (Exception e) {
+            flowDetails += TritonHelper.SPACE_SEP + TritonHelper.formatMessage(INVALID_CATEGORY, flowLog.category);
+        }
+        
+        //start transaction if one isn't already in progress
+        if(Triton.instance.TRANSACTION_ID == null) Triton.instance.startTransaction();
+        
+        TritonBuilder builder = Triton.makeBuilder();
+        builder
+                .category(category)
+                .type(flowLog.type)
+                .area(flowLog.area)
+                .summary(flowLog.summary)
+                .details(flowDetails)
+                .transactionId(Triton.instance.TRANSACTION_ID)
+                .interviewGuid(flowLog.interviewGUID)
+                .flowApiName(flowLog.flowApiName)
+                .level(level);
+
+        if (String.isNotBlank(flowLog.additionalFields)) {
+            try {
+                Map<String, Object> mapAdditionalFields = (Map<String, Object>)JSON.deserializeUntyped(flowLog.additionalFields);
+                for (String field : mapAdditionalFields.keySet()) {
+                    builder.attribute(field, mapAdditionalFields.get(field));
+                }
+            } catch (Exception e) {
+                builder.details(flowDetails + TritonHelper.SPACE_SEP + 
+                    TritonHelper.formatMessage(
+                        'Additional Information (failed to parse json input to invokable): {0}', 
+                        flowLog.additionalFields));
+            }
+        }
+        Triton.instance.add(builder.build());
     }
 
 

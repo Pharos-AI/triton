@@ -31,11 +31,6 @@ private class TritonTest {
         System.assertEquals(0, countBefore);
     }
 
-    @TestSetup
-    private static void testSetup() {
-        pharos.Test_Logger.initSettings();
-    }
-
     @IsTest
     private static void test_log_levels() {
         assertBefore();
@@ -261,9 +256,9 @@ private class TritonTest {
         Test.startTest();
         List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
         TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = 'test category';
-        flowLog.type = 'test type';
-        flowLog.area = 'test area';
+        flowLog.category = TritonTypes.Category.Flow.name();
+        flowLog.type = 'type';
+        flowLog.area = 'area';
         flowLog.summary = 'test';
         flowLog.details = 'test';
         flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
@@ -280,16 +275,16 @@ private class TritonTest {
     @IsTest
     private static void test_flow_error() {
         assertBefore();
-
+        
         Test.startTest();
         List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
         TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = 'test category';
+        flowLog.category = TritonTypes.Category.Flow.name();
         flowLog.type = 'test type';
         flowLog.area = 'test area';
         flowLog.summary = 'test summary';
         flowLog.details = 'test';
-        flowLog.level = 'test';
+        flowLog.level = 'level';
         flowLog.additionalFields = '{bad_json "test"}';
         flowLogs.add(flowLog);
         TritonFlow.log(flowLogs);
@@ -308,9 +303,10 @@ private class TritonTest {
         assertBefore();
 
         Test.startTest();
-        Triton.instance.event(TritonTypes.Level.FINEST, TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some event', 'error details');
+        Triton.instance.event(TritonTypes.Level.INFO, TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some event', 'error details');
         Test.stopTest();
 
+        pharos__Log__c log = [select Id from pharos__Log__c limit 1];
         TritonBuilder builder = new TritonBuilder();
         builder.category(TritonTypes.Category.Apex);
         System.assertEquals(TritonTypes.Category.Apex.name(), builder.build().pharos__Category__c);
@@ -330,7 +326,7 @@ private class TritonTest {
         builder.userId(UserInfo.getUserId());
         System.assertEquals(UserInfo.getUserId(), builder.build().pharos__User_Id__c);
 
-        pharos__Log__c log = [select Id from pharos__Log__c limit 1];
+        
         builder.relatedObject(log.Id);
         System.assertEquals(JSON.serialize(new String[]{log.Id}), builder.build().pharos__Related_Objects__c);
 
@@ -360,7 +356,7 @@ private class TritonTest {
         template.category(TritonTypes.Category.Apex);
         template.type(TritonTypes.Type.Backend);
         template.area(TritonTypes.Area.Community);
-        template.level(TritonTypes.Level.FINE);
+        template.level(TritonTypes.Level.INFO);
         Triton.instance.setTemplate(template);
         Test.startTest();
         Triton.instance.log(Triton.instance.fromTemplate()
@@ -381,7 +377,7 @@ private class TritonTest {
         System.assertEquals(TritonTypes.Category.Apex.name(), log.pharos__Category__c);
         System.assertEquals(TritonTypes.Type.Backend.name(), log.pharos__Type__c);
         System.assertEquals(TritonTypes.Area.Community.name(), log.pharos__Area__c);
-        System.assertEquals(TritonTypes.Level.FINE.name(), log.Log_Level__c);
+        System.assertEquals(TritonTypes.Level.INFO.name(), log.Log_Level__c);
         System.assert(!String.isBlank(log.pharos__Stacktrace__c));
         System.assertEquals('some event', log.pharos__Summary__c);
         System.assertEquals('error details', log.pharos__Details__c);
@@ -474,5 +470,124 @@ private class TritonTest {
         public String getBodyRequest() {
             return this.reqBody;
         }
+    }
+
+    @IsTest
+    private static void testDMLErrorLogging() {
+        Test.startTest();
+        
+        // 1. Test SaveResult - Invalid account without required Name field
+        Account invalidAcc = new Account();
+        Database.SaveResult[] srList = Database.insert(new List<Account>{invalidAcc}, false);
+        System.assert(!srList[0].isSuccess(), 'Insert should fail');
+        Triton.instance.dmlError(TritonTypes.Area.Accounts, srList);
+        
+        // 2. Test DeleteResult - Try to delete non-existent record
+        Id fakeId = '001000000000000AAA';
+        Database.DeleteResult[] drList = Database.delete(new List<Id>{fakeId}, false);
+        System.assert(!drList[0].isSuccess(), 'Delete should fail');
+        Triton.instance.dmlError(TritonTypes.Area.Accounts, drList);
+        
+        // 3. Test UndeleteResult - Try to undelete non-existent record
+        Database.UndeleteResult[] urList = Database.undelete(new List<Id>{fakeId}, false);
+        System.assert(!urList[0].isSuccess(), 'Undelete should fail');
+        Triton.instance.dmlError(TritonTypes.Area.Accounts, urList);
+        
+        // 4. Test UpsertResult - Try to update non-existent record
+        Account invalidUpsertAcc = new Account(Id = fakeId);
+        Database.UpsertResult[] urList2 = Database.upsert(new List<Account>{invalidUpsertAcc}, false);
+        System.assert(!urList2[0].isSuccess(), 'Upsert should fail');
+        Triton.instance.dmlError(TritonTypes.Area.Accounts, urList2);
+        
+        // 5. Test MergeResult - Try to merge with invalid record
+        Account masterAcc = new Account(Name = 'Master');
+        insert masterAcc;
+        Database.MergeResult[] mergeList = Database.merge(masterAcc, new List<Id>{fakeId}, false);
+        System.assert(!mergeList[0].isSuccess(), 'Merge should fail');
+        Triton.instance.dmlError(TritonTypes.Area.Accounts, mergeList);
+        
+        Test.stopTest();
+        
+        // Verify logs were created
+        List<pharos__Log__c> logs = [
+            SELECT Id, pharos__Category__c, pharos__Type__c, pharos__Area__c, 
+                   pharos__Summary__c, pharos__Details__c, Log_Level__c,
+                   pharos__Apex_Name__c
+            FROM pharos__Log__c
+            WHERE pharos__Type__c = :TritonTypes.Type.DMLResult.name()
+            ORDER BY CreatedDate
+        ];
+        
+        // Debug information
+        System.debug('Number of logs found: ' + logs.size());
+        for(pharos__Log__c log : logs) {
+            System.debug('Log operation: ' + log.pharos__Apex_Name__c);
+        }
+        
+        System.assertEquals(5, logs.size(), 'Expected 5 DML error logs to be created (one for each DML type)');
+        
+        Set<String> expectedOperations = new Set<String>{'Save', 'Delete', 'Undelete', 'Upsert', 'Merge'};
+        Set<String> foundOperations = new Set<String>();
+        
+        for(pharos__Log__c log : logs) {
+            System.assertEquals(TritonTypes.Category.Apex.name(), log.pharos__Category__c);
+            System.assertEquals(TritonTypes.Area.Accounts.name(), log.pharos__Area__c);
+            System.assertEquals(TritonTypes.Level.ERROR.name(), log.Log_Level__c);
+            System.assertEquals(TritonTypes.Type.DMLResult.name(), log.pharos__Type__c);
+            System.assert(log.pharos__Summary__c.contains('DML Operation'));
+            foundOperations.add(log.pharos__Apex_Name__c);
+        }
+        
+        System.assertEquals(expectedOperations, foundOperations);
+    }
+
+    @IsTest
+    private static void testDMLErrorLogging_NoErrors() {
+        // Setup
+        Account validAcc = new Account(Name = 'Test Account');
+        insert validAcc;
+        
+        Test.startTest();
+        
+        // 1. Test SaveResult with valid data
+        Account newAcc = new Account(Name = 'Valid Account');
+        Database.SaveResult[] srList = Database.insert(new List<Account>{newAcc}, false);
+        System.assert(srList[0].isSuccess(), 'Insert should succeed');
+        Triton.instance.dmlError(TritonTypes.Area.Accounts, srList);
+        
+        // 2. Test UpsertResult with valid data
+        newAcc.Name = 'Updated Name';
+        Database.UpsertResult[] upsertList = Database.upsert(new List<Account>{newAcc}, false);
+        System.assert(upsertList[0].isSuccess(), 'Upsert should succeed');
+        Triton.instance.dmlError(TritonTypes.Area.Accounts, upsertList);
+        
+        // 3. Test DeleteResult with valid data
+        Database.DeleteResult[] drList = Database.delete(new List<Id>{newAcc.Id}, false);
+        System.assert(drList[0].isSuccess(), 'Delete should succeed');
+        Triton.instance.dmlError(TritonTypes.Area.Accounts, drList);
+        
+        // 4. Test UndeleteResult with valid data
+        Database.UndeleteResult[] urList = Database.undelete(new List<Id>{newAcc.Id}, false);
+        System.assert(urList[0].isSuccess(), 'Undelete should succeed');
+        Triton.instance.dmlError(TritonTypes.Area.Accounts, urList);
+        
+        Test.stopTest();
+        
+        // Verify no logs were created since operations were successful
+        List<pharos__Log__c> logs = [
+            SELECT Id, pharos__Apex_Name__c, pharos__Summary__c, pharos__Details__c
+            FROM pharos__Log__c 
+            WHERE pharos__Type__c = :TritonTypes.Type.DMLResult.name()
+        ];
+        
+        // Debug info
+        for(pharos__Log__c log : logs) {
+            System.debug('Found unexpected error log:');
+            System.debug('Operation: ' + log.pharos__Apex_Name__c);
+            System.debug('Summary: ' + log.pharos__Summary__c);
+            System.debug('Details: ' + log.pharos__Details__c);
+        }
+        
+        System.assertEquals(0, logs.size(), 'No logs should be created for successful DML operations');
     }
 }

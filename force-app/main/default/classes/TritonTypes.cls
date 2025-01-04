@@ -74,6 +74,7 @@ public with sharing class TritonTypes {
     public enum Type {
         Backend,
         Frontend,
+        DMLResult,
         LongRunningRequest,
         ConcurrentRequestsLimit,
         AccountTrigger

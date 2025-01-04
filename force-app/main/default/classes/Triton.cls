@@ -6,6 +6,19 @@
  * Pharos Triton is free software: you can redistribute it and/or modify
  * it under the terms of the MIT License.
  * See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
+ *
+ * The Triton class provides a robust logging framework for Salesforce applications.
+ * It enables structured logging with different severity levels (ERROR, WARNING, DEBUG, INFO),
+ * categories (Apex, Integration, Event, Debug), and functional areas.
+ * 
+ * Key features:
+ * - Buffered and immediate logging options
+ * - Automatic stack trace capture
+ * - Transaction tracking across multiple Salesforce contexts
+ * - Integration error logging with HTTP request/response details
+ * - Configurable log levels via Custom Metadata
+ * - Builder pattern for constructing log entries
+ * 
  */
 
 public without sharing class Triton {
@@ -555,7 +568,6 @@ public without sharing class Triton {
         HttpRequest request,
         HttpResponse response
     ) {
-        incStackOffset();
         add(
                 makeBuilder()
                         .category(TritonTypes.Category.Integration)
@@ -568,7 +580,6 @@ public without sharing class Triton {
                         .integrationPayload(request,response)
                         .level(TritonTypes.Level.ERROR)
                         .build());
-        resetStackOffset();
     }
 
     /**
@@ -634,6 +645,102 @@ public without sharing class Triton {
         incStackOffset();
         addIntegrationError(type, area, summary, details, request, response);
         flush();
+    }
+
+    /**
+    * Add Log with DML results.
+    * This method will automatically get the stacktrace and save it on the log record.
+    * @param type -- log record TritonTypes.Type (see Type enum)
+    * @param area -- log record Functional TritonTypes.Area (see Area enum)
+    * @param dmlResults -- Array of Database.SaveResult, Database.DeleteResult, etc
+    */
+    public void addDMLError(TritonTypes.Area area, List<Object> dmlResults) {
+        Set<String> failedIds = new Set<String>();
+        List<String> errorMessages = new List<String>();
+        String operation;
+        Integer failCount = 0;
+        Integer totalCount = dmlResults.size();
+
+        for(Object result : dmlResults) {
+            if(result instanceof Database.SaveResult) {
+                operation = 'Save';
+                Database.SaveResult sr = (Database.SaveResult)result;
+                if(!sr.isSuccess()) {
+                    failCount++;
+                    failedIds.add(sr.getId());
+                    for(Database.Error err : sr.getErrors()) {
+                        errorMessages.add(err.getMessage());
+                    }
+                }
+            } else if(result instanceof Database.DeleteResult) {
+                operation = 'Delete';
+                Database.DeleteResult dr = (Database.DeleteResult)result;
+                if(!dr.isSuccess()) {
+                    failCount++;
+                    failedIds.add(dr.getId());
+                    for(Database.Error err : dr.getErrors()) {
+                        errorMessages.add(err.getMessage());
+                    }
+                }
+            } else if(result instanceof Database.UndeleteResult) {
+                operation = 'Undelete';
+                Database.UndeleteResult ur = (Database.UndeleteResult)result;
+                if(!ur.isSuccess()) {
+                    failCount++;
+                    failedIds.add(ur.getId());
+                    for(Database.Error err : ur.getErrors()) {
+                        errorMessages.add(err.getMessage());
+                    }
+                }
+            } else if(result instanceof Database.UpsertResult) {
+                operation = 'Upsert';
+                Database.UpsertResult ur = (Database.UpsertResult)result;
+                if(!ur.isSuccess()) {
+                    failCount++;
+                    failedIds.add(ur.getId());
+                    for(Database.Error err : ur.getErrors()) {
+                        errorMessages.add(err.getMessage());
+                    }
+                }
+            } else if(result instanceof Database.MergeResult) {
+                operation = 'Merge';
+                Database.MergeResult mr = (Database.MergeResult)result;
+                if(!mr.isSuccess()) {
+                    failCount++;
+                    failedIds.add(mr.getId());
+                    for(Database.Error err : mr.getErrors()) {
+                        errorMessages.add(err.getMessage());
+                    }
+                }
+            }
+        }
+
+        if(!errorMessages.isEmpty()) {
+            add(
+                makeBuilder()
+                    .category(TritonTypes.Category.Apex)
+                    .type(TritonTypes.Type.DMLResult)
+                    .area(area)
+                    .operation(operation)
+                    .summary('DML Operation (' + operation + ') Failed: ' + failCount + ' of ' + totalCount + ' records failed.')
+                    .details(String.join(errorMessages, SPACE_SEP))
+                    .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
+                    .relatedObjects(failedIds)
+                    .transactionId(TRANSACTION_ID)
+                    .level(TritonTypes.Level.ERROR)
+                    .createIssue()
+                    .build());
+        }
+    }
+
+    /**
+    * Immediate
+    */
+    public void dmlError(TritonTypes.Area area, List<Object> dmlResults) {
+        incStackOffset();
+        addDMLError(area, dmlResults);
+        flush();
+        resetStackOffset();
     }
 
     /**
