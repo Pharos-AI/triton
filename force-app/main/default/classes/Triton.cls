@@ -722,7 +722,10 @@ public without sharing class Triton {
                     .type(TritonTypes.Type.DMLResult)
                     .area(area)
                     .operation(operation)
-                    .summary('DML Operation (' + operation + ') Failed: ' + failCount + ' of ' + totalCount + ' records failed.')
+                    .summary(TritonHelper.formatMessage('DML Operation ({0}) Failed: {1} of {2} records failed.', 
+                                                            new String[]{operation, 
+                                                                        String.valueOf(failCount), 
+                                                                        String.valueOf(totalCount)}))
                     .details(String.join(errorMessages, SPACE_SEP))
                     .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                     .relatedObjects(failedIds)
