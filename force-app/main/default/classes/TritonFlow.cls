@@ -26,12 +26,23 @@ public with sharing class TritonFlow {
             String flowDetails = flowLog.details;
             try {
                 level = TritonTypes.Level.valueOf(flowLog.level);
-            } catch (Exception e) {
+            } catch (StringException e) {
                 flowDetails += '\nUnable to locate log level: ' + flowLog.level + '. Default INFO level will be used.'; 
             }
+            
+            TritonTypes.Category category = TritonTypes.Category.Flow;
+            try {
+                category = TritonTypes.Category.valueOf(flowLog.category);
+            } catch (StringException e) {
+                flowDetails += '\nUnable to locate category: ' + flowLog.category + '. Default Flow category will be used.'; 
+            }
+            
+            //start transaction if one isn't already in progress
+            if(Triton.instance.TRANSACTION_ID == null) Triton.instance.startTransaction();
+            
             TritonBuilder builder = Triton.makeBuilder();
             builder
-                    .category(TritonTypes.Category.Flow)
+                    .category(category)
                     .type(flowLog.type)
                     .area(flowLog.area)
                     .summary(flowLog.summary)
