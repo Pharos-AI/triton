@@ -607,31 +607,31 @@ private class TritonTest {
         Account invalidAcc = new Account();
         Database.SaveResult[] srList = Database.insert(new List<Account>{invalidAcc}, false);
         System.assert(!srList[0].isSuccess(), 'Insert should fail');
-        Triton.instance.dmlError(TritonTypes.Area.Accounts, srList);
+        Triton.instance.dmlResult(TritonTypes.Area.Accounts, srList);
         
         // 2. Test DeleteResult - Try to delete non-existent record
         Id fakeId = '001000000000000AAA';
         Database.DeleteResult[] drList = Database.delete(new List<Id>{fakeId}, false);
         System.assert(!drList[0].isSuccess(), 'Delete should fail');
-        Triton.instance.dmlError(TritonTypes.Area.Accounts, drList);
+        Triton.instance.dmlResult(TritonTypes.Area.Accounts, drList);
         
         // 3. Test UndeleteResult - Try to undelete non-existent record
         Database.UndeleteResult[] urList = Database.undelete(new List<Id>{fakeId}, false);
         System.assert(!urList[0].isSuccess(), 'Undelete should fail');
-        Triton.instance.dmlError(TritonTypes.Area.Accounts, urList);
+        Triton.instance.dmlResult(TritonTypes.Area.Accounts, urList);
         
         // 4. Test UpsertResult - Try to update non-existent record
         Account invalidUpsertAcc = new Account(Id = fakeId);
         Database.UpsertResult[] urList2 = Database.upsert(new List<Account>{invalidUpsertAcc}, false);
         System.assert(!urList2[0].isSuccess(), 'Upsert should fail');
-        Triton.instance.dmlError(TritonTypes.Area.Accounts, urList2);
+        Triton.instance.dmlResult(TritonTypes.Area.Accounts, urList2);
         
         // 5. Test MergeResult - Try to merge with invalid record
         Account masterAcc = new Account(Name = 'Master');
         insert masterAcc;
         Database.MergeResult[] mergeList = Database.merge(masterAcc, new List<Id>{fakeId}, false);
         System.assert(!mergeList[0].isSuccess(), 'Merge should fail');
-        Triton.instance.dmlError(TritonTypes.Area.Accounts, mergeList);
+        Triton.instance.dmlResult(TritonTypes.Area.Accounts, mergeList);
         
         Test.stopTest();
         
@@ -680,23 +680,23 @@ private class TritonTest {
         Account newAcc = new Account(Name = 'Valid Account');
         Database.SaveResult[] srList = Database.insert(new List<Account>{newAcc}, false);
         System.assert(srList[0].isSuccess(), 'Insert should succeed');
-        Triton.instance.dmlError(TritonTypes.Area.Accounts, srList);
+        Triton.instance.dmlResult(TritonTypes.Area.Accounts, srList);
         
         // 2. Test UpsertResult with valid data
         newAcc.Name = 'Updated Name';
         Database.UpsertResult[] upsertList = Database.upsert(new List<Account>{newAcc}, false);
         System.assert(upsertList[0].isSuccess(), 'Upsert should succeed');
-        Triton.instance.dmlError(TritonTypes.Area.Accounts, upsertList);
+        Triton.instance.dmlResult(TritonTypes.Area.Accounts, upsertList);
         
         // 3. Test DeleteResult with valid data
         Database.DeleteResult[] drList = Database.delete(new List<Id>{newAcc.Id}, false);
         System.assert(drList[0].isSuccess(), 'Delete should succeed');
-        Triton.instance.dmlError(TritonTypes.Area.Accounts, drList);
+        Triton.instance.dmlResult(TritonTypes.Area.Accounts, drList);
         
         // 4. Test UndeleteResult with valid data
         Database.UndeleteResult[] urList = Database.undelete(new List<Id>{newAcc.Id}, false);
         System.assert(urList[0].isSuccess(), 'Undelete should succeed');
-        Triton.instance.dmlError(TritonTypes.Area.Accounts, urList);
+        Triton.instance.dmlResult(TritonTypes.Area.Accounts, urList);
         
         Test.stopTest();
         

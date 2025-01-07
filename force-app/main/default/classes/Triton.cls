@@ -654,7 +654,7 @@ public without sharing class Triton {
     * @param area -- log record Functional TritonTypes.Area (see Area enum)
     * @param dmlResults -- Array of Database.SaveResult, Database.DeleteResult, etc
     */
-    public void addDMLError(TritonTypes.Area area, List<Object> dmlResults) {
+    public void addDMLResult(TritonTypes.Area area, List<Object> dmlResults) {
         Set<String> failedIds = new Set<String>();
         List<String> errorMessages = new List<String>();
         String operation;
@@ -737,11 +737,14 @@ public without sharing class Triton {
     }
 
     /**
-    * Immediate
+    * Immediate version of addDMLResult
+    * Logs DML operation results and immediately flushes to database
+    * @param area -- log record Functional TritonTypes.Area (see Area enum)
+    * @param dmlResults -- Array of Database.SaveResult, Database.DeleteResult, etc
     */
-    public void dmlError(TritonTypes.Area area, List<Object> dmlResults) {
+    public void dmlResult(TritonTypes.Area area, List<Object> dmlResults) {
         incStackOffset();
-        addDMLError(area, dmlResults);
+        addDMLResult(area, dmlResults);
         flush();
         resetStackOffset();
     }
