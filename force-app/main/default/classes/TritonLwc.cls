@@ -9,7 +9,18 @@
  */
 
 /**
-    @description Class used to log LWC errors
+ * Provides logging capabilities for Lightning Web Components (LWC).
+ * This class exposes an AuraEnabled method that can be called from LWC to create log records
+ * with customizable attributes like category, type, area, and level.
+ * 
+ * The class handles:
+ * - Log creation with default INFO level if not specified
+ * - Automatic transaction management
+ * - Component context capture (name, function, action)
+ * - Error details capture (message, stack trace, type)
+ * - User and record ID validation
+ * - Validation and fallback for category, area and log level enums
+ * - Timestamp and duration tracking
  */
 public with sharing class TritonLwc {
 
@@ -22,32 +33,80 @@ public with sharing class TritonLwc {
     public static void saveComponentLogs(List<ComponentLog> componentLogs) {
         Triton logInstance = Triton.instance;
         for (ComponentLog componentLog : componentLogs) {
+            Id userId = null;
+            Id relatedId = null;
+            TritonTypes.Category category = null;
+            TritonTypes.Area area = null;
+            TritonTypes.Level level = null;
+            String details = componentLog.details == null ? '' : componentLog.details;
+
+            try {
+                userId = Id.valueOf(componentLog.userId);
+            } catch (Exception e) {
+                //invalid user id
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid User Id: {0}. This log will not be linked to a user.', componentLog.userId);
+            }
+
+            try {
+                relatedId = Id.valueOf(componentLog.recordId);
+            } catch (Exception e) {
+                //invalid record id
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Record Id: {0}. This log will not be linked to a record.', componentLog.recordId);
+            }
+
+            String categoryStr = String.isNotBlank(componentLog.category) ? componentLog.category : componentLog.component.category;
+
+            try {
+                category = TritonTypes.Category.valueOf(categoryStr);
+            } catch(Exception e) {
+                //invalid category
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Category: {0}. Default LWC category will be used.', categoryStr);
+            }
+
+            String areaStr = String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.component.name;
+
+            try {
+                area = TritonTypes.Area.valueOf(areaStr);
+            } catch(Exception e) {
+                //invalid area
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Functional Area: {0}. Default LWC area will be used.', areaStr);
+            }
+
+            String levelStr = componentLog.level;
+
+            try {   
+                level = TritonTypes.Level.valueOf(levelStr);
+            } catch(Exception e) {
+                //invalid log level
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Level: {0}. Default INFO level will be used.', levelStr);
+            }
+
             logInstance.add(
                     Triton.makeBuilder()
                             //category will be fetched from the componentLog
-                            .category(String.isNotBlank(componentLog.category) ? componentLog.category : componentLog.component.category)
+                            .category(category == null ? TritonTypes.Category.LWC : category)
                             //type will be fetched from the componentLog directly, of from the error. If neither are set, Frontend will be used
                             .type(String.isNotBlank(componentLog.type) ? componentLog.type :
                                     componentLog.error != null ? componentLog.error.type : TritonTypes.Type.Frontend.name())
                             //area will be fetched from the componentLog directly if set. Otherwise component name will be used
-                            .area(String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.component.name)
+                            .area(area == null ? TritonTypes.Area.LWC : area)
                             //summary will be fetched from the componentLog directly if set. Otherwise, error message will be used if provided.
                             .summary(String.isNotBlank(componentLog.summary) ? componentLog.summary :
                                     componentLog.error != null ? componentLog.error.message : null)
                             .stackTrace(componentLog.stack)
-                            .details(componentLog.details)
+                            .details(details)
                             //transaction id will be used from the componentLog, or a new transaction id will be generated
                             .transactionId(String.isNotBlank(componentLog.transactionId) ? componentLog.transactionId : logInstance.TRANSACTION_ID)
-                            .attribute(Triton.USER_ID, componentLog.userId)
+                            .userId(userId)
                             //apex name will be set to component.function or component.action
-                            .attribute(Triton.APEX_NAME, componentLog.component.name + '.' +
+                            .operation(componentLog.component.name + '.' +
                                     (String.isNotBlank(componentLog.component.function) ? componentLog.component.function : componentLog.component.action))
-                            .attribute(Triton.RELATED_ID, componentLog.recordId)
+                            .relatedObject(relatedId)
                             //created timestamp will be either set from the componentLog if provided, otherwise current timestamp will be used
-                            .attribute(Triton.CREATED_TIMESTAMP, componentLog.createdTimestamp != null ? Double.valueOf(componentLog.createdTimestamp) : Double.valueOf(System.now().getTime()))
+                            .createdTimestamp(componentLog.createdTimestamp != null ? Double.valueOf(componentLog.createdTimestamp) : Double.valueOf(System.now().getTime()))
                             //log level will be taken from the componentLog if provided, otherwise INFO will be used
-                            .attribute(Triton.LOG_LEVEL, String.isNotBlank(componentLog.level) ? componentLog.level : TritonTypes.Level.INFO.name())
-                            .attribute(Triton.DURATION, componentLog.duration)
+                            .level(level == null ? TritonTypes.Level.INFO : level)
+                            .duration(componentLog.duration)
                             .build());
         }
         logInstance.flush();

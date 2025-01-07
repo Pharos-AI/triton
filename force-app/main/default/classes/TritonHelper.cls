@@ -9,7 +9,16 @@
  */
 
 /**
-    @description helper class for the Triton Logger project
+ * TritonHelper provides utility methods and builder classes for the Triton logging framework.
+ * This class includes functionality for:
+ * - Log level management and comparison
+ * - UUID generation for transaction tracking
+ * - HTTP request/response JSON serialization for integration logging
+ * - Pre and post-processing controls for Pharos logging configuration
+ * - Message formatting utilities
+ * 
+ * The class serves as a central utility hub for the Triton logging system, offering
+ * helper methods and builder patterns to configure and enhance logging capabilities.
  */
 public with sharing class TritonHelper {
 
@@ -212,4 +221,24 @@ public with sharing class TritonHelper {
             return this;
         }
     }    
+
+    /**
+     * Formats a message by replacing {0} placeholder with the provided parameter
+     * @param template The message template containing {0} placeholder
+     * @param param The parameter to replace the placeholder with
+     * @return Formatted message
+     */
+    public static String formatMessage(String template, String param) {
+        return String.format(template, new List<String>{param});
+    }
+
+    /**
+     * Formats a message by replacing {0}, {1}, etc. placeholders with the provided parameters
+     * @param template The message template containing numbered placeholders
+     * @param params The list of parameters to replace the placeholders with
+     * @return Formatted message
+     */
+    public static String formatMessage(String template, List<String> params) {
+        return String.format(template, params);
+    }
 }
