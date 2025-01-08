@@ -44,7 +44,8 @@ public with sharing class TritonLwc {
                 userId = Id.valueOf(componentLog.userId);
             } catch (Exception e) {
                 //invalid user id
-                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid User Id: {0}. This log will not be linked to a user.', componentLog.userId);
+                userId = UserInfo.getUserId();
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid User Id: {0}. Context user will be used.', componentLog.userId);
             }
 
             try {
