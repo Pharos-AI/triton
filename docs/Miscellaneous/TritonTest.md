@@ -66,14 +66,32 @@ See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
 ### `private static void test_save_component_log()`
 
 `ISTEST`
+### `private static void test_save_component_log_negative()`
+
+`ISTEST`
 ### `private static void test_flow()`
 
 `ISTEST`
-### `private static void test_flow_error()`
+### `private static void test_flow_negative()`
+
+`ISTEST`
+### `private static void test_triton_builder()`
+
+`ISTEST`
+### `private static void test_template()`
 
 `ISTEST`
 ### `public static Map<String,HttpCalloutMock> createEndpoint2TestResp()`
 ### `public static void testHttpRequest()`
+### `private static void testDMLErrorLogging()`
+
+`ISTEST`
+### `private static void testDMLErrorLogging_NoErrors()`
+
+`ISTEST`
+### `private static void test_triton_builder_negative()`
+
+`ISTEST`
 ---
 ## Classes
 ### MultiRequestMock
