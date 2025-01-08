@@ -124,10 +124,19 @@ const TritonBuilder = class {
     setError(error) {
         if (error) {
             this.error = {};
-            this.error.message = error.message ? error.message : error.body ? error.body.message : null;
-            this.error.stack = error.stack ? error.stack : error.body ? error.body.stackTrace : null;
-            this.error.type = error.name ? error.name : error.body ? error.body.exceptionType : null;
+            this.isApex = false;
+            if (error.body) {
+                this.isApex = true;
+                this.error.message = error.body.message;
+                this.error.stack = error.body.stackTrace;
+                this.error.type = error.body.exceptionType;
+            } else {
+                this.error.message = error.message ? error.message : null;
+                this.error.stack = error.stack ? error.stack : error.stacktrace ? error.stacktrace : null;
+                this.error.type = error.name ? error.name : error.body ? error.body.exceptionType : null;
+            }
             this._setComponentDetails(this.error.stack);
+            if (!this.details) this.details = this.error.message + '\n\n' + this.stack;
         }
         return this;
     }
@@ -140,18 +149,23 @@ const TritonBuilder = class {
         if (stack != null) {
             if (!this.component) this.component = {}
             let stackTraceLines = [];
-            stack.split('\n').filter(
-                stackTraceLine => !stackTraceLine.includes('/c/triton.js') && !stackTraceLine.includes('/c/tritonBuilder.js')
-            ).forEach(stackTraceLine => {
-                console.log(stackTraceLine);
-                if (!this.component.category && (stackTraceLine.includes('/modules/') || stackTraceLine.includes('/components/'))) {
-                    this.component.category = stackTraceLine.includes('/modules/') ? 'LWC' : 'Aura';
-                    this.component.name = stackTraceLine.substring(stackTraceLine.lastIndexOf('/') + 1, stackTraceLine.lastIndexOf('.js'));
-                    this.component.function = stackTraceLine.substring(stackTraceLine.indexOf(this.component.category === 'LWC' ? '.' : 'at ') + (this.component.category === 'LWC' ? 1 : 3), stackTraceLine.lastIndexOf(' ('));
-                }
-                stackTraceLines.push(stackTraceLine);
-            });
-            this.stack = stackTraceLines.join('\n');
+            if (this.isApex) {
+                this.component.category = 'Apex';
+                this.component.name = 'Apex';
+                this.stack = stack;
+            } else {
+                stack.split('\n').filter(
+                    stackTraceLine => !stackTraceLine.includes('/c/logger.js') && !stackTraceLine.includes('/c/logBuilder.js')
+                ).forEach(stackTraceLine => {
+                    if (!this.component.category && (stackTraceLine.includes('/modules/') || stackTraceLine.includes('/components/'))) {
+                        this.component.category = stackTraceLine.includes('/modules/') ? 'LWC' : 'Aura';
+                        this.component.name = stackTraceLine.substring(stackTraceLine.lastIndexOf('/') + 1, stackTraceLine.lastIndexOf('.js'));
+                        this.component.function = stackTraceLine.substring(stackTraceLine.indexOf(this.component.category === 'LWC' ? '.' : 'at ') + (this.component.category === 'LWC' ? 1 : 3), stackTraceLine.lastIndexOf(' (')).trim();
+                    }
+                    stackTraceLines.push(stackTraceLine);
+                });
+                this.stack = stackTraceLines.join('\n');
+            }
         }
     }
 
