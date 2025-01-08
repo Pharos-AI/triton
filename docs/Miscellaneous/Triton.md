@@ -11,42 +11,22 @@ Pharos Triton is free software: you can redistribute it and/or modify
 it under the terms of the MIT License.
 See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
 
+The Triton class provides a robust logging framework for Salesforce applications.
+It enables structured logging with different severity levels (ERROR, WARNING, DEBUG, INFO),
+categories (Apex, Integration, Event, Debug), and functional areas.
+
+Key features:
+- Buffered and immediate logging options
+- Automatic stack trace capture
+- Transaction tracking across multiple Salesforce contexts
+- Integration error logging with HTTP request/response details
+- Configurable log levels via Custom Metadata
+- Builder pattern for constructing log entries
+
 ## Constructors
 ### `private Triton(pharos.Logger logger)`
 ---
 ## Fields
-
-### `public APEX_NAME` → `String`
-
-
-key field names for setting attributes on log records
-
-### `public CREATED_TIMESTAMP` → `String`
-
-
-### `public DURATION` → `String`
-
-
-### `public INTERVIEW_GUID` → `String`
-
-
-### `public LOG_LEVEL` → `String`
-
-
-### `public RELATED_ID` → `String`
-
-
-### `public RELATED_OBJECTS` → `String`
-
-
-### `public STACKTRACE_PARSE_RESULT` → `String`
-
-
-### `public USER_ID` → `String`
-
-
-### `public FLOW_API_NAME` → `String`
-
 
 ### `public SPACE_SEP` → `String`
 
@@ -57,6 +37,9 @@ key field names for setting attributes on log records
 ### `private LOG_LEVELS_MDT` → `Log_Level__mdt`
 
 `TESTVISIBLE` 
+
+### `private template` → `TritonBuilder`
+
 
 ### `private stackOffset` → `Integer`
 
@@ -86,6 +69,26 @@ Helper map for storing current log levels
 
 ---
 ## Methods
+### `public void setTemplate(TritonBuilder builder)`
+
+Sets a builder template that can be re-used
+
+#### Parameters
+
+|Param|Description|
+|---|---|
+|`builder`|-- Pharos builder to be used as a template|
+
+### `public TritonBuilder fromTemplate()`
+
+Retrieves a copy of a previously saved template
+
+#### Returns
+
+|Type|Description|
+|---|---|
+|`TritonBuilder`|builder -- Pharos builder previously saved as a template|
+
 ### `public void add(pharos__Log__c log)`
 
 Adds a log to the buffer.
@@ -104,9 +107,13 @@ Use this method to persist logs to the database right away.
 
 ### `private void incStackOffset()`
 ### `private void resetStackOffset()`
-### `public static pharos.LogBuilder makeBuilder()`
+### `public static TritonBuilder makeBuilder()`
 
 Shorthand method for creating a new builder
+
+### `public static TritonHelper.PostProcessingControlsBuilder makePostProcessingBuilder()`
+
+Shorthand method for creating a new post processing controls builder
 
 ### `public String startTransaction()`
 
@@ -126,7 +133,7 @@ Stops a transaction
 Resets the current transaction Id
 Use this method to marking tracking logs with the current transaction Id
 
-### `public void addError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details)`
+### `public void addLog(TritonBuilder builder)`
 
 ---------------------------
 Log methods.
@@ -135,6 +142,24 @@ Log methods.
 There are 2 types of log methods per each category: buffered and immediate
 Buffered methods will add to the log collection without flush()'ing
 Immediate methods will add to the log collection and call flush()
+
+### `public void log(TritonBuilder builder)`
+
+Immediate
+
+### `public void addError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details)`
+
+Add Log with Error Category.
+This method will automatically get the stacktrace and save it on the log record.
+
+#### Parameters
+
+|Param|Description|
+|---|---|
+|`type`|-- log record TritonTypes.Type (see Type enum)|
+|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
+|`summary`|-- summary of the issue. Saves to log record Summary field|
+|`details`|-- details of the issue. Saves to log record Details field|
 
 ### `public void error(TritonTypes.Type type, TritonTypes.Area area, String summary, String details)`
 
@@ -342,6 +367,31 @@ This method will automatically get the stacktrace.
 ### `public void integrationError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details, RestRequest request, RestResponse response)`
 
 Immediate
+
+### `public void addDMLResult(TritonTypes.Area area, List<Object> dmlResults)`
+
+Add Log with DML results.
+This method will automatically get the stacktrace and save it on the log record.
+
+#### Parameters
+
+|Param|Description|
+|---|---|
+|`type`|-- log record TritonTypes.Type (see Type enum)|
+|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
+|`dmlResults`|-- Array of Database.SaveResult, Database.DeleteResult, etc|
+
+### `public void dmlResult(TritonTypes.Area area, List<Object> dmlResults)`
+
+Immediate version of addDMLResult
+Logs DML operation results and immediately flushes to database
+
+#### Parameters
+
+|Param|Description|
+|---|---|
+|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
+|`dmlResults`|-- Array of Database.SaveResult, Database.DeleteResult, etc|
 
 ### `public static Boolean isLogAllowedForLogLevel(pharos__Log__c log)`
 

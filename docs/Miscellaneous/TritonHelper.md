@@ -3,7 +3,16 @@ layout: default
 ---
 # TritonHelper
 
-helper class for the Triton Logger project
+TritonHelper provides utility methods and builder classes for the Triton logging framework.
+This class includes functionality for:
+- Log level management and comparison
+- UUID generation for transaction tracking
+- HTTP request/response JSON serialization for integration logging
+- Pre and post-processing controls for Pharos logging configuration
+- Message formatting utilities
+
+The class serves as a central utility hub for the Triton logging system, offering
+helper methods and builder patterns to configure and enhance logging capabilities.
 
 ## Methods
 ### `public static String buildLogLevelKey(String category, String type, String area)`
@@ -52,6 +61,40 @@ Json serialization for http request and response objects.
 Used by integration logs.
 
 ### `public static String toJson(HttpRequest request, HttpResponse response)`
+### `public static String formatMessage(String template, String param)`
+
+Formats a message by replacing {0} placeholder with the provided parameter
+
+#### Parameters
+
+|Param|Description|
+|---|---|
+|`template`|The message template containing {0} placeholder|
+|`param`|The parameter to replace the placeholder with|
+
+#### Returns
+
+|Type|Description|
+|---|---|
+|`String`|Formatted message|
+
+### `public static String formatMessage(String template, List<String> params)`
+
+Formats a message by replacing {0}, {1}, etc. placeholders with the provided parameters
+
+#### Parameters
+
+|Param|Description|
+|---|---|
+|`template`|The message template containing numbered placeholders|
+|`params`|The list of parameters to replace the placeholders with|
+
+#### Returns
+
+|Type|Description|
+|---|---|
+|`String`|Formatted message|
+
 ---
 ## Classes
 ### IntegrationWrapper

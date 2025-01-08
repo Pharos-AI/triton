@@ -3,7 +3,18 @@ layout: default
 ---
 # TritonLwc
 
-Class used to log LWC errors
+Provides logging capabilities for Lightning Web Components (LWC).
+This class exposes an AuraEnabled method that can be called from LWC to create log records
+with customizable attributes like category, type, area, and level.
+
+The class handles:
+- Log creation with default INFO level if not specified
+- Automatic transaction management
+- Component context capture (name, function, action)
+- Error details capture (message, stack trace, type)
+- User and record ID validation
+- Validation and fallback for category, area and log level enums
+- Timestamp and duration tracking
 
 ## Methods
 ### `public static void saveComponentLogs(List<ComponentLog> componentLogs)`
