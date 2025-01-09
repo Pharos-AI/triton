@@ -501,6 +501,7 @@ public without sharing class Triton {
                         .stackTrace(e.getStackTraceString())
                         .createIssue()
                         .integrationPayload(request, response)
+                        .transactionId(TRANSACTION_ID)                        
                         .level(TritonTypes.Level.ERROR)
                         .build());
     }
@@ -535,6 +536,7 @@ public without sharing class Triton {
                         .stackTrace(e.getStackTraceString())
                         .createIssue()
                         .integrationPayload(request, response)
+                        .transactionId(TRANSACTION_ID)                        
                         .level(TritonTypes.Level.ERROR)
                         .build());
     }
@@ -578,6 +580,7 @@ public without sharing class Triton {
                         .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                         .createIssue()
                         .integrationPayload(request,response)
+                        .transactionId(TRANSACTION_ID)                        
                         .level(TritonTypes.Level.ERROR)
                         .build());
     }
@@ -627,6 +630,7 @@ public without sharing class Triton {
                         .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                         .createIssue()
                         .integrationPayload(request, response)
+                        .transactionId(TRANSACTION_ID)                        
                         .level(TritonTypes.Level.ERROR)
                         .build());
     }

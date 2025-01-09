@@ -160,8 +160,7 @@ public with sharing virtual class TritonBuilder {
 	}
 
     /**
-    * Set transaction Id from a String
-    * @param transactionId -- desired transaction Id String value
+    * Set issue creation flag
     * @return this builder instance
     */
     public TritonBuilder createIssue() {
