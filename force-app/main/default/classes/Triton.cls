@@ -239,7 +239,7 @@ public without sharing class Triton {
     */
     public void addError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         add(
-                makeBuilder()
+                fromTemplate()
                         .category(TritonTypes.Category.Apex)
                         .type(type)
                         .area(area)
@@ -275,7 +275,7 @@ public without sharing class Triton {
     */
     public void addError(TritonTypes.Area area, Exception e, Set<String> relatedObjectIds) {
         add(
-                makeBuilder()
+                fromTemplate()
                         .category(TritonTypes.Category.Apex)
                         //use exception type, Backend if blank
                         .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
@@ -332,7 +332,7 @@ public without sharing class Triton {
     */
     public void addWarning(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         add(
-                makeBuilder()
+                fromTemplate()
                         .category(TritonTypes.Category.Warning)
                         .type(type)
                         .area(area)
@@ -370,7 +370,7 @@ public without sharing class Triton {
     */
     public void addDebug(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         add(
-                makeBuilder()
+                fromTemplate()
                         .category(TritonTypes.Category.Debug)
                         .type(type)
                         .area(area)
@@ -414,7 +414,7 @@ public without sharing class Triton {
         Decimal duration
     ) {
         add(
-                makeBuilder()
+                fromTemplate()
                         .category(TritonTypes.Category.Debug)
                         .type(type)
                         .area(area)
@@ -464,7 +464,7 @@ public without sharing class Triton {
         String details
     ) {
         add(
-                makeBuilder()
+                fromTemplate()
                         .category(TritonTypes.Category.Event)
                         .type(type)
                         .area(area)
@@ -532,7 +532,7 @@ public without sharing class Triton {
     */
     public void addIntegrationError(TritonTypes.Area area, Exception e, HttpRequest request, HttpResponse response) {
         add(
-                makeBuilder()
+                fromTemplate()
                         .category(TritonTypes.Category.Integration)
                         //Use Backend as default type
                         .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
@@ -567,7 +567,7 @@ public without sharing class Triton {
     */
     public void addIntegrationError(TritonTypes.Area area, Exception e, RestRequest request, RestResponse response) {
         add(
-                makeBuilder()
+                fromTemplate()
                         .category(TritonTypes.Category.Integration)
                         .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
                         .area(area)
@@ -610,7 +610,7 @@ public without sharing class Triton {
         HttpResponse response
     ) {
         add(
-                makeBuilder()
+                fromTemplate()
                         .category(TritonTypes.Category.Integration)
                         .type(type)
                         .area(area)
@@ -659,7 +659,7 @@ public without sharing class Triton {
         RestResponse response
     ) {
         add(
-                makeBuilder()
+                fromTemplate()
                         .category(TritonTypes.Category.Integration)
                         .type(type)
                         .area(area)
@@ -759,7 +759,7 @@ public without sharing class Triton {
 
         if(!errorMessages.isEmpty()) {
             add(
-                makeBuilder()
+                fromTemplate()
                     .category(TritonTypes.Category.Apex)
                     .type(TritonTypes.Type.DMLResult)
                     .area(area)
