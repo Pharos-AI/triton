@@ -62,6 +62,17 @@ public without sharing class Triton {
 
     private TritonBuilder template;
 
+    // Logs buffer (queue) property
+    private List<pharos__Log__c> logs {
+        get {
+            if (logs == null) {
+                logs = new List<pharos__Log__c>();
+            }
+            return logs;
+        }
+        set;
+    }
+
     // Constructor
     private Triton(pharos.Logger logger) {
         this.logger = logger;
@@ -91,7 +102,7 @@ public without sharing class Triton {
     */
     public void add(pharos__Log__c log) {
         if (isLogAllowedForLogLevel(log)) {
-            this.logger.add(log);
+            this.logs.add(log);
         }
     }
 
@@ -100,8 +111,26 @@ public without sharing class Triton {
     * Use this method to persist logs to the database right away.
     */
     public void flush() {
+        for(pharos__Log__c log : logs) {
+            this.logger.add(log);
+        }
         this.logger.flush();
+        this.logs.clear();
     }
+
+    /**
+    * Persist the last Log in the queue only, immediately.
+    * Use this method to persist a single log to the database right away.
+    */
+    public void flushTop() {
+        if (logs?.size() == 0) {
+            return;
+        }
+        this.logger.add(logs.get(logs.size() - 1));
+        this.logger.flush();
+        this.logs.remove(logs.size() - 1);
+    }
+
 
     /**
     * Stack trace offset.
@@ -217,8 +246,8 @@ public without sharing class Triton {
                         .details(details)
                         .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                         .transactionId(TRANSACTION_ID)
-                        .createIssue()
                         .level(TritonTypes.Level.ERROR)
+                        .createIssue()
                         .build());
     }
 
@@ -228,7 +257,8 @@ public without sharing class Triton {
     public void error(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         incStackOffset();
         addError(type, area, summary, details);
-        flush();
+        resetStackOffset();
+        flushTop();
     }
 
 
@@ -280,13 +310,14 @@ public without sharing class Triton {
     public void error(TritonTypes.Area area, Exception e, Set<String> relatedObjectIds) {
         incStackOffset();
         addError(area, e, relatedObjectIds);
-        flush();
         resetStackOffset();
+        flushTop();
     }
 
     public void error(TritonTypes.Area area, Exception e) {
         incStackOffset();
         error(area, e, null);
+        resetStackOffset();
     }
 
 
@@ -311,6 +342,7 @@ public without sharing class Triton {
                                     .stackTrace(true)
                                     .userInfo(true)
                                     .relatedObjects(true))
+                        .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                         .transactionId(TRANSACTION_ID)
                         .level(TritonTypes.Level.WARNING)
                         .build());
@@ -322,8 +354,8 @@ public without sharing class Triton {
     public void warning(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         incStackOffset();
         addWarning(type, area, summary, details);
-        flush();
         resetStackOffset();
+        flushTop();
     }
 
 
@@ -360,17 +392,18 @@ public without sharing class Triton {
     public void debug(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         incStackOffset();
         addDebug(type, area, summary, details);
-        flush();
         resetStackOffset();
+        flushTop();
     }
 
     /**
-    * Add Log with Debug Category.
+    * Add Log with Debug Category with duration.
     * This method will automatically get the stacktrace.
     * @param type -- log record TritonTypes.Type (see Type enum)
     * @param area -- log record Functional TritonTypes.Area (see Area enum)
     * @param summary -- summary of the issue. Saves to log record Summary field
     * @param details -- details of the issue. Saves to log record Details field
+    * @param duration -- duration of the operation in milliseconds
     */
     public void addDebug(
         TritonTypes.Type type,
@@ -401,16 +434,21 @@ public without sharing class Triton {
     /**
     * Immediate
     */
-    public void debug(TritonTypes.Type type, TritonTypes.Area area, String summary, String details, Decimal duration) {
+    public void debug(
+        TritonTypes.Type type,
+        TritonTypes.Area area,
+        String summary,
+        String details,
+        Decimal duration
+    ) {
         incStackOffset();
         addDebug(type, area, summary, details, duration);
-        flush();
         resetStackOffset();
+        flushTop();
     }
 
     /**
     * Add Log with Event Category.
-    * Default INFO log level
     * @param level -- log TritonTypes.Level (see Level enum)
     * @param type -- log record TritonTypes.Type (see Type enum)
     * @param area -- log record Functional TritonTypes.Area (see Area enum)
@@ -436,10 +474,12 @@ public without sharing class Triton {
                                     .stackTrace(true)
                                     .userInfo(true)
                                     .relatedObjects(true))
+                        .stackTrace(this.logger.getCurrentStackTrace(stackOffset))
                         .transactionId(TRANSACTION_ID)
                         .level(level)
                         .build());
     }
+
     /**
     * Immediate
     */
@@ -452,8 +492,8 @@ public without sharing class Triton {
     ) {
         incStackOffset();
         addEvent(level, type, area, summary, details);
-        flush();
         resetStackOffset();
+        flushTop();
     }
 
 
@@ -512,10 +552,9 @@ public without sharing class Triton {
     public void integrationError(TritonTypes.Area area, Exception e, HttpRequest request, HttpResponse response) {
         incStackOffset();
         addIntegrationError(area, e, request, response);
-        flush();
         resetStackOffset();
+        flushTop();
     }
-
 
     /**
     * Add Log with Integration Category.
@@ -547,10 +586,9 @@ public without sharing class Triton {
     public void integrationError(TritonTypes.Area area, Exception e, RestRequest request, RestResponse response) {
         incStackOffset();
         addIntegrationError(area, e, request, response);
-        flush();
         resetStackOffset();
+        flushTop();
     }
-
 
     /**
     * Add Log with Integration Category.
@@ -600,7 +638,6 @@ public without sharing class Triton {
         addIntegrationError(type, area, summary, details, request, response);
         flush();
     }
-
 
     /**
     * Add Log with Integration Category.
@@ -749,8 +786,8 @@ public without sharing class Triton {
     public void dmlResult(TritonTypes.Area area, List<Object> dmlResults) {
         incStackOffset();
         addDMLResult(area, dmlResults);
-        flush();
         resetStackOffset();
+        flushTop();
     }
 
     /**
