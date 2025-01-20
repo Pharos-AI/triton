@@ -744,4 +744,88 @@ private class TritonTest {
         builder.relatedObjects(mixedIds);
         System.assertEquals(JSON.serialize(new Set<Id>{validId}), builder.build().pharos__Related_Objects__c);
     }
+
+    @IsTest
+    private static void test_flush_top_buffer() {
+        assertBefore();
+        
+        Test.startTest();
+        
+        // Add multiple logs to buffer without flushing
+        Triton.instance.addError(
+            TritonTypes.Type.Backend, 
+            TritonTypes.Area.Community, 
+            'first error', 
+            'first details'
+        );
+        Triton.instance.addError(
+            TritonTypes.Type.Backend, 
+            TritonTypes.Area.Community, 
+            'second error', 
+            'second details'
+        );
+        Triton.instance.addError(
+            TritonTypes.Type.Backend, 
+            TritonTypes.Area.Community, 
+            'third error', 
+            'third details'
+        );
+        
+        // Test flushTop with populated buffer
+        Triton.instance.flushTop();
+        Test.stopTest();
+        
+        // Verify only last log was persisted
+        List<pharos__Log__c> logs = [
+            SELECT Id, pharos__Summary__c 
+            FROM pharos__Log__c 
+            ORDER BY CreatedDate ASC
+        ];
+        System.assertEquals(1, logs.size(), 'Only one log should be persisted');
+        System.assertEquals('third error', logs[0].pharos__Summary__c, 'Last added log should be persisted');
+        System.assertEquals(2, Triton.instance.logs.size(), 'Should have two logs remaining in buffer');
+    }
+
+    @IsTest
+    private static void test_flush_top_immediate() {
+        assertBefore();
+        
+        Test.startTest();
+        Triton.instance.addError(
+            TritonTypes.Type.Backend, 
+            TritonTypes.Area.Community, 
+            'first error', 
+            'first details'
+        );
+
+        // Test immediate error method - should only flush that error
+        Triton.instance.error(
+            TritonTypes.Type.Backend, 
+            TritonTypes.Area.Community, 
+            'immediate error', 
+            'immediate details'
+        );
+        Test.stopTest();
+        
+        List<pharos__Log__c> logs = [
+            SELECT Id, pharos__Summary__c 
+            FROM pharos__Log__c 
+            ORDER BY CreatedDate ASC
+        ];
+        System.assertEquals(1, logs.size(), 'Should have one log persisted');
+        System.assertEquals('immediate error', logs[0].pharos__Summary__c, 'Immediate error should be persisted');
+        System.assertEquals(1, Triton.instance.logs.size(), 'Should have one log remaining in buffer');
+    }
+
+    @IsTest
+    private static void test_flush_top_empty_buffer() {
+        assertBefore();
+        
+        Test.startTest();
+        Triton.instance.flushTop();
+        Test.stopTest();
+        
+        List<pharos__Log__c> logs = [SELECT Id FROM pharos__Log__c];
+        System.assertEquals(0, logs.size(), 'No logs should be created with empty buffer');
+    }
 }

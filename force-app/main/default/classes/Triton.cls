@@ -63,6 +63,7 @@ public without sharing class Triton {
     private TritonBuilder template;
 
     // Logs buffer (queue) property
+    @TestVisible
     private List<pharos__Log__c> logs {
         get {
             if (logs == null) {
@@ -123,7 +124,7 @@ public without sharing class Triton {
     * Use this method to persist a single log to the database right away.
     */
     public void flushTop() {
-        if (logs?.size() == 0) {
+        if (logs.size() == 0) {
             return;
         }
         this.logger.add(logs.get(logs.size() - 1));
