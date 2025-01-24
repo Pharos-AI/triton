@@ -8,17 +8,51 @@
  * See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
  */
 
-import {LightningElement, api} from 'lwc';
 import {makeBuilder} from 'c/tritonBuilder';
 import saveComponentLogs from '@salesforce/apex/TritonLwc.saveComponentLogs';
 
-export default class Triton extends LightningElement {
+const Triton =  class {
 
     /**
      * Logs buffer
      */
-    @api
     logs = [];
+
+    triton_session_id = 'triton_session_id';
+
+    startSession() {
+        sessionStorage.setItem(this.triton_session_id, this.generateUuid());
+    }
+
+    stopSession() {
+        sessionStorage.setItem(this.triton_session_id, null);
+    }
+
+    generateUuid() {
+        const randomHex = this.nanoid(32);
+        return (
+            randomHex.substring(0, 8) + '-' +
+            randomHex.substring(8, 12) + '-' +
+            randomHex.substring(12, 16) + '-' +
+            randomHex.substring(16, 20) + '-' +
+            randomHex.substring(20)
+        );
+    }
+
+    nanoid(length = 32) {
+        let result = '';
+        const randomValues = crypto.getRandomValues(new Uint8Array(length));
+        for (let i = 0; i < randomValues.length; i++) {
+            let n = randomValues[i] & 0x3f;
+            result +=
+                n < 10
+                    ? n.toString(16)
+                    : n < 36
+                        ? (n - 10).toString(36)
+                        : (n - 36).toString(36).toUpperCase();
+        }
+        return result;
+    }
 
     /**
      * Add Log with LWC / Aura Category.
@@ -27,7 +61,6 @@ export default class Triton extends LightningElement {
      * Summary is the Exception message.
      * Details will be a combination of Exception String and stacktrace
      */
-    @api
     addException(error) {
         return this._makeBuilder().setError(error).setLevel(LEVEL.ERROR);
     }
@@ -35,7 +68,6 @@ export default class Triton extends LightningElement {
     /**
      * Add Log with LWC / Aura Category.
      */
-    @api
     addError() {
         return this._makeBuilder().setLevel(LEVEL.ERROR);
     }
@@ -43,7 +75,6 @@ export default class Triton extends LightningElement {
     /**
      * Add Log with Warning Category.
      */
-    @api
     addWarning() {
         return this._makeBuilder().setCategory(CATEGORY.WARNING).setLevel(LEVEL.WARNING);
     }
@@ -51,7 +82,6 @@ export default class Triton extends LightningElement {
     /**
      * Add Log with Debug Category.
      */
-    @api
     addDebug() {
         return this._makeBuilder().setCategory(CATEGORY.DEBUG).setLevel(LEVEL.DEBUG);
     }
@@ -59,7 +89,6 @@ export default class Triton extends LightningElement {
     /**
      * Add Log with Event Category.
      */
-    @api
     addInfo() {
         return this._makeBuilder().setCategory(CATEGORY.EVENT).setLevel(LEVEL.INFO);
     }
@@ -71,27 +100,25 @@ export default class Triton extends LightningElement {
      * Summary is the Exception message.
      * Details will be a combination of Exception String and stacktrace
      */
-    @api
-    exception(error, transactionId) {
+    exception(error) {
         this._makeBuilder()
             .setError(error)
             .setLevel(LEVEL.ERROR)
-            .setTransactionId(transactionId);
+            .setTransactionId(sessionStorage.getItem(this.triton_session_id));
         this.flush();
     }
 
     /**
      * Save Log with LWC / Aura Category.
      */
-    @api
-    error(type, area, summary, details, transactionId, component, duration, startTime) {
+    error(type, area, summary, details, component, duration, startTime) {
         this._makeBuilder()
             .setLevel(LEVEL.ERROR)
             .setType(type)
             .setArea(area)
             .setSummary(summary)
             .setDetails(details)
-            .setTransactionId(transactionId)
+            .setTransactionId(sessionStorage.getItem(this.triton_session_id))
             .setComponent(component)
             .setDuration(duration)
             .setCreatedTimestamp(startTime);
@@ -101,8 +128,7 @@ export default class Triton extends LightningElement {
     /**
      * Save Log with Warning Category.
      */
-    @api
-    warning(type, area, summary, details, transactionId, component, duration, startTime) {
+    warning(type, area, summary, details, component, duration, startTime) {
         this._makeBuilder()
             .setLevel(LEVEL.WARNING)
             .setCategory(CATEGORY.WARNING)
@@ -110,7 +136,7 @@ export default class Triton extends LightningElement {
             .setArea(area)
             .setSummary(summary)
             .setDetails(details)
-            .setTransactionId(transactionId)
+            .setTransactionId(sessionStorage.getItem(this.triton_session_id))
             .setComponent(component)
             .setDuration(duration)
             .setCreatedTimestamp(startTime);
@@ -120,8 +146,7 @@ export default class Triton extends LightningElement {
     /**
      * Save Log with Debug Category.
      */
-    @api
-    debug(type, area, summary, details, transactionId, component, duration, startTime) {
+    debug(type, area, summary, details, component, duration, startTime) {
         this._makeBuilder()
             .setLevel(LEVEL.DEBUG)
             .setCategory(CATEGORY.DEBUG)
@@ -129,7 +154,7 @@ export default class Triton extends LightningElement {
             .setArea(area)
             .setSummary(summary)
             .setDetails(details)
-            .setTransactionId(transactionId)
+            .setTransactionId(sessionStorage.getItem(this.triton_session_id))
             .setComponent(component)
             .setDuration(duration)
             .setCreatedTimestamp(startTime);
@@ -139,8 +164,7 @@ export default class Triton extends LightningElement {
     /**
      * Save Log with Event Category.
      */
-    @api
-    info(type, area, summary, details, level, transactionId, component, duration, startTime) {
+    info(type, area, summary, details, level, component, duration, startTime) {
         this._makeBuilder()
             .setLevel(level)
             .setCategory(CATEGORY.EVENT)
@@ -148,7 +172,7 @@ export default class Triton extends LightningElement {
             .setArea(area)
             .setSummary(summary)
             .setDetails(details)
-            .setTransactionId(transactionId)
+            .setTransactionId(sessionStorage.getItem(this.triton_session_id))
             .setComponent(component)
             .setDuration(duration)
             .setCreatedTimestamp(startTime);
@@ -158,7 +182,6 @@ export default class Triton extends LightningElement {
     /**
      * Commit all logs previously added using the addXXX() methods.
      */
-    @api
     flush() {
         saveComponentLogs({
             componentLogs: this.logs
@@ -211,3 +234,5 @@ export const TYPE = {
     BACKEND: 'Backend',
     FRONTEND: 'Frontend'
 };
+
+export default Triton;
