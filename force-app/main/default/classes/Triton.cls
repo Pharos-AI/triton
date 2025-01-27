@@ -154,9 +154,7 @@ public without sharing class Triton {
         if (String.isBlank(TRANSACTION_ID)) {
             startTransaction();
         }
-        if (String.isBlank((String)Cache.Session.get(TRANSACTION_ID_CACHE_KEY))) {
-            Cache.Session.put(TRANSACTION_ID_CACHE_KEY, TRANSACTION_ID);
-        }
+        Cache.Session.put(TRANSACTION_ID_CACHE_KEY, TRANSACTION_ID);
         return TRANSACTION_ID;
     }
 
@@ -184,7 +182,6 @@ public without sharing class Triton {
 
     public void stopTransactionInCache() {
         Cache.Session.put(TRANSACTION_ID_CACHE_KEY, null);
-        stopTransaction();
     }
 
     /**
