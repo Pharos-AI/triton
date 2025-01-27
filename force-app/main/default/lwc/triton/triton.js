@@ -18,42 +18,6 @@ const Triton =  class {
      */
     logs = [];
 
-    triton_session_id = 'triton_session_id';
-
-    startSession() {
-        sessionStorage.setItem(this.triton_session_id, this.generateUuid());
-    }
-
-    stopSession() {
-        sessionStorage.setItem(this.triton_session_id, null);
-    }
-
-    generateUuid() {
-        const randomHex = this.nanoid(32);
-        return (
-            randomHex.substring(0, 8) + '-' +
-            randomHex.substring(8, 12) + '-' +
-            randomHex.substring(12, 16) + '-' +
-            randomHex.substring(16, 20) + '-' +
-            randomHex.substring(20)
-        );
-    }
-
-    nanoid(length = 32) {
-        let result = '';
-        const randomValues = crypto.getRandomValues(new Uint8Array(length));
-        for (let i = 0; i < randomValues.length; i++) {
-            let n = randomValues[i] & 0x3f;
-            result +=
-                n < 10
-                    ? n.toString(16)
-                    : n < 36
-                        ? (n - 10).toString(36)
-                        : (n - 36).toString(36).toUpperCase();
-        }
-        return result;
-    }
-
     /**
      * Add Log with LWC / Aura Category.
      * This method will automatically get the stacktrace from Exception.
@@ -100,25 +64,25 @@ const Triton =  class {
      * Summary is the Exception message.
      * Details will be a combination of Exception String and stacktrace
      */
-    exception(error) {
+    exception(error, transactionId) {
         this._makeBuilder()
             .setError(error)
             .setLevel(LEVEL.ERROR)
-            .setTransactionId(sessionStorage.getItem(this.triton_session_id));
+            .setTransactionId(transactionId);
         this.flush();
     }
 
     /**
      * Save Log with LWC / Aura Category.
      */
-    error(type, area, summary, details, component, duration, startTime) {
+    error(type, area, summary, details, transactionId, component, duration, startTime) {
         this._makeBuilder()
             .setLevel(LEVEL.ERROR)
             .setType(type)
             .setArea(area)
             .setSummary(summary)
             .setDetails(details)
-            .setTransactionId(sessionStorage.getItem(this.triton_session_id))
+            .setTransactionId(transactionId)
             .setComponent(component)
             .setDuration(duration)
             .setCreatedTimestamp(startTime);
@@ -128,7 +92,7 @@ const Triton =  class {
     /**
      * Save Log with Warning Category.
      */
-    warning(type, area, summary, details, component, duration, startTime) {
+    warning(type, area, summary, details, transactionId, component, duration, startTime) {
         this._makeBuilder()
             .setLevel(LEVEL.WARNING)
             .setCategory(CATEGORY.WARNING)
@@ -136,7 +100,7 @@ const Triton =  class {
             .setArea(area)
             .setSummary(summary)
             .setDetails(details)
-            .setTransactionId(sessionStorage.getItem(this.triton_session_id))
+            .setTransactionId(transactionId)
             .setComponent(component)
             .setDuration(duration)
             .setCreatedTimestamp(startTime);
@@ -146,7 +110,7 @@ const Triton =  class {
     /**
      * Save Log with Debug Category.
      */
-    debug(type, area, summary, details, component, duration, startTime) {
+    debug(type, area, summary, details, transactionId, component, duration, startTime) {
         this._makeBuilder()
             .setLevel(LEVEL.DEBUG)
             .setCategory(CATEGORY.DEBUG)
@@ -154,7 +118,7 @@ const Triton =  class {
             .setArea(area)
             .setSummary(summary)
             .setDetails(details)
-            .setTransactionId(sessionStorage.getItem(this.triton_session_id))
+            .setTransactionId(transactionId)
             .setComponent(component)
             .setDuration(duration)
             .setCreatedTimestamp(startTime);
@@ -164,7 +128,7 @@ const Triton =  class {
     /**
      * Save Log with Event Category.
      */
-    info(type, area, summary, details, level, component, duration, startTime) {
+    info(type, area, summary, details, level, transactionId, component, duration, startTime) {
         this._makeBuilder()
             .setLevel(level)
             .setCategory(CATEGORY.EVENT)
@@ -172,7 +136,7 @@ const Triton =  class {
             .setArea(area)
             .setSummary(summary)
             .setDetails(details)
-            .setTransactionId(sessionStorage.getItem(this.triton_session_id))
+            .setTransactionId(transactionId)
             .setComponent(component)
             .setDuration(duration)
             .setCreatedTimestamp(startTime);

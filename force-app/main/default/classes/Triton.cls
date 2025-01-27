@@ -138,6 +138,8 @@ public without sharing class Triton {
      */
     public String TRANSACTION_ID;
 
+    public String TRANSACTION_ID_CACHE_KEY = 'TRANSACTION_ID:' + UserInfo.getUserId();
+
     /**
      * Start new transaction
      * Autogenrated Transaction UUID
@@ -145,6 +147,16 @@ public without sharing class Triton {
      */
     public String startTransaction() {
         TRANSACTION_ID = TritonHelper.generateUUID4();
+        return TRANSACTION_ID;
+    }
+
+    public String startTransactionInCache() {
+        if (String.isBlank(TRANSACTION_ID)) {
+            startTransaction();
+        }
+        if (String.isBlank((String)Cache.Session.get(TRANSACTION_ID_CACHE_KEY))) {
+            Cache.Session.put(TRANSACTION_ID_CACHE_KEY, TRANSACTION_ID);
+        }
         return TRANSACTION_ID;
     }
 
@@ -157,6 +169,10 @@ public without sharing class Triton {
         TRANSACTION_ID = transactionId;
     }
 
+    public void resumeTransactionFromCache() {
+        TRANSACTION_ID = (String)Cache.Session.get(TRANSACTION_ID_CACHE_KEY);
+    }
+
     /**
      * Stops a transaction
      * Resets the current transaction Id
@@ -164,6 +180,11 @@ public without sharing class Triton {
      */
     public void stopTransaction() {
         TRANSACTION_ID = null;
+    }
+
+    public void stopTransactionInCache() {
+        Cache.Session.put(TRANSACTION_ID_CACHE_KEY, null);
+        stopTransaction();
     }
 
     /**
