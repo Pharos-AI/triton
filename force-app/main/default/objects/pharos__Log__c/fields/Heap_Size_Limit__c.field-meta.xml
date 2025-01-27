@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Heap_Size_Limit__c</fullName>
+    <description>Maximum heap size in bytes allowed for this transaction</description>
+    <externalId>false</externalId>
+    <label>Heap Size Limit</label>
+    <precision>10</precision>
+    <scale>0</scale>
+    <type>Number</type>
+</CustomField> 

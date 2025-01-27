@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>SOQL_Rows_Limit__c</fullName>
+    <description>Maximum number of records that can be retrieved by SOQL queries in this transaction</description>
+    <externalId>false</externalId>
+    <label>SOQL Rows Limit</label>
+    <precision>10</precision>
+    <scale>0</scale>
+    <type>Number</type>
+</CustomField> 

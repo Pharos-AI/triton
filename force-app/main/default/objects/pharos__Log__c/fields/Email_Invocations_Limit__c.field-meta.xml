@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Email_Invocations_Limit__c</fullName>
+    <description>Maximum number of email invocations allowed in this transaction</description>
+    <externalId>false</externalId>
+    <label>Email Invocations Limit</label>
+    <precision>10</precision>
+    <scale>0</scale>
+    <type>Number</type>
+</CustomField> 

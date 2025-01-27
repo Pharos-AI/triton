@@ -62,6 +62,40 @@ public with sharing class TritonHelper {
     }
 
     /**
+     * Returns the current stack trace as a string, excluding any Triton-related entries.
+     * This method works by throwing and catching an exception to obtain the stack trace,
+     * then filtering out any lines containing 'Triton' to provide a clean trace of the
+     * actual application code path.
+     * 
+     * @return String The filtered stack trace with lines joined by newline characters
+     */
+    public static String getCurrentStackTrace() {
+        try {
+            throw new DmlException();
+        } catch (Exception e) {
+            return Test.isRunningTest() ? e.getStackTraceString() : filterStackTrace(e.getStackTraceString());
+        }
+    }
+
+    /**
+     * Test-visible method that processes a stack trace string and filters out Triton-related entries.
+     * 
+     * @param stackTraceString The raw stack trace string to process
+     * @return String The filtered stack trace with lines joined by newline characters
+     */
+    @TestVisible
+    private static String filterStackTrace(String stackTraceString) {
+        List<String> stackLines = new List<String>();
+        for(String line : stackTraceString.split('\n')) {
+            String trimmedLine = line.trim();
+            if (!trimmedLine.contains('Triton')) {
+                stackLines.add(trimmedLine);
+            }
+        }
+        return String.join(stackLines, '\n');
+    }
+
+    /**
     * Json serialization for http request and response objects.
     * Used by integration logs.
     */

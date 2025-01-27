@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Push_Notifications_Limit__c</fullName>
+    <description>Maximum number of push notification method calls allowed in this transaction</description>
+    <externalId>false</externalId>
+    <label>Push Notifications Limit</label>
+    <precision>10</precision>
+    <scale>0</scale>
+    <type>Number</type>
+</CustomField> 
