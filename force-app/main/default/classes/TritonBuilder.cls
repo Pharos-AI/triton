@@ -14,7 +14,7 @@
  * related objects, and other metadata for logging purposes. This class wraps the core
  * pharos.LogBuilder to provide a more user-friendly API for log creation.
  */
-public with sharing virtual class TritonBuilder {
+public with sharing class TritonBuilder {
 
     /** key field names for setting attributes on log records */
     public static final String APEX_NAME = 'pharos__Apex_Name__c';
@@ -63,6 +63,12 @@ public with sharing virtual class TritonBuilder {
     private static final String PUBLISH_IMMEDIATE_DML_LIMIT = 'Publish_Immediate_DML_Limit__c';
 
     private pharos.LogBuilder builder;
+
+    public TritonBuilder cloneBuilder() {
+        TritonBuilder cloned = new TritonBuilder();
+        cloned.builder = (pharos.LogBuilder)this.builder.clone();
+        return cloned;
+    }
 
     public TritonBuilder() {
         this.builder = pharos.LogBuilder.getInstance().clone();

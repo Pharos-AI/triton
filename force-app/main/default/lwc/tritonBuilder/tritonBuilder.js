@@ -53,8 +53,8 @@ export default class TritonBuilder {
     }
 
     /**
-     * Sets the log summary
-     * @param {string} summary - Log summary to set
+     * Sets the summary text for the log
+     * @param {string} summary - Summary text to set
      * @returns {TritonBuilder} Builder instance for chaining
      */
     summary(summary) {

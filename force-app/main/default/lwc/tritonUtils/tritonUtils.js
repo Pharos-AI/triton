@@ -40,21 +40,28 @@ const isComponentLine = (stackTraceLine) => {
 };
 
 /**
- * Determines if the stack trace is from an Aura component
- * @param {string} stack - Full stack trace to analyze
- * @returns {boolean} True if the stack trace contains Aura component references
+ * Determines if a stack trace line is from an Aura component
+ * @param {string} stackTraceLine - Line from stack trace to check
+ * @returns {boolean} True if the line is from an Aura component
  */
 const isAuraLine = (stackTraceLine) => {
     return stackTraceLine.includes('components/');
 };
 
+/**
+ * Determines if a stack trace is from an Aura component
+ * @param {string} [stack] - Stack trace to analyze. If not provided, gets current stack trace
+ * @returns {boolean} True if the stack trace contains Aura component references
+ */
 const isAura = (stack) => {
     return (stack || new Error().stack).split('\n').some(line => isAuraLine(line));
 };
 
 /**
- * Generates a UUID v4
- * @returns {string} The generated UUID
+ * Generates a UUID v4 (random UUID)
+ * @returns {string} The generated UUID in format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+ * @example
+ * const uuid = generateTransactionId(); // e.g. "550e8400-e29b-41d4-a716-446655440000"
  */
 const generateTransactionId = () => {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -65,8 +72,15 @@ const generateTransactionId = () => {
 };
 
 /**
- * Captures all runtime information
- * @returns {Object} All captured details matching RuntimeInfo structure
+ * Captures comprehensive runtime information about the current environment
+ * @returns {Object} Object containing:
+ *   - Environment info (userAgent, language, platform)
+ *   - Viewport dimensions
+ *   - Theme settings
+ *   - Performance metrics (page load, paint times, memory usage)
+ *   - Network info (connection type, speed)
+ *   - Device info (screen size, orientation)
+ * @throws {Error} Logs warning to console if any info capture fails
  */
 const captureRuntimeInfo = () => {
     const info = {};

@@ -146,8 +146,9 @@ export default class Triton {
     }
 
     /**
-     * Sends all buffered logs to the server and clears the buffer
-     * @returns {Promise} Promise that resolves when logs are flushed
+     * Flushes all logs in the buffer to the server
+     * @returns {Promise} Promise that resolves when logs are successfully saved
+     * @throws {Error} If there's an error saving the logs
      */
     async flush() {
         if(this.logs.length === 0) {
@@ -155,14 +156,21 @@ export default class Triton {
             return;
         }
 
+        // Take a snapshot of current logs
+        const logsToFlush = [...this.logs];
+        this.logs = [];
+
         try {
             const data = await saveComponentLogs({
-                componentLogs: this.logs
+                componentLogs: logsToFlush
             });
-            this.logs = [];
+            
             console.log('Logs flushed successfully:', data);
             return data;
         } catch (error) {
+            // On error, add back the logs that failed to flush
+            // but append them to any new logs that might have been added
+            this.logs = [...this.logs, ...logsToFlush];
             console.error(error);
             throw error;
         }
@@ -193,9 +201,9 @@ export default class Triton {
     }
 
     /**
-     * Adds a log builder to the buffer
-     * @param {TritonBuilder} builder - Builder instance to log
-     * @returns {TritonBuilder} The builder instance
+     * Adds a log to the buffer
+     * @param {TritonBuilder} builder - Builder instance to add to the buffer
+     * @returns {TritonBuilder} The builder instance for chaining
      */
     log(builder) {
         this.logs.push(builder);
@@ -224,7 +232,7 @@ export default class Triton {
     }
 
     /**
-     * Creates a new log builder with default category and userId
+     * Creates a new builder from the saved template or default settings
      * @private
      * @returns {TritonBuilder} New builder instance
      */

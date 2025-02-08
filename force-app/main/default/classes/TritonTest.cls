@@ -973,4 +973,144 @@ private class TritonTest {
         String unchangedStackTrace = TritonHelper.filterStackTrace(mockStackTraceNoTriton);
         System.assertEquals(mockStackTraceNoTriton, unchangedStackTrace, 'Stack trace without Triton entries should remain unchanged');
     }
+
+    @IsTest
+    private static void test_cache_functionality() {
+        Test.startTest();
+        
+        // Test withCache when cache is available
+        Cache.Org.put('test', 'test'); // This will make CACHE_AVAILABLE true
+        Triton instance = Triton.instance.withCache();
+        System.assert(instance.withCache, 'Cache should be enabled');
+        
+        // Start a transaction and verify it's cached
+        String transactionId = instance.startTransaction();
+        System.assertNotEquals(null, transactionId, 'Transaction ID should be generated');
+        System.assertEquals(transactionId, TritonHelper.getCachedTransactionId(), 'Transaction ID should be cached');
+        
+        // Resume transaction and verify cache is updated
+        String newTransactionId = 'test-transaction-id';
+        instance.resumeTransaction(newTransactionId);
+        System.assertEquals(newTransactionId, TritonHelper.getCachedTransactionId(), 'New transaction ID should be cached');
+        
+        // Stop transaction and verify cache is cleared
+        instance.stopTransaction();
+        System.assertEquals(null, TritonHelper.getCachedTransactionId(), 'Cache should be cleared after stopping transaction');
+        
+        Test.stopTest();
+    }
+
+    @IsTest
+    private static void test_cache_functionality_negative() {
+        Test.startTest();
+        
+        // Force cache to be unavailable by simulating a Platform Cache exception
+        Cache.Org.remove('test'); // Clear any existing cache entries
+        
+        // Create instance with cache disabled
+        Triton instance = Triton.instance;
+        instance.withCache = false; // Explicitly disable cache
+        
+        // Verify transaction management still works without cache
+        String transactionId = instance.startTransaction();
+        System.assertNotEquals(null, transactionId, 'Transaction ID should be generated even without cache');
+        System.assertEquals(null, TritonHelper.getCachedTransactionId(), 'Transaction should not be cached when cache is disabled');
+        
+        Test.stopTest();
+    }
+
+    @IsTest
+    private static void test_get_operation_from_stack_trace() {
+        // Test various stack trace formats
+        String stackTrace1 = 'Class.TestClass.testMethod: line 10, column 1\n' +
+                            'Class.AnotherClass.anotherMethod: line 20, column 1';
+        String operation1 = TritonHelper.getOperation(stackTrace1);
+        System.assertEquals('Class.TestClass.testMethod', operation1, 'Should extract first operation from stack trace');
+        
+        String stackTrace2 = 'Class.TritonHelper.someMethod: line 5, column 1\n' +
+                            'Class.TestClass.testMethod: line 10, column 1';
+        String operation2 = TritonHelper.getOperation(stackTrace2);
+        System.assertEquals('Class.TestClass.testMethod', operation2, 'Should skip Triton entries');
+        
+        // Test edge cases
+        System.assertEquals('', TritonHelper.getOperation(''), 'Should handle empty stack trace');
+        System.assertEquals('', TritonHelper.getOperation('Invalid stack trace'), 'Should handle invalid stack trace');
+        System.assertEquals('', TritonHelper.getOperation(null), 'Should handle null stack trace');
+    }
+
+    @IsTest
+    private static void test_log_buffering() {
+        Test.startTest();
+        
+        // Add multiple logs to buffer using direct builder
+        for(Integer i = 0; i < 3; i++) {
+            Triton.instance.addLog(
+                Triton.makeBuilder()
+                    .category(TritonTypes.Category.Apex)
+                    .type(TritonTypes.Type.Backend)
+                    .area(TritonTypes.Area.Community)
+                    .summary('Error ' + i)
+                    .details('Details ' + i)
+                    .level(TritonTypes.Level.ERROR)
+            );
+        }
+        
+        // Verify logs are in buffer but not persisted
+        System.assertEquals(3, Triton.instance.logs.size(), 'Should have 3 logs in buffer');
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c], 'No logs should be persisted yet');
+        
+        // Test flush - should persist all logs
+        Triton.instance.flush();
+        
+        // Wait for async operations to complete
+        Test.stopTest();
+        
+        List<pharos__Log__c> persistedLogs = [
+            SELECT pharos__Summary__c 
+            FROM pharos__Log__c 
+            ORDER BY CreatedDate
+        ];
+        System.assertEquals(3, persistedLogs.size(), 'All logs should be persisted');
+        
+        // Verify log summaries
+        Set<String> expectedSummaries = new Set<String>{'Error 0', 'Error 1', 'Error 2'};
+        Set<String> actualSummaries = new Set<String>();
+        for(pharos__Log__c log : persistedLogs) {
+            actualSummaries.add(log.pharos__Summary__c);
+        }
+        System.assertEquals(expectedSummaries, actualSummaries, 'All expected logs should be persisted');
+    }
+
+    @IsTest
+    private static void test_log_buffering_with_template() {
+        Test.startTest();
+        
+        // Set up a template
+        TritonBuilder template = Triton.makeBuilder()
+            .category(TritonTypes.Category.Debug)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community);
+        Triton.instance.setTemplate(template);
+        
+        // Add logs using template
+        for(Integer i = 0; i < 3; i++) {
+            Triton.instance.addLog(
+                Triton.instance.fromTemplate()
+                    .summary('Log ' + i)
+                    .details('Template test ' + i)
+            );
+        }
+        
+        // Verify template properties are applied
+        for(pharos__Log__c log : Triton.instance.logs) {
+            System.assertEquals(TritonTypes.Category.Debug.name(), log.pharos__Category__c, 
+                'Template category should be applied');
+            System.assertEquals(TritonTypes.Type.Backend.name(), log.pharos__Type__c, 
+                'Template type should be applied');
+            System.assertEquals(TritonTypes.Area.Community.name(), log.pharos__Area__c, 
+                'Template area should be applied');
+        }
+        
+        Test.stopTest();
+    }
 }

@@ -82,9 +82,10 @@ public with sharing class Triton {
         get {
             if (CACHE_AVAILABLE == null) {
                 try {
-                    // Check if platform cache is enabled and any partitions are accessible
-                    List<String> partitions = Cache.Org.getAvailablePartitions();
-                    CACHE_AVAILABLE = !partitions.isEmpty();
+                    // Try to get the Session partition - this will throw an exception
+                    // if platform cache is not enabled or no partitions are configured
+                    Cache.Session.getKeys();
+                    CACHE_AVAILABLE = true;
                 } catch (Exception e) {
                     CACHE_AVAILABLE = false;
                 }
@@ -142,7 +143,7 @@ public with sharing class Triton {
     * @return builder -- Pharos builder previously saved as a template
     */
     public TritonBuilder fromTemplate() {
-        return (TritonBuilder)this.template.clone()
+        return (TritonBuilder)this.template.cloneBuilder()
                 .transactionId(TRANSACTION_ID)
                 .createdTimestamp();
     }
@@ -242,9 +243,8 @@ public with sharing class Triton {
     */
 
     /**
-    * Add Log from builder
-    * This method will automatically get the stacktrace and save it on the log record.
-    * @param builder -- Pharos builder 
+    * Adds a log to the buffer
+    * @param builder TritonBuilder instance containing log details
     */
     public void addLog(TritonBuilder builder) {
         pharos__Log__c log = builder.build();
@@ -253,8 +253,10 @@ public with sharing class Triton {
             return;
         }
         //get the stacktrace if one isn't provided
+        String stackTrace = log.pharos__Stacktrace__c;
         if(String.isBlank(log.pharos__Stacktrace__c)) {
-            builder.stackTrace(TritonHelper.getCurrentStackTrace());
+            stackTrace = TritonHelper.getCurrentStackTrace();
+            builder.stackTrace(stackTrace);
         }
 
         //set the operation based on the class name and method name
@@ -264,19 +266,12 @@ public with sharing class Triton {
 
         builder.limitInfo();
 
-        add(builder.build());
+        logs.add(builder.build());
     }
 
     /**
-    * Adds a log to the buffer.
-    * @param log -- Pharos log record
-    */
-    private void add(pharos__Log__c log) {
-        this.logs.add(log);
-    }
-
-    /**
-    * Immediate
+    * Adds a log to the buffer and immediately flushes it
+    * @param builder TritonBuilder instance containing log details
     */
     public void log(TritonBuilder builder) {
         addLog(builder);
@@ -708,11 +703,9 @@ public with sharing class Triton {
     }
 
     /**
-    * Add Log with DML results.
-    * This method will automatically get the stacktrace and save it on the log record.
-    * @param type -- log record TritonTypes.Type (see Type enum)
-    * @param area -- log record Functional TritonTypes.Area (see Area enum)
-    * @param dmlResults -- Array of Database.SaveResult, Database.DeleteResult, etc
+    * Adds a DML operation result log
+    * @param area Functional area for the log
+    * @param dmlResults List of DML operation results (SaveResult, DeleteResult, etc.)
     */
     public void addDMLResult(TritonTypes.Area area, List<Object> dmlResults) {
         Set<String> failedIds = new Set<String>();
