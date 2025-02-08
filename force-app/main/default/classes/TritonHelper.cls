@@ -22,6 +22,48 @@
  */
 public with sharing class TritonHelper {
 
+    private static final String TRANSACTION_CACHE_KEY = 'tritonTransactionId';
+    private static final Integer DEFAULT_TRANSACTION_CACHE_DURATION = 300;
+    /**
+     * Generates a user-specific cache key
+     * @return Cache key specific to current user
+     */
+    private static String getUserCacheKey() {
+        return UserInfo.getUserId() + TRANSACTION_CACHE_KEY;
+    }
+    
+    /**
+     * Saves transaction ID to platform cache with user-specific key
+     * @param transactionId Transaction ID to cache
+     */
+    public static void cacheTransactionId(String transactionId) {
+        try {
+            Cache.Session.put(getUserCacheKey(), transactionId, DEFAULT_TRANSACTION_CACHE_DURATION);
+        } catch (Exception e) {
+            // Silently handle cache failures - logging system should continue without cache
+        }
+    }
+
+    /**
+     * Retrieves transaction ID from platform cache using user-specific key
+     * @return Cached transaction ID or null if not found
+     */
+    public static String getCachedTransactionId() {
+        try {
+            return (String)Cache.Session.get(getUserCacheKey());
+        } catch (Exception e) {
+            // Silently handle cache failures - logging system should continue without cache
+            return null;
+        }
+    }
+
+    /**
+     * Clears transaction ID from platform cache
+     */
+    public static void clearCachedTransactionId() {
+        Cache.Session.remove(getUserCacheKey());
+    }
+
     /**
     * Creates a key for log level based on:
     * @param category -- log category field
@@ -274,5 +316,119 @@ public with sharing class TritonHelper {
      */
     public static String formatMessage(String template, List<String> params) {
         return String.format(template, params);
+    }
+
+    /**
+     * Extracts the operation (Class.Method) from a stack trace string
+     * Takes the topmost non-Triton entry from the stack trace
+     * 
+     * @param stackTrace The stack trace string to parse
+     * @return String in format "ClassName.MethodName"
+     */
+    public static String getOperation(String stackTrace) {
+        if (String.isBlank(stackTrace)) return '';
+        
+        // Split the stack trace into lines
+        List<String> stackLines = stackTrace.split('\n');
+        
+        for (String line : stackLines) {
+            // Skip empty lines
+            if (String.isBlank(line)) continue;
+            
+            // Line format is typically: Class.Method: line n, column m
+            String trimmedLine = line.trim();
+            
+            // Skip Triton-related entries
+            if (trimmedLine.contains('Triton')) continue;
+            
+            // Extract the Class.Method part (everything before the first colon)
+            Integer colonIndex = trimmedLine.indexOf(':');
+            if (colonIndex == -1) continue;
+            
+            String operation = trimmedLine.substring(0, colonIndex).trim();
+            
+            // Validate that we have both class and method (contains a dot)
+            if (operation.contains('.')) {
+                return operation;
+            }
+        }
+        
+        return '';
+    }
+
+    /**
+     * Formats runtime information into a readable string
+     * @param {TritonLwc.RuntimeInfo} runtime The runtime info object to format
+     * @return Formatted string with all runtime details
+     */
+    public static String formatLwcRuntimeInfo(TritonLwc.RuntimeInfo runtime) {
+        if (runtime == null) return '';
+        
+        final String HEADER = Triton.SPACE_SEP + 'Runtime Info:';
+        final String MB_TEMPLATE = '{0}MB';
+        final String MS_TEMPLATE = '{0}ms';
+        final String MBPS_TEMPLATE = '{0}Mbps';
+        final String DIMENSION_TEMPLATE = '{0}x{1}';
+        
+        String details = HEADER;
+        
+        // Environment
+        details += Triton.SPACE_SEP + '=== Environment ===';
+        details += formatMessage('\nUser Agent: {0}', runtime.userAgent);
+        details += formatMessage('\nPlatform: {0}', runtime.platform);
+        details += formatMessage('\nLanguage: {0}', runtime.language);
+        details += formatMessage('\nMobile: {0}', String.valueOf(runtime.mobile));
+        details += runtime.viewportWidth != null ? formatMessage('\nViewport: ' + DIMENSION_TEMPLATE, 
+            new String[]{String.valueOf(runtime.viewportWidth), String.valueOf(runtime.viewportHeight)}) : '';
+        details += formatMessage('\nTheme: {0}', runtime.theme);
+        
+        // Performance
+        details += Triton.SPACE_SEP + '=== Performance ===';
+        details += runtime.pageLoadTime != null ? formatMessage('\nPage Load Time: ' + MS_TEMPLATE, 
+            String.valueOf(Decimal.valueOf(runtime.pageLoadTime).setScale(2))) : '';
+        details += runtime.domInteractive != null ? formatMessage('\nDOM Interactive: ' + MS_TEMPLATE, 
+            String.valueOf(Decimal.valueOf(runtime.domInteractive).setScale(2))) : '';
+        details += runtime.domContentLoaded != null ? formatMessage('\nDOM Content Loaded: ' + MS_TEMPLATE, 
+            String.valueOf(Decimal.valueOf(runtime.domContentLoaded).setScale(2))) : '';
+        details += runtime.firstByte != null ? formatMessage('\nTime to First Byte: ' + MS_TEMPLATE, 
+            String.valueOf(Decimal.valueOf(runtime.firstByte).setScale(2))) : '';
+        details += runtime.serverTime != null ? formatMessage('\nServer Time: ' + MS_TEMPLATE, 
+            String.valueOf(Decimal.valueOf(runtime.serverTime).setScale(2))) : '';
+        details += runtime.firstPaint != null ? formatMessage('\nFirst Paint: ' + MS_TEMPLATE, 
+            String.valueOf(Decimal.valueOf(runtime.firstPaint).setScale(2))) : '';
+        details += runtime.firstContentfulPaint != null ? formatMessage('\nFirst Contentful Paint: ' + MS_TEMPLATE, 
+            String.valueOf(Decimal.valueOf(runtime.firstContentfulPaint).setScale(2))) : '';
+        
+        // Memory
+        details += Triton.SPACE_SEP + '=== Memory ===';
+        if (runtime.memoryUsage != null) {
+            Decimal memoryUsageMB = Decimal.valueOf(runtime.memoryUsage / 1048576).setScale(2);
+            details += formatMessage('\nMemory Usage: ' + MB_TEMPLATE, String.valueOf(memoryUsageMB));
+        }
+        if (runtime.memoryLimit != null) {
+            Decimal memoryLimitMB = Decimal.valueOf(runtime.memoryLimit / 1048576).setScale(2);
+            details += formatMessage('\nMemory Limit: ' + MB_TEMPLATE, String.valueOf(memoryLimitMB));
+        }
+        
+        // Network
+        details += Triton.SPACE_SEP + '=== Network ===';
+        details += formatMessage('\nConnection Type: {0}', runtime.connectionType);
+        details += runtime.connectionSpeed != null ? formatMessage('\nConnection Speed: ' + MBPS_TEMPLATE, 
+            String.valueOf(runtime.connectionSpeed)) : '';
+        details += runtime.connectionRtt != null ? formatMessage('\nConnection RTT: ' + MS_TEMPLATE, 
+            String.valueOf(Decimal.valueOf(runtime.connectionRtt).setScale(2))) : '';
+        details += formatMessage('\nSave Data: {0}', String.valueOf(runtime.saveData));
+        details += formatMessage('\nPath: {0}', runtime.pathname);
+        details += formatMessage('\nHost: {0}', runtime.hostname);
+        details += formatMessage('\nOnline: {0}', String.valueOf(runtime.isOnline));
+        
+        // Device
+        details += Triton.SPACE_SEP + '=== Device ===';
+        details += formatMessage('\nForm Factor: {0}', runtime.formFactor);
+        details += runtime.screenWidth != null ? formatMessage('\nScreen: ' + DIMENSION_TEMPLATE, 
+            new String[]{String.valueOf(runtime.screenWidth), String.valueOf(runtime.screenHeight)}) : '';
+        details += formatMessage('\nOrientation: {0}', runtime.orientation);
+        
+        return details;
     }
 }

@@ -21,7 +21,7 @@
  * 
  */
 
-public without sharing class Triton {
+public with sharing class Triton {
 
     public static final String SPACE_SEP = '\n\n';
     
@@ -74,10 +74,59 @@ public without sharing class Triton {
         set;
     }
 
+    /**
+     * Indicates whether platform cache is available for transaction management
+     */
+    @TestVisible
+    private static Boolean CACHE_AVAILABLE {
+        get {
+            if (CACHE_AVAILABLE == null) {
+                try {
+                    // Check if platform cache is enabled and any partitions are accessible
+                    List<String> partitions = Cache.Org.getAvailablePartitions();
+                    CACHE_AVAILABLE = !partitions.isEmpty();
+                } catch (Exception e) {
+                    CACHE_AVAILABLE = false;
+                }
+            }
+            return CACHE_AVAILABLE;
+        }
+        private set;
+    }
+
+    /**
+     * Indicates whether this instance should use platform cache for transaction management
+     */
+    @TestVisible
+    private Boolean withCache = false;
+
     // Constructor
     private Triton(pharos.Logger logger) {
         this.logger = logger;
         this.template = makeBuilder();
+    }
+
+    /**
+     * Enables platform cache for transaction management
+     * @return Triton instance for chaining
+     */
+    public Triton withCache() {
+        if (!CACHE_AVAILABLE) {
+            this.withCache = false;
+            if (TRANSACTION_ID == null) {
+                startTransaction();
+            }
+            return this;
+        }
+
+        this.withCache = true;
+        String transactionId = TritonHelper.getCachedTransactionId();       
+        if (String.isNotBlank(transactionId)) {
+            resumeTransaction(transactionId);
+        } else if(TRANSACTION_ID == null) {
+            startTransaction();
+        }        
+        return this;
     }
 
     /**
@@ -93,18 +142,9 @@ public without sharing class Triton {
     * @return builder -- Pharos builder previously saved as a template
     */
     public TritonBuilder fromTemplate() {
-        return (TritonBuilder)this.template.clone().transactionId(TRANSACTION_ID);
-    }
-
-    /**
-    * Adds a log to the buffer.
-    * Performs a check on current log level prior
-    * @param log -- Pharos log record
-    */
-    public void add(pharos__Log__c log) {
-        if (isLogAllowedForLogLevel(log)) {
-            this.logs.add(log);
-        }
+        return (TritonBuilder)this.template.clone()
+                .transactionId(TRANSACTION_ID)
+                .createdTimestamp();
     }
 
     /**
@@ -159,6 +199,9 @@ public without sharing class Triton {
      */
     public String startTransaction() {
         TRANSACTION_ID = TritonHelper.generateUUID4();
+        if (withCache) {
+            TritonHelper.cacheTransactionId(TRANSACTION_ID);
+        }
         return TRANSACTION_ID;
     }
 
@@ -168,6 +211,10 @@ public without sharing class Triton {
      * Use this method to tie together different Salesforce transactions.
      */
     public void resumeTransaction(String transactionId) {
+        if (withCache) {
+            //cache the transaction id, even if it's the same as the current one to extend the TTL
+            TritonHelper.cacheTransactionId(transactionId);
+        }
         TRANSACTION_ID = transactionId;
     }
 
@@ -178,6 +225,9 @@ public without sharing class Triton {
      */
     public void stopTransaction() {
         TRANSACTION_ID = null;
+        if (withCache) {
+            TritonHelper.clearCachedTransactionId();
+        }
     }
 
     /**
@@ -197,12 +247,32 @@ public without sharing class Triton {
     * @param builder -- Pharos builder 
     */
     public void addLog(TritonBuilder builder) {
-        builder.limitInfo();
+        pharos__Log__c log = builder.build();
+
+        if (!isLogAllowedForLogLevel(log)) {
+            return;
+        }
         //get the stacktrace if one isn't provided
-        if(String.isBlank(builder.build().pharos__Stacktrace__c)) {
+        if(String.isBlank(log.pharos__Stacktrace__c)) {
             builder.stackTrace(TritonHelper.getCurrentStackTrace());
         }
+
+        //set the operation based on the class name and method name
+        if(String.isBlank(builder.build().pharos__Apex_Name__c)) {
+            builder.operation(TritonHelper.getOperation(stackTrace));
+        }
+
+        builder.limitInfo();
+
         add(builder.build());
+    }
+
+    /**
+    * Adds a log to the buffer.
+    * @param log -- Pharos log record
+    */
+    private void add(pharos__Log__c log) {
+        this.logs.add(log);
     }
 
     /**

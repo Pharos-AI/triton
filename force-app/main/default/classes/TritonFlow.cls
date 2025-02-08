@@ -20,7 +20,7 @@
  * - Flow context capture (Interview GUID, Flow API Name)
  * - Validation and fallback for category and log level enums
  */
-public with sharing class TritonFlow {
+global with sharing class TritonFlow {
     private static final String INVALID_LOG_LEVEL = 'Unable to locate log level: {0}. Default INFO level will be used.';
     private static final String INVALID_CATEGORY = 'Unable to locate category: {0}. Default Flow category will be used.';
     
@@ -67,6 +67,7 @@ public with sharing class TritonFlow {
                 .transactionId(Triton.instance.TRANSACTION_ID)
                 .interviewGuid(flowLog.interviewGUID)
                 .flowApiName(flowLog.flowApiName)
+                .operation(flowLog.operation)
                 .level(level);
 
         if (String.isNotBlank(flowLog.additionalFields)) {
@@ -82,31 +83,33 @@ public with sharing class TritonFlow {
                         flowLog.additionalFields));
             }
         }
-        Triton.instance.add(builder.build());
+        Triton.instance.addLog(builder);
     }
 
 
     /**
      * A wrapper class for passing log data from flow
      */
-    public class FlowLog {
-        @InvocableVariable(Required=true Label='Category')
-        public String category;
-        @InvocableVariable(Required=true Label='Type')
-        public String type;
+    global class FlowLog {
+        @InvocableVariable(Required=false Label='Category')
+        global String category;
+        @InvocableVariable(Required=false Label='Type')
+        global String type;
         @InvocableVariable(Required=true Label='Area')
-        public String area;
+        global String area;
         @InvocableVariable(Required=true Label='Summary')
-        public String summary;
-        @InvocableVariable(Required=true Label='Details')
-        public String details;
+        global String summary;
+        @InvocableVariable(Required=false Label='Details')
+        global String details;
         @InvocableVariable(Required=true Label='Interview GUID')
-        public String interviewGUID;
+        global String interviewGUID;
         @InvocableVariable(Required=false Label='Flow API Name')
-        public String flowApiName;
+        global String flowApiName;
         @InvocableVariable(Required=false Label='Level')
-        public String level;
+        global String level;
+        @InvocableVariable(Required=false Label='Operation')
+        global String operation;
         @InvocableVariable(Required=false Label='Additional Fields')
-        public String additionalFields;
+        global String additionalFields;
     }
 }

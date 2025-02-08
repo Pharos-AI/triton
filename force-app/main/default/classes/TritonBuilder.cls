@@ -66,7 +66,7 @@ public with sharing virtual class TritonBuilder {
 
     public TritonBuilder() {
         this.builder = pharos.LogBuilder.getInstance().clone();
-        this.builder.attribute(CREATED_TIMESTAMP, Double.valueOf(System.now().getTime()));
+        createdTimestamp();
         this.builder.attribute(DO_NOT_CREATE_ISSUE, true);
         this.builder.attribute(REQUEST_ID, System.Request.getCurrent().getRequestId());
     }
@@ -281,6 +281,14 @@ public with sharing virtual class TritonBuilder {
     public TritonBuilder createdTimestamp(Double timestamp) {
         this.builder.attribute(CREATED_TIMESTAMP, timestamp);
         return this;
+    }
+
+    /**
+    * Set created timestamp for the log to current time
+    * @return this builder instance
+    */
+    public TritonBuilder createdTimestamp() {
+        return createdTimestamp(Double.valueOf(System.now().getTime()));
     }
 
     /**

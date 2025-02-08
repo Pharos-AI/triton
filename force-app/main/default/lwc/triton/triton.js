@@ -8,176 +8,250 @@
  * See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
  */
 
-import {LightningElement, api} from 'lwc';
-import {makeBuilder} from 'c/tritonBuilder';
 import saveComponentLogs from '@salesforce/apex/TritonLwc.saveComponentLogs';
+import USER_ID from '@salesforce/user/Id';
+import TritonBuilder from 'c/tritonBuilder';
+import { isNotTriton, isAura, generateTransactionId, captureRuntimeInfo } from 'c/tritonUtils';
 
-export default class Triton extends LightningElement {
+export default class Triton {
+    static instance = null;
 
     /**
-     * Logs buffer
+     * Buffer to store logs before sending to server
+     * @private
+     * @type {Array}
      */
-    @api
     logs = [];
 
     /**
-     * Add Log with LWC / Aura Category.
-     * This method will automatically get the stacktrace from Exception.
-     * Type will be obtained from Exception. If blank, a default Frontend Type will be saved
-     * Summary is the Exception message.
-     * Details will be a combination of Exception String and stacktrace
+     * Template builder for reuse
+     * @private
+     * @type {TritonBuilder}
      */
-    @api
-    addException(error) {
-        return this._makeBuilder().setError(error).setLevel(LEVEL.ERROR);
+    template = null;
+
+    category = CATEGORY.LWC;
+    
+    /**
+     * Current transaction ID
+     * @private
+     * @type {string}
+     */
+    transactionId = null;
+
+    constructor() {
+        if (Triton.instance) {
+            return Triton.instance;
+        }
+
+        this.transactionManager = new TransactionManager(this);
+        if(isAura()) {
+            this.category = CATEGORY.AURA;
+        }
+            
+        this.transactionId = this.transactionManager.initialize();
+        
+        Triton.instance = this;
     }
 
     /**
-     * Add Log with LWC / Aura Category.
+     * Generates and stores a new transaction ID (UUID v4)
+     * Also starts the auto-flush monitor
+     * @returns {string} The generated transaction ID
      */
-    @api
-    addError() {
-        return this._makeBuilder().setLevel(LEVEL.ERROR);
+    startTransaction() {
+        this.transactionId = this.transactionManager.start();
+        return this.transactionId;
     }
 
     /**
-     * Add Log with Warning Category.
+     * Resumes a transaction using an existing transaction ID
+     * Also starts the auto-flush monitor
+     * @param {string} transactionId - Existing transaction ID to resume
      */
-    @api
-    addWarning() {
-        return this._makeBuilder().setCategory(CATEGORY.WARNING).setLevel(LEVEL.WARNING);
+    resumeTransaction(transactionId) {
+        this.transactionId = this.transactionManager.resume(transactionId);
     }
 
     /**
-     * Add Log with Debug Category.
+     * Stops the current transaction and auto-flush monitor
+     * Flushes any remaining logs
      */
-    @api
-    addDebug() {
-        return this._makeBuilder().setCategory(CATEGORY.DEBUG).setLevel(LEVEL.DEBUG);
+    stopTransaction() {
+        this.transactionManager.stop();
+        this.transactionId = null;
     }
 
     /**
-     * Add Log with Event Category.
+     * Creates an error log from an Exception
+     * @param {Error} error - JavaScript Error object to log
+     * @returns {void}
      */
-    @api
-    addInfo() {
-        return this._makeBuilder().setCategory(CATEGORY.EVENT).setLevel(LEVEL.INFO);
+    exception(error) {
+        return this.makeBuilder()
+                        .exception(error)
+                        .level(LEVEL.ERROR)
     }
 
     /**
-     * Save Log with LWC / Aura Category.
-     * This method will automatically get the stacktrace from Exception.
-     * Type will be obtained from Exception. If blank, a default Frontend Type will be saved
-     * Summary is the Exception message.
-     * Details will be a combination of Exception String and stacktrace
+     * Creates an error level log
+     * @param {string} type - Log type from TYPE enum
+     * @param {string} area - Log area from AREA enum
+     * @returns {void}
      */
-    @api
-    exception(error, transactionId) {
-        this._makeBuilder()
-            .setError(error)
-            .setLevel(LEVEL.ERROR)
-            .setTransactionId(transactionId);
-        this.flush();
+    error(type, area) {
+        return this.makeBuilder()
+            .level(LEVEL.ERROR)
+            .type(type)
+            .area(area)
     }
 
     /**
-     * Save Log with LWC / Aura Category.
+     * Creates a warning level log
+     * @param {string} type - Log type from TYPE enum
+     * @param {string} area - Log area from AREA enum
+     * @returns {void}
      */
-    @api
-    error(type, area, summary, details, transactionId, component, duration, startTime) {
-        this._makeBuilder()
-            .setLevel(LEVEL.ERROR)
-            .setType(type)
-            .setArea(area)
-            .setSummary(summary)
-            .setDetails(details)
-            .setTransactionId(transactionId)
-            .setComponent(component)
-            .setDuration(duration)
-            .setCreatedTimestamp(startTime);
-        this.flush();
+    warning(type, area) {
+        return this.makeBuilder()
+            .level(LEVEL.WARNING)
+            .type(type)
+            .area(area)
     }
 
     /**
-     * Save Log with Warning Category.
+     * Creates a debug level log
+     * @param {string} type - Log type from TYPE enum
+     * @param {string} area - Log area from AREA enum
+     * @returns {void}
      */
-    @api
-    warning(type, area, summary, details, transactionId, component, duration, startTime) {
-        this._makeBuilder()
-            .setLevel(LEVEL.WARNING)
-            .setCategory(CATEGORY.WARNING)
-            .setType(type)
-            .setArea(area)
-            .setSummary(summary)
-            .setDetails(details)
-            .setTransactionId(transactionId)
-            .setComponent(component)
-            .setDuration(duration)
-            .setCreatedTimestamp(startTime);
-        this.flush();
+    debug(type, area) {
+        return this.makeBuilder()
+            .level(LEVEL.DEBUG)
+            .type(type)
+            .area(area)
     }
 
     /**
-     * Save Log with Debug Category.
+     * Creates an info level log
+     * @param {string} type - Log type from TYPE enum
+     * @param {string} area - Log area from AREA enum
+     * @returns {void}
      */
-    @api
-    debug(type, area, summary, details, transactionId, component, duration, startTime) {
-        this._makeBuilder()
-            .setLevel(LEVEL.DEBUG)
-            .setCategory(CATEGORY.DEBUG)
-            .setType(type)
-            .setArea(area)
-            .setSummary(summary)
-            .setDetails(details)
-            .setTransactionId(transactionId)
-            .setComponent(component)
-            .setDuration(duration)
-            .setCreatedTimestamp(startTime);
-        this.flush();
+    info(type, area) {
+        return this.makeBuilder()
+            .level(LEVEL.INFO)
+            .type(type)
+            .area(area)
     }
 
     /**
-     * Save Log with Event Category.
+     * Sends all buffered logs to the server and clears the buffer
+     * @returns {Promise} Promise that resolves when logs are flushed
      */
-    @api
-    info(type, area, summary, details, level, transactionId, component, duration, startTime) {
-        this._makeBuilder()
-            .setLevel(level)
-            .setCategory(CATEGORY.EVENT)
-            .setType(type)
-            .setArea(area)
-            .setSummary(summary)
-            .setDetails(details)
-            .setTransactionId(transactionId)
-            .setComponent(component)
-            .setDuration(duration)
-            .setCreatedTimestamp(startTime);
-        this.flush();
-    }
+    async flush() {
+        if(this.logs.length === 0) {
+            console.log('No logs to flush');
+            return;
+        }
 
-    /**
-     * Commit all logs previously added using the addXXX() methods.
-     */
-    @api
-    flush() {
-        saveComponentLogs({
-            componentLogs: this.logs
-        }).then((data) => {
-        }).catch(error => {
+        try {
+            const data = await saveComponentLogs({
+                componentLogs: this.logs
+            });
+            this.logs = [];
+            console.log('Logs flushed successfully:', data);
+            return data;
+        } catch (error) {
             console.error(error);
-        });
-        this.logs = [];
+            throw error;
+        }
     }
 
-    _makeBuilder() {
-        let logBuilder = makeBuilder();
-        this.logs.push(logBuilder);
-        return logBuilder;
+    /**
+     * Sets a builder template that can be re-used
+     * @param {TritonBuilder} builder - Builder to be used as template
+     */
+    setTemplate(builder) {
+        this.template = builder;
     }
 
+    /**
+     * Creates a new builder from the saved template
+     * If no template exists, creates a new builder with default settings
+     * @returns {TritonBuilder} New builder instance
+     */
+    fromTemplate() {
+        if (this.template) {
+            // Clone the template and set transaction-specific properties
+            const builder = Object.assign(new TritonBuilder(), this.template);
+            return builder
+                .transactionId(this.transactionId)
+                .timestamp(Date.now());
+        }
+        return this.makeBuilder();
+    }
+
+    /**
+     * Adds a log builder to the buffer
+     * @param {TritonBuilder} builder - Builder instance to log
+     * @returns {TritonBuilder} The builder instance
+     */
+    log(builder) {
+        this.logs.push(builder);
+        return builder;
+    }
+
+    /**
+     * Immediately flushes a single log builder
+     * @param {TritonBuilder} builder - Builder instance to log
+     * @returns {Promise} Promise that resolves when the log is flushed
+     */
+    async logNow(builder) {
+        const currentLogs = [...this.logs];
+        this.logs = [builder];
+        
+        try {
+            const data = await this.flush();
+            // Add back any logs that were buffered during flush
+            this.logs.push(...currentLogs);  
+            return data;
+        } catch (error) {
+            // Also preserve logs on error
+            this.logs.push(...currentLogs);  
+            throw error;
+        }
+    }
+
+    /**
+     * Creates a new log builder with default category and userId
+     * @private
+     * @returns {TritonBuilder} New builder instance
+     */
+    makeBuilder() {
+        let builder = new TritonBuilder();
+        const componentStack = new Error().stack;
+        
+        builder.category(this.category)
+            .userId(USER_ID)
+            .timestamp(Date.now())
+            .componentDetails(componentStack)
+            .transactionId(this.transactionId);
+        
+        try {
+            builder.runtimeInfo(captureRuntimeInfo());
+        } catch (error) {
+            console.warn('Error capturing runtime details:', error);
+        }
+        
+        return builder;
+    }
 }
 
-/** AREA */
+/**
+ * Enumeration of available log areas
+ * @enum {string}
+ */
 export const AREA = {
     ACCOUNTS: 'ACCOUNTS',
     COMMUNITY: 'COMMUNITY',
@@ -186,7 +260,10 @@ export const AREA = {
     REST_API: 'REST_API'
 };
 
-/** LOG CATEGORY */
+/**
+ * Enumeration of available log categories
+ * @enum {string}
+ */
 export const CATEGORY = {
     LWC: 'LWC',
     AURA: 'Aura',
@@ -195,7 +272,10 @@ export const CATEGORY = {
     EVENT: 'Event'
 };
 
-/** LOG LEVEL */
+/**
+ * Enumeration of available log levels
+ * @enum {string}
+ */
 export const LEVEL = {
     ERROR: 'ERROR',
     WARNING: 'WARNING',
@@ -206,8 +286,101 @@ export const LEVEL = {
     FINEST: 'FINEST'
 };
 
-/** LOG TYPE */
+/**
+ * Enumeration of available log types
+ * @enum {string}
+ */
 export const TYPE = {
     BACKEND: 'Backend',
     FRONTEND: 'Frontend'
 };
+
+/**
+ * Manages transaction lifecycle and storage
+ * @private
+ */
+class TransactionManager {
+    static STORAGE_KEY = 'tritonTransactionId';
+    static AUTO_FLUSH_CHECK_INTERVAL = 10000; // 10 seconds
+    static AUTO_FLUSH_DELAY = 60000; // 1 minute
+
+    constructor(triton) {
+        this.triton = triton; // Reference to parent Triton instance for accessing logs
+    }
+
+    /**
+     * Initializes transaction management
+     * Either resumes existing transaction or starts new one
+     * @returns {string} Active transaction ID
+     */
+    initialize() {
+        const storedId = sessionStorage.getItem(TransactionManager.STORAGE_KEY);
+        if (storedId) {
+            return this.resume(storedId);
+        }
+        return this.start();
+    }
+
+    /**
+     * Starts a new transaction
+     * @returns {string} New transaction ID
+     */
+    start() {
+        const newId = generateTransactionId();
+        sessionStorage.setItem(TransactionManager.STORAGE_KEY, newId);
+        this.startAutoFlushMonitor();
+        return newId;
+    }
+
+    /**
+     * Resumes an existing transaction
+     * @param {string} transactionId - Transaction ID to resume
+     * @returns {string} Resumed transaction ID
+     */
+    resume(transactionId) {
+        sessionStorage.setItem(TransactionManager.STORAGE_KEY, transactionId);
+        this.startAutoFlushMonitor();
+        return transactionId;
+    }
+
+    /**
+     * Stops current transaction and monitoring
+     */
+    stop() {
+        this.stopAutoFlushMonitor();
+        this.triton.flush();
+        sessionStorage.removeItem(TransactionManager.STORAGE_KEY);
+    }
+
+    /**
+     * Starts monitoring the logs array for auto-flushing
+     * @private
+     */
+    async startAutoFlushMonitor() {
+        this.isMonitoring = true;
+        
+        while (this.isMonitoring) {
+            await new Promise(resolve => setTimeout(resolve, TransactionManager.AUTO_FLUSH_CHECK_INTERVAL));
+            
+            if (!this.isMonitoring) break;
+            
+            const now = Date.now();
+            if (this.triton.logs.length > 0) {
+                const lastLog = this.triton.logs[this.triton.logs.length - 1];
+                const lastLogTime = lastLog.createdTimestamp;
+                
+                if ((now - lastLogTime) >= TransactionManager.AUTO_FLUSH_DELAY) {
+                    await this.triton.flush();
+                }
+            }
+        }
+    }
+
+    /**
+     * Stops the auto-flush monitor
+     * @private
+     */
+    stopAutoFlushMonitor() {
+        this.isMonitoring = false;
+    }
+}
