@@ -22,391 +22,207 @@ Key features:
 - Integration error logging with HTTP request/response details
 - Configurable log levels via Custom Metadata
 - Builder pattern for constructing log entries
+- Runtime environment information capture
+- Transaction caching for cross-component tracking
 
-## Constructors
-### `private Triton(pharos.Logger logger)`
----
-## Fields
-
-### `public SPACE_SEP` → `String`
-
-
-### `private logger` → `pharos.Logger`
-
-
-### `private LOG_LEVELS_MDT` → `Log_Level__mdt`
-
-`TESTVISIBLE` 
-
-### `private template` → `TritonBuilder`
-
-
-### `private stackOffset` → `Integer`
-
-
-Stack trace offset.
-In case no stack is provided, it will be obtained automatically for error and debug logs.
-Use the offset to remove unwanted lines from top of the stack trace
-such as util method invocations.
-
-### `public TRANSACTION_ID` → `String`
-
-
-This value can be passed around to trace a complex process spanning multiple Salesforce transactions
-Can be used between LWC/Apex/Flow transitions when complex tracing is required.
-
----
 ## Properties
 
-### `public instance` → `Triton`
+### `public static Triton instance { get; private set; }`
+Singleton instance of the Triton logger. Access this through `Triton.instance`.
 
+### `public TritonBuilder template { get; private set; }`
+Template builder for reuse. Used to create new log entries with predefined settings.
 
-### `private LOG_LEVELS` → `Map<String,TritonTypes.Level>`
-
-`TESTVISIBLE` 
-
-Helper map for storing current log levels
-
----
 ## Methods
-### `public void setTemplate(TritonBuilder builder)`
 
-Sets a builder template that can be re-used
+### Transaction Management
 
-#### Parameters
+#### `public String startTransaction()`
+Generates and stores a new transaction ID for tracking related log entries.
 
-|Param|Description|
-|---|---|
-|`builder`|-- Pharos builder to be used as a template|
+**Description**  
+Initializes a new logging transaction and starts monitoring. Use this when beginning a new
+logical operation that may span multiple components or contexts.
 
-### `public TritonBuilder fromTemplate()`
+**Returns**  
+- `String` - The newly generated transaction ID
 
-Retrieves a copy of a previously saved template
+**Example**
+```apex
+String transactionId = Triton.instance.startTransaction();
+```
 
-#### Returns
+#### `public void resumeTransaction(String transactionId)`
+Resumes an existing transaction using a previously generated ID.
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|builder -- Pharos builder previously saved as a template|
+**Parameters**  
+- `transactionId` - `String` - The transaction ID to resume
 
-### `public void add(pharos__Log__c log)`
+**Throws**  
+- `IllegalArgumentException` - If the transaction ID is null or empty
 
-Adds a log to the buffer.
-Performs a check on current log level prior
+**Example**
+```apex
+Triton.instance.resumeTransaction('550e8400-e29b-41d4-a716-446655440000');
+```
 
-#### Parameters
+#### `public void stopTransaction()`
+Stops the current transaction, flushes remaining logs, and cleans up resources.
 
-|Param|Description|
-|---|---|
-|`log`|-- Pharos log record|
+**Description**  
+Should be called when the logical operation is complete. Will automatically flush
+any buffered logs before stopping the transaction.
 
-### `public void flush()`
+### Log Creation
 
-Persist Log records immediately.
-Use this method to persist logs to the database right away.
+#### `public TritonBuilder exception(Exception error)`
+Creates an error log entry from a Salesforce Exception.
 
-### `private void incStackOffset()`
-### `private void resetStackOffset()`
-### `public static TritonBuilder makeBuilder()`
+**Parameters**  
+- `error` - `Exception` - The exception to log
 
-Shorthand method for creating a new builder
+**Returns**  
+- `TritonBuilder` - A builder instance configured with the exception details
 
-### `public static TritonHelper.PostProcessingControlsBuilder makePostProcessingBuilder()`
+**Example**
+```apex
+try {
+    // Some operation
+} catch (Exception e) {
+    Triton.instance.exception(e)
+        .summary('Failed to process record')
+        .build();
+}
+```
 
-Shorthand method for creating a new post processing controls builder
+#### `public TritonBuilder error(TritonTypes.Type type, TritonTypes.Area area)`
+Creates an error level log entry.
 
-### `public String startTransaction()`
+**Parameters**  
+- `type` - `TritonTypes.Type` - The type of error (e.g., Backend, Frontend)
+- `area` - `TritonTypes.Area` - The functional area where the error occurred
 
-Start new transaction
-Autogenrated Transaction UUID
-This method will obtain a new autogenrated transaction id or use the current one
+**Returns**  
+- `TritonBuilder` - A builder instance configured with ERROR level
 
-### `public void resumeTransaction(String transactionId)`
+#### `public TritonBuilder warning(TritonTypes.Type type, TritonTypes.Area area)`
+Creates a warning level log entry.
 
-Resumes a transaction
-Assumes an existing transaction id
-Use this method to tie together different Salesforce transactions.
+**Parameters**  
+- `type` - `TritonTypes.Type` - The type of warning
+- `area` - `TritonTypes.Area` - The functional area
 
-### `public void stopTransaction()`
+**Returns**  
+- `TritonBuilder` - A builder instance configured with WARNING level
 
-Stops a transaction
-Resets the current transaction Id
-Use this method to marking tracking logs with the current transaction Id
+#### `public TritonBuilder debug(TritonTypes.Type type, TritonTypes.Area area)`
+Creates a debug level log entry.
 
-### `public void addLog(TritonBuilder builder)`
+**Parameters**  
+- `type` - `TritonTypes.Type` - The type of debug entry
+- `area` - `TritonTypes.Area` - The functional area
 
----------------------------
-Log methods.
----------------------------
+**Returns**  
+- `TritonBuilder` - A builder instance configured with DEBUG level
 
-There are 2 types of log methods per each category: buffered and immediate
-Buffered methods will add to the log collection without flush()'ing
-Immediate methods will add to the log collection and call flush()
+#### `public TritonBuilder info(TritonTypes.Type type, TritonTypes.Area area)`
+Creates an info level log entry.
 
-### `public void log(TritonBuilder builder)`
+**Parameters**  
+- `type` - `TritonTypes.Type` - The type of info entry
+- `area` - `TritonTypes.Area` - The functional area
 
-Immediate
+**Returns**  
+- `TritonBuilder` - A builder instance configured with INFO level
 
-### `public void addError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details)`
-
-Add Log with Error Category.
-This method will automatically get the stacktrace and save it on the log record.
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`type`|-- log record TritonTypes.Type (see Type enum)|
-|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
-|`summary`|-- summary of the issue. Saves to log record Summary field|
-|`details`|-- details of the issue. Saves to log record Details field|
-
-### `public void error(TritonTypes.Type type, TritonTypes.Area area, String summary, String details)`
-
-Immediate
-
-### `public void addError(TritonTypes.Area area, Exception e, Set<String> relatedObjectIds)`
-
-Add Log with Error Category and related records.
-This method will automatically get the stacktrace from Exception.
-Type will be obtained from Exception. If blank, a default Backend Type will be saved
-Summary is the Exception message.
-Details will be a combination of Exception String and stacktrace
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
-|`e`|-- instance of an Exception|
-|`relatedObjectIds`|-- a set of related records to associate with this log|
-
-### `public void addError(TritonTypes.Area area, Exception e)`
-
-Add Log with Error Category.
-This method will automatically get the stacktrace from Exception.
-Type will be obtained from Exception. If blank, a default Backend Type will be saved
-Summary is the Exception message.
-Details will be a combination of Exception String and stacktrace
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
-|`e`|-- instance of an Exception|
-
-### `public void error(TritonTypes.Area area, Exception e, Set<String> relatedObjectIds)`
-
-Immediate
-
-### `public void error(TritonTypes.Area area, Exception e)`
-### `public void addWarning(TritonTypes.Type type, TritonTypes.Area area, String summary, String details)`
-
-Add Log with Warning Category.
-This method will not save a stacktrace.
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`type`|-- log record TritonTypes.Type (see Type enum)|
-|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
-|`summary`|-- summary of the issue. Saves to log record Summary field|
-|`details`|-- details of the issue. Saves to log record Details field|
-
-### `public void warning(TritonTypes.Type type, TritonTypes.Area area, String summary, String details)`
-
-Immediate
-
-### `public void addDebug(TritonTypes.Type type, TritonTypes.Area area, String summary, String details)`
-
-Add Log with Debug Category.
-This method will automatically get the stacktrace.
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`type`|-- log record TritonTypes.Type (see Type enum)|
-|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
-|`summary`|-- summary of the issue. Saves to log record Summary field|
-|`details`|-- details of the issue. Saves to log record Details field|
-
-### `public void debug(TritonTypes.Type type, TritonTypes.Area area, String summary, String details)`
-
-Immediate
-
-### `public void addDebug(TritonTypes.Type type, TritonTypes.Area area, String summary, String details, Decimal duration)`
-
-Add Log with Debug Category.
-This method will automatically get the stacktrace.
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`type`|-- log record TritonTypes.Type (see Type enum)|
-|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
-|`summary`|-- summary of the issue. Saves to log record Summary field|
-|`details`|-- details of the issue. Saves to log record Details field|
-
-### `public void debug(TritonTypes.Type type, TritonTypes.Area area, String summary, String details, Decimal duration)`
-
-Immediate
-
-### `public void addEvent(TritonTypes.Level level, TritonTypes.Type type, TritonTypes.Area area, String summary, String details)`
-
-Add Log with Event Category.
-Default INFO log level
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`level`|-- log TritonTypes.Level (see Level enum)|
-|`type`|-- log record TritonTypes.Type (see Type enum)|
-|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
-|`summary`|-- summary of the issue. Saves to log record Summary field|
-|`details`|-- details of the issue. Saves to log record Details field|
-
-### `public void event(TritonTypes.Level level, TritonTypes.Type type, TritonTypes.Area area, String summary, String details)`
-
-Immediate
-
-### `public void addEvent(TritonTypes.Type type, TritonTypes.Area area, String summary, String details)`
-
-Add Log with Event Category.
-Default INFO log level
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`type`|-- log record TritonTypes.Type (see Type enum)|
-|`area`|-- log record Functional Area (see Area enum)|
-|`summary`|-- summary of the issue. Saves to log record Summary field|
-|`details`|-- details of the issue. Saves to log record Details field|
-
-### `public void event(TritonTypes.Type type, TritonTypes.Area area, String summary, String details)`
-
-Immediate
-
-### `public void addIntegrationError(TritonTypes.Area area, Exception e, HttpRequest request, HttpResponse response)`
-
-Add Log with Integration Category.
-This method will automatically get the stacktrace from Exception.
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
-|`e`|-- instance of an Exception|
-|`request`|-- HttpRequest of the issue. Saves to log record Details field|
-|`response`|-- HttpResponse of the issue. Saves to log record Details field|
-
-### `public void integrationError(TritonTypes.Area area, Exception e, HttpRequest request, HttpResponse response)`
-
-Immediate
-
-### `public void addIntegrationError(TritonTypes.Area area, Exception e, RestRequest request, RestResponse response)`
-
-Add Log with Integration Category.
-This method will automatically get the stacktrace from Exception.
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
-|`e`|-- instance of an Exception|
-|`request`|-- RestRequest of the issue. Saves to log record Details field|
-|`response`|-- RestResponse of the issue. Saves to log record Details field|
-
-### `public void integrationError(TritonTypes.Area area, Exception e, RestRequest request, RestResponse response)`
-
-Immediate
-
-### `public void addIntegrationError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details, HttpRequest request, HttpResponse response)`
-
-Add Log with Integration Category.
-This method will automatically get the stacktrace.
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`type`|-- log record TritonTypes.Type (see Type enum)|
-|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
-|`summary`|-- summary of the issue. Saves to log record Summary field|
-|`details`|-- details of the issue. Saves to log record Details field|
-|`request`|-- HttpRequest of the issue. Saves to log record Details field|
-|`response`|-- HttpResponse of the issue. Saves to log record Details field|
-
-### `public void integrationError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details, HttpRequest request, HttpResponse response)`
-
-Immediate
-
-### `public void addIntegrationError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details, RestRequest request, RestResponse response)`
-
-Add Log with Integration Category.
-This method will automatically get the stacktrace.
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`type`|-- log record TritonTypes.Type (see Type enum)|
-|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
-|`summary`|-- summary of the issue. Saves to log record Summary field|
-|`details`|-- details of the issue. Saves to log record Details field|
-|`request`|-- RestRequest of the issue. Saves to log record Details field|
-|`response`|-- RestResponse of the issue. Saves to log record Details field|
-
-### `public void integrationError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details, RestRequest request, RestResponse response)`
-
-Immediate
-
-### `public void addDMLResult(TritonTypes.Area area, List<Object> dmlResults)`
-
-Add Log with DML results.
-This method will automatically get the stacktrace and save it on the log record.
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`type`|-- log record TritonTypes.Type (see Type enum)|
-|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
-|`dmlResults`|-- Array of Database.SaveResult, Database.DeleteResult, etc|
-
-### `public void dmlResult(TritonTypes.Area area, List<Object> dmlResults)`
-
-Immediate version of addDMLResult
-Logs DML operation results and immediately flushes to database
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`area`|-- log record Functional TritonTypes.Area (see Area enum)|
-|`dmlResults`|-- Array of Database.SaveResult, Database.DeleteResult, etc|
-
-### `public static Boolean isLogAllowedForLogLevel(pharos__Log__c log)`
-
-Checks if a log should be persisted based on the current log level
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`log`|-- Pharos log record to be saved|
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`Boolean`|-- true if current log's level is below the level set in the settings, false otherwise|
+### Log Management
+
+#### `public void flush()`
+Flushes all buffered logs to the database.
+
+**Description**  
+Commits all pending log entries to the database. Should be called explicitly if
+immediate persistence is required.
+
+**Throws**  
+- `DmlException` - If there's an error saving the logs
+- `System.LimitException` - If governor limits are exceeded
+
+#### `public void setTemplate(TritonBuilder builder)`
+Sets a builder template for creating logs with common attributes.
+
+**Parameters**  
+- `builder` - `TritonBuilder` - The template builder to use
+
+**Example**
+```apex
+TritonBuilder template = new TritonBuilder()
+    .category(TritonTypes.Category.Apex)
+    .area(TritonTypes.Area.Accounts);
+Triton.instance.setTemplate(template);
+```
+
+#### `public TritonBuilder fromTemplate()`
+Creates a new builder instance from the saved template.
+
+**Returns**  
+- `TritonBuilder` - A new builder instance with template settings
+
+**Description**  
+If no template exists, creates a new builder with default settings.
+
+#### `public void log(TritonBuilder builder)`
+Adds a log entry to the buffer for later flushing.
+
+**Parameters**  
+- `builder` - `TritonBuilder` - The configured builder instance
+
+#### `public void logNow(TritonBuilder builder)`
+Immediately persists a single log entry.
+
+**Parameters**  
+- `builder` - `TritonBuilder` - The configured builder instance
+
+**Throws**  
+- `DmlException` - If there's an error saving the log
+
+## Enums
+
+### `TritonTypes.Area`
+Available log areas:
+- `ACCOUNTS` - Account-related operations
+- `COMMUNITY` - Community/portal operations
+- `LEAD_CONVERSION` - Lead conversion processes
+- `OPPORTUNITY_MANAGEMENT` - Opportunity-related operations
+- `REST_API` - REST API interactions
+
+### `TritonTypes.Category`
+Available log categories:
+- `APEX` - Server-side Apex code
+- `LWC` - Lightning Web Components
+- `AURA` - Aura Components
+- `WARNING` - Warning messages
+- `DEBUG` - Debug information
+- `EVENT` - Platform events
+- `INTEGRATION` - External integrations
+
+### `TritonTypes.Level`
+Available log levels (ordered from least to most verbose):
+- `ERROR` - Error conditions
+- `WARNING` - Warning conditions
+- `INFO` - Informational messages
+- `DEBUG` - Debug-level messages
+- `FINE` - Detailed tracing
+- `FINER` - More detailed tracing
+- `FINEST` - Most detailed tracing
+
+### `TritonTypes.Type`
+Available log types:
+- `BACKEND` - Server-side operations
+- `FRONTEND` - Client-side operations
+- `DML_RESULT` - Database operations
+- `LONG_RUNNING_REQUEST` - Performance issues
+- `CONCURRENT_REQUESTS_LIMIT` - Concurrency issues
+- `ACCOUNT_TRIGGER` - Account trigger operations
 
 ---

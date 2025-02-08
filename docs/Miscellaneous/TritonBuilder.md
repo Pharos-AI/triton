@@ -1,483 +1,312 @@
 ---
 layout: default
 ---
-# virtual TritonBuilder
+# TritonBuilder
 
-x
+Copyright (C) 2024 Pharos AI, Inc.
+
+This file is part of Pharos Triton.
+
+Pharos Triton is free software: you can redistribute it and/or modify
+it under the terms of the MIT License.
+See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
+
 Builder class for creating and configuring Pharos log records.
 Provides a fluent interface to set various attributes like category, type, area,
-related objects, and other metadata for logging purposes. This class wraps the core
-pharos.LogBuilder to provide a more user-friendly API for log creation.
+related objects, and other metadata for logging purposes.
 
-## Constructors
-### `public TritonBuilder()`
----
-## Fields
+## Constants
 
-### `private builder` → `pharos.LogBuilder`
+### Field Names
+Constants used for setting attributes on log records:
 
+```apex
+public static final String APEX_NAME = 'pharos__Apex_Name__c';
+public static final String CREATED_TIMESTAMP = 'pharos__Created_Timestamp__c';
+public static final String DURATION = 'pharos__Duration__c';
+public static final String INTERVIEW_GUID = 'pharos__Interview_GUID_External__c';
+public static final String LOG_LEVEL = 'Log_Level__c';
+public static final String RELATED_ID = 'pharos__Related_Id__c';
+public static final String RELATED_OBJECTS = 'pharos__Related_Objects__c';
+public static final String STACKTRACE_PARSE_RESULT = 'pharos__Stacktrace_Parse_Result__c';
+public static final String USER_ID = 'pharos__User_Id__c';
+public static final String FLOW_API_NAME = 'pharos__Flow_API_Name__c';
+public static final String DO_NOT_CREATE_ISSUE = 'pharos__Do_Not_Create_Issue__c';
+public static final String REQUEST_ID = 'pharos__Request_Id_External__c';
+```
 
-### `public APEX_NAME` → `String`
-
-
-key field names for setting attributes on log records
-
-### `public CREATED_TIMESTAMP` → `String`
-
-
-### `public DURATION` → `String`
-
-
-### `public INTERVIEW_GUID` → `String`
-
-
-### `public LOG_LEVEL` → `String`
-
-
-### `public RELATED_ID` → `String`
-
-
-### `public RELATED_OBJECTS` → `String`
-
-
-### `public STACKTRACE_PARSE_RESULT` → `String`
-
-
-### `public USER_ID` → `String`
-
-
-### `public FLOW_API_NAME` → `String`
-
-
-### `public DO_NOT_CREATE_ISSUE` → `String`
-
-
-### `public REQUEST_ID` → `String`
-
-
----
 ## Methods
-### `public TritonBuilder category(TritonTypes.Category c)`
 
-Set log category from Category enum.
+### Core Builder Methods
 
-#### Parameters
+#### `public TritonBuilder cloneBuilder()`
+Creates a deep clone of the builder instance.
 
-|Param|Description|
-|---|---|
-|`c`|-- TritonTypes.Category enum value|
+**Returns**  
+- `TritonBuilder` - A new builder instance with copied settings
 
-#### Returns
+**Example**
+```apex
+TritonBuilder original = new TritonBuilder()
+    .category(TritonTypes.Category.Apex);
+TritonBuilder clone = original.cloneBuilder();
+```
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+### Classification Methods
 
-### `public TritonBuilder type(TritonTypes.Type t)`
+#### `public TritonBuilder category(TritonTypes.Category c)`
+Sets the log category from Category enum.
 
-Set log category from Category enum.
+**Parameters**  
+- `c` - `TritonTypes.Category` - The category to set
 
-#### Parameters
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-|Param|Description|
-|---|---|
-|`t`|-- TritonTypes.Type enum value|
+**Example**
+```apex
+builder.category(TritonTypes.Category.Apex);
+```
 
-#### Returns
+#### `public TritonBuilder type(TritonTypes.Type t)`
+Sets the log type from Type enum.
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+**Parameters**  
+- `t` - `TritonTypes.Type` - The type to set
 
-### `public TritonBuilder type(String t)`
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-Set log type to a String value. To be used when creating a log from Exception
+#### `public TritonBuilder area(TritonTypes.Area a)`
+Sets the log functional area from Area enum.
 
-#### Parameters
+**Parameters**  
+- `a` - `TritonTypes.Area` - The functional area to set
 
-|Param|Description|
-|---|---|
-|`t`|-- String value|
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-#### Returns
+#### `public TritonBuilder level(TritonTypes.Level l)`
+Sets the log level from Level enum.
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+**Parameters**  
+- `l` - `TritonTypes.Level` - The log level to set
 
-### `public TritonBuilder area(TritonTypes.Area a)`
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-Set log functional are from Area enum.
+### Content Methods
 
-#### Parameters
+#### `public TritonBuilder operation(String operation)`
+Sets the operation name (typically Class.Method).
 
-|Param|Description|
-|---|---|
-|`a`|-- TritonTypes.Area value|
+**Parameters**  
+- `operation` - `String` - The operation name to set
 
-#### Returns
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+#### `public TritonBuilder summary(String value)`
+Sets the log summary message.
 
-### `public TritonBuilder area(String a)`
+**Parameters**  
+- `value` - `String` - The summary message
 
-Set log functional area to a String value. To be used from flows
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-#### Parameters
+#### `public TritonBuilder details(String value)`
+Sets the detailed log message.
 
-|Param|Description|
-|---|---|
-|`a`|-- String value|
+**Parameters**  
+- `value` - `String` - The detailed message
 
-#### Returns
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+#### `public TritonBuilder stackTrace(String stack)`
+Sets the stack trace for error tracking.
 
-### `public TritonBuilder level(TritonTypes.Level l)`
+**Parameters**  
+- `stack` - `String` - The stack trace string
 
-Set log level from Level enum.
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-#### Parameters
+### Processing Control Methods
 
-|Param|Description|
-|---|---|
-|`l`|-- TritonTypes.Level enum value|
+#### `public TritonBuilder postProcessing(TritonHelper.PostProcessingControlsBuilder postProcessingBuilder)`
+Sets post processing metadata for Pharos processing.
 
-#### Returns
+**Parameters**  
+- `postProcessingBuilder` - `TritonHelper.PostProcessingControlsBuilder` - The post-processing configuration
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-### `public TritonBuilder operation(String operation)`
+**Example**
+```apex
+builder.postProcessing(new TritonHelper.PostProcessingControlsBuilder()
+    .auditTrail(true)
+    .stackTrace(true));
+```
 
-Set operation from a String value
+### Transaction Methods
 
-#### Parameters
+#### `public TritonBuilder transactionId(String transactionId)`
+Sets the transaction ID for grouping related logs.
 
-|Param|Description|
-|---|---|
-|`operation`|-- operation String value|
+**Parameters**  
+- `transactionId` - `String` - The transaction ID to set
 
-#### Returns
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+#### `public TritonBuilder createIssue()`
+Marks the log for issue creation in Pharos.
 
-### `public TritonBuilder summary(String value)`
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-Set log summary from a String value
+### Related Record Methods
 
-#### Parameters
+#### `public TritonBuilder userId(Id userId)`
+Sets the user ID associated with the log.
 
-|Param|Description|
-|---|---|
-|`summary`|-- summary String value|
+**Parameters**  
+- `userId` - `Id` - The user's Salesforce ID
 
-#### Returns
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+#### `public TritonBuilder relatedObject(Id objectId)`
+Adds a single related object ID to the log.
 
-### `public TritonBuilder details(String value)`
+**Parameters**  
+- `objectId` - `Id` - The Salesforce ID to relate
 
-Set log details from a String value
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-#### Parameters
+#### `public TritonBuilder relatedObjects(List<Id> relatedObjectIds)`
+Adds multiple related object IDs to the log.
 
-|Param|Description|
-|---|---|
-|`details`|-- details String value|
+**Parameters**  
+- `relatedObjectIds` - `List<Id>` - The list of Salesforce IDs to relate
 
-#### Returns
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+### Timing Methods
 
-### `public TritonBuilder stackTrace(String stack)`
+#### `public TritonBuilder createdTimestamp(Double timestamp)`
+Sets the created timestamp for the log.
 
-Set stack trace from a String value
+**Parameters**  
+- `timestamp` - `Double` - The timestamp in milliseconds since epoch
 
-#### Parameters
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-|Param|Description|
-|---|---|
-|`stack`|-- stack trace String value|
+#### `public TritonBuilder duration(Decimal duration)`
+Sets the duration value for performance tracking.
 
-#### Returns
+**Parameters**  
+- `duration` - `Decimal` - The duration in milliseconds
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-### `public TritonBuilder postProcessing(TritonHelper.PostProcessingControlsBuilder postProcessingBuilder)`
+### Integration Methods
 
-Set post processing metadata from a PostProcessingControlsBuilder instance
+#### `public TritonBuilder integrationPayload(HttpRequest request, HttpResponse response)`
+Sets integration payload from HTTP request/response.
 
-#### Parameters
+**Parameters**  
+- `request` - `HttpRequest` - The HTTP request object
+- `response` - `HttpResponse` - The HTTP response object
 
-|Param|Description|
-|---|---|
-|`postProcessingBuilder`|-- instance of TritonHelper.PostProcessingControlsBuilder|
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-#### Returns
+#### `public TritonBuilder integrationPayload(RestRequest request, RestResponse response)`
+Sets integration payload from REST request/response.
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+**Parameters**  
+- `request` - `RestRequest` - The REST request object
+- `response` - `RestResponse` - The REST response object
 
-### `public TritonBuilder transactionId(String transactionId)`
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-Set transaction Id from a String
+### Flow Methods
 
-#### Parameters
+#### `public TritonBuilder interviewGuid(String guid)`
+Sets the Flow interview GUID for flow tracking.
 
-|Param|Description|
-|---|---|
-|`transactionId`|-- desired transaction Id String value|
+**Parameters**  
+- `guid` - `String` - The Flow interview GUID
 
-#### Returns
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+#### `public TritonBuilder flowApiName(String apiName)`
+Sets the Flow API name.
 
-### `public TritonBuilder createIssue()`
+**Parameters**  
+- `apiName` - `String` - The Flow API name
 
-Set transaction Id from a String
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-#### Returns
+### Custom Methods
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+#### `public TritonBuilder attribute(String name, Object value)`
+Sets a custom attribute on the log record.
 
-### `public TritonBuilder userId(Id userId)`
+**Parameters**  
+- `name` - `String` - The field API name
+- `value` - `Object` - The value to set
 
-Set user Id for the log
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-#### Parameters
+#### `public TritonBuilder limitInfo()`
+Captures and sets all current transaction limits.
 
-|Param|Description|
-|---|---|
-|`userId`|-- Id of the user to associate with the log|
+**Returns**  
+- `TritonBuilder` - The builder instance for chaining
 
-#### Returns
+**Description**  
+Captures current values and limits for:
+- SOQL queries and rows
+- DML statements and rows
+- CPU time
+- Heap size
+- Callouts
+- Email invocations
+And more...
 
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
+### Build Method
 
-### `public TritonBuilder relatedObject(Id objectId)`
+#### `public pharos__Log__c build()`
+Builds and returns the final log record.
 
-Add a single related object Id to the log
+**Returns**  
+- `pharos__Log__c` - The configured log record ready for insertion
 
-#### Parameters
+**Throws**  
+- `System.NullPointerException` - If required fields are missing
 
-|Param|Description|
-|---|---|
-|`objectId`|-- Id of the object to relate to the log|
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
-
-### `public TritonBuilder relatedObject(String objectId)`
-
-Add a single related object Id string to the log
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`objectId`|-- String representation of the Id to relate to the log|
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
-
-### `public TritonBuilder relatedObjects(List<Id> relatedObjectIds)`
-
-Add multiple related object Ids to the log
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`relatedObjectIds`|-- List of Ids to relate to the log|
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
-
-### `public TritonBuilder relatedObjects(Set<String> relatedObjectIds)`
-
-Add multiple related object Id strings to the log
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`relatedObjectIds`|-- Set of Id strings to relate to the log|
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
-
-### `public TritonBuilder relatedObjects(Set<Id> relatedObjectIds)`
-
-Add multiple related object Ids to the log
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`relatedObjectIds`|-- Set of Ids to relate to the log|
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
-
-### `public TritonBuilder createdTimestamp(Double timestamp)`
-
-Set created timestamp for the log
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`timestamp`|-- Double value representing the creation timestamp|
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
-
-### `public TritonBuilder duration(Decimal duration)`
-
-Set duration for the log
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`duration`|-- Decimal value representing the duration|
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
-
-### `public TritonBuilder integrationPayload(HttpRequest request, HttpResponse response)`
-
-Set integration payload from HTTP request/response
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`request`|-- HttpRequest instance|
-|`response`|-- HttpResponse instance|
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
-
-### `public TritonBuilder integrationPayload(RestRequest request, RestResponse response)`
-
-Set integration payload from REST request/response
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`request`|-- RestRequest instance|
-|`response`|-- RestResponse instance|
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
-
-### `public TritonBuilder interviewGuid(String guid)`
-
-Set interview GUID for the log
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`guid`|-- String value of the interview GUID|
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
-
-### `public TritonBuilder flowApiName(String apiName)`
-
-Set flow API name for the log
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`apiName`|-- String value of the flow API name|
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
-
-### `public TritonBuilder attribute(String name, Object value)`
-
-Set a custom attribute on the log
-
-#### Parameters
-
-|Param|Description|
-|---|---|
-|`name`|-- String name of the attribute|
-|`value`|-- Object value of the attribute|
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`TritonBuilder`|this builder instance|
-
-### `public pharos__Log__c build()`
-
-Build and return the log record
-
-#### Returns
-
-|Type|Description|
-|---|---|
-|`pharos__Log__c`|pharos__Log__c instance|
+**Example**
+```apex
+pharos__Log__c log = new TritonBuilder()
+    .category(TritonTypes.Category.Apex)
+    .type(TritonTypes.Type.Backend)
+    .area(TritonTypes.Area.Accounts)
+    .level(TritonTypes.Level.INFO)
+    .summary('Account processed')
+    .build();
+```
 
 ---
