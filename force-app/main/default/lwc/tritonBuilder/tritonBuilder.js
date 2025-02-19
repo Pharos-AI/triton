@@ -18,7 +18,7 @@ export default class TritonBuilder {
      * @returns {TritonBuilder} Builder instance for chaining
      */
     level(level) {
-        this.level = level;
+        this._level = level;
         return this;
     }
 
@@ -28,7 +28,7 @@ export default class TritonBuilder {
      * @returns {TritonBuilder} Builder instance for chaining
      */
     category(category) {
-        this.category = category;
+        this._category = category;
         return this;
     }
 
@@ -38,7 +38,7 @@ export default class TritonBuilder {
      * @returns {TritonBuilder} Builder instance for chaining
      */
     type(type) {
-        this.type = type;
+        this._type = type;
         return this;
     }
 
@@ -48,17 +48,17 @@ export default class TritonBuilder {
      * @returns {TritonBuilder} Builder instance for chaining
      */
     area(area) {
-        this.area = area;
+        this._area = area;
         return this;
     }
 
     /**
-     * Sets the summary text for the log
-     * @param {string} summary - Summary text to set
+     * Sets the log summary
+     * @param {string} summary - Log summary to set
      * @returns {TritonBuilder} Builder instance for chaining
      */
     summary(summary) {
-        this.summary = summary;
+        this._summary = summary;
         return this;
     }
 
@@ -68,7 +68,7 @@ export default class TritonBuilder {
      * @returns {TritonBuilder} Builder instance for chaining
      */
     details(details) {
-        this.details = details;
+        this._details = details;
         return this;
     }
 
@@ -78,17 +78,17 @@ export default class TritonBuilder {
      * @returns {TritonBuilder} Builder instance for chaining
      */
     transactionId(transactionId) {
-        this.transactionId = transactionId;
+        this._transactionId = transactionId;
         return this;
     }
 
     /**
      * Sets the component information
-     * @param {Object} component - Component information object
+     * @param {Object} componentInfo - Component information object
      * @returns {TritonBuilder} Builder instance for chaining
      */
-    componentInfo(component) {
-        this.component = component;
+    componentInfo(componentInfo) {
+        this._componentInfo = componentInfo;
         return this;
     }
 
@@ -98,7 +98,7 @@ export default class TritonBuilder {
      * @returns {TritonBuilder} Builder instance for chaining
      */
     duration(duration) {
-        this.duration = duration;
+        this._duration = duration;
         return this;
     }
 
@@ -108,7 +108,7 @@ export default class TritonBuilder {
      * @returns {TritonBuilder} Builder instance for chaining
      */
     timestamp(timestamp) {
-        this.createdTimestamp = timestamp;
+        this._createdTimestamp = timestamp;
         return this;
     }
 
@@ -118,19 +118,21 @@ export default class TritonBuilder {
      * @returns {TritonBuilder} Builder instance for chaining
      */
     exception(error) {
-        this.error = {};
+        this._error = {};
+        console.log('error', error.toString());
+        console.log('error.body', error.body);
 
         if (error.body) {
-            this.error.message = error.body.message;
-            this.error.stack = error.body.stackTrace;
-            this.error.type = error.body.exceptionType;
+            this._error.message = error.body.message;
+            this._error.stack = error.body.stackTrace;
+            this._error.type = error.body.exceptionType;
         } else {
-            this.error.message = error.message ? error.message : null;
-            this.error.stack = error.stack ? error.stack : error.stacktrace ? error.stacktrace : null;
-            this.error.type = error.name ? error.name : error.body ? error.body.exceptionType : null;
+            this._error.message = error.message ? error.message : null;
+            this._error.stack = error.stack ? error.stack : error.stacktrace ? error.stacktrace : null;
+            this._error.type = error.name ? error.name : error.body ? error.body.exceptionType : null;
         }
-        this.componentDetails(this.error.stack);
-        if (!this.details) this.details = this.error.message + '\n\n' + this.stack;
+        this.componentDetails(this._error.stack);
+        if (!this._details) this._details = this._error.message + '\n\n' + this._stack;
         return this;
     }
 
@@ -140,7 +142,7 @@ export default class TritonBuilder {
      * @returns {TritonBuilder} Builder instance for chaining
      */
     componentDetails(stack) {
-        if (!this.component) this.component = {};
+        if (!this._componentInfo) this._componentInfo = {};
         
         // Filter and process stack trace
         const stackTraceLines = (stack || '')
@@ -154,21 +156,25 @@ export default class TritonBuilder {
             const isLWC = isLWCLine(componentLine);
 
             // Extract component name (everything between last / and .js)
-            this.component.name = componentLine.substring(
+            this._componentInfo.name = componentLine.substring(
                 componentLine.lastIndexOf('/') + 1, 
                 componentLine.lastIndexOf('.js')
             );
-
+            console.log('component.name', this._componentInfo.name);
             // Extract function name based on stack trace format
+            console.log('line', componentLine);
             const functionStartIndex = componentLine.indexOf(isLWC ? 'at ' : '.') + (isLWC ? 3 : 1);
             const functionEndIndex = componentLine.lastIndexOf(' (');
-            this.component.function = componentLine
+            console.log('functionStartIndex', functionStartIndex);
+            console.log('functionEndIndex', functionEndIndex);
+            this._componentInfo.function = componentLine
                 .substring(functionStartIndex, functionEndIndex)
                 .trim();
+            console.log('component.function', this._componentInfo.function);
         }
 
         // Join filtered lines back into stack trace
-        this.stack = stackTraceLines.join('\n');
+        this._stack = stackTraceLines.join('\n');
         return this;
     }
 
@@ -178,7 +184,7 @@ export default class TritonBuilder {
      * @returns {TritonBuilder} Builder instance for chaining
      */
     userId(userId) {
-        this.userId = userId;
+        this._userId = userId;
         return this;
     }
 
@@ -197,7 +203,7 @@ export default class TritonBuilder {
         const validIds = idsArray.filter(id => id);
         
         if (validIds.length > 0) {
-            this.relatedObjectIds = validIds;
+            this._relatedObjectIds = validIds;
         }
         
         return this;
@@ -230,9 +236,34 @@ export default class TritonBuilder {
      * @param {Object} info - Object containing all runtime details
      * @returns {TritonBuilder} Builder instance for chaining
      */
-    runtimeInfo(info = {}) {
-        this.runtime = info;
+    runtimeInfo(runtimeInfo = {}) {
+        this._runtimeInfo = runtimeInfo;
         return this;
+    }
+
+    /**
+     * Builds the final log object from the builder properties
+     * @returns {Object} The constructed log object
+     */
+    build() {
+        console.log('building log');
+        return {
+            level: this._level,
+            category: this._category,
+            type: this._type,
+            area: this._area,
+            summary: this._summary,
+            details: this._details,
+            transactionId: this._transactionId,
+            componentInfo: this._componentInfo,
+            duration: this._duration,
+            createdTimestamp: this._createdTimestamp,
+            error: this._error,
+            stack: this._stack,
+            userId: this._userId,
+            runtimeInfo: this._runtimeInfo,
+            relatedObjectIds: this._relatedObjectIds
+        };
     }
 
 }

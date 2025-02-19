@@ -288,16 +288,17 @@ public with sharing class Triton {
     */
     public void addError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         addLog(
-                fromTemplate()
-                        .category(TritonTypes.Category.Apex)
-                        .type(type)
-                        .area(area)
-                        .summary(summary)
-                        .details(details)
-                        .stackTrace(TritonHelper.getCurrentStackTrace())
-                        .transactionId(TRANSACTION_ID)
-                        .level(TritonTypes.Level.ERROR)
-                        .createIssue());
+            fromTemplate()
+                .category(TritonTypes.Category.Apex)
+                .type(type)
+                .area(area)
+                .summary(summary)
+                .details(details)
+                .stackTrace(TritonHelper.getCurrentStackTrace())
+                .transactionId(TRANSACTION_ID)
+                .level(TritonTypes.Level.ERROR)
+                .createIssue()
+        );
     }
 
     /**
@@ -322,17 +323,11 @@ public with sharing class Triton {
     public void addError(TritonTypes.Area area, Exception e, Set<String> relatedObjectIds) {
         addLog(
                 fromTemplate()
-                        .category(TritonTypes.Category.Apex)
+                        .exception(e)
                         //use exception type, Backend if blank
-                        .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
                         .area(area)
-                        .summary(e.getMessage())
-                        .stackTrace(e.getStackTraceString())
-                        .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
-                        .transactionId(TRANSACTION_ID)
                         .relatedObjects(relatedObjectIds)
-                        .level(TritonTypes.Level.ERROR)
-                        .createIssue());
+        );
     }
 
     /**
@@ -555,18 +550,13 @@ public with sharing class Triton {
     */
     public void addIntegrationError(TritonTypes.Area area, Exception e, HttpRequest request, HttpResponse response) {
         addLog(
-                fromTemplate()
-                        .category(TritonTypes.Category.Integration)
-                        //Use Backend as default type
-                        .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
-                        .area(area)
-                        .summary(e.getMessage())
-                        .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
-                        .stackTrace(e.getStackTraceString())
-                        .createIssue()
-                        .integrationPayload(request, response)
-                        .transactionId(TRANSACTION_ID)                        
-                        .level(TritonTypes.Level.ERROR));
+            fromTemplate()
+                .exception(e)
+                .category(TritonTypes.Category.Integration)
+                .area(area)
+                .integrationPayload(request, response)
+                .transactionId(TRANSACTION_ID)
+        );
     }
 
     /**
@@ -587,17 +577,13 @@ public with sharing class Triton {
     */
     public void addIntegrationError(TritonTypes.Area area, Exception e, RestRequest request, RestResponse response) {
         addLog(
-                fromTemplate()
-                        .category(TritonTypes.Category.Integration)
-                        .type(String.isBlank(e.getTypeName()) ? TritonTypes.Type.Backend.name() : e.getTypeName())
-                        .area(area)
-                        .summary(e.getMessage())
-                        .details(String.valueOf(e) + SPACE_SEP + e.getStackTraceString())
-                        .stackTrace(e.getStackTraceString())
-                        .createIssue()
-                        .integrationPayload(request, response)
-                        .transactionId(TRANSACTION_ID)                        
-                        .level(TritonTypes.Level.ERROR));
+            fromTemplate()
+                .exception(e)
+                .category(TritonTypes.Category.Integration)
+                .area(area)
+                .integrationPayload(request, response)
+                .transactionId(TRANSACTION_ID)
+        );
     }
 
     /**
@@ -627,17 +613,18 @@ public with sharing class Triton {
         HttpResponse response
     ) {
         addLog(
-                fromTemplate()
-                        .category(TritonTypes.Category.Integration)
-                        .type(type)
-                        .area(area)
-                        .summary(summary)
-                        .details(details)
-                        .stackTrace(TritonHelper.getCurrentStackTrace())
-                        .createIssue()
-                        .integrationPayload(request,response)
-                        .transactionId(TRANSACTION_ID)                        
-                        .level(TritonTypes.Level.ERROR));
+            fromTemplate()
+                .category(TritonTypes.Category.Integration)
+                .type(type)
+                .area(area)
+                .summary(summary)
+                .details(details)
+                .stackTrace(TritonHelper.getCurrentStackTrace())
+                .createIssue()
+                .integrationPayload(request, response)
+                .transactionId(TRANSACTION_ID)
+                .level(TritonTypes.Level.ERROR)
+        );
     }
 
     /**
@@ -674,17 +661,18 @@ public with sharing class Triton {
         RestResponse response
     ) {
         addLog(
-                fromTemplate()
-                        .category(TritonTypes.Category.Integration)
-                        .type(type)
-                        .area(area)
-                        .summary(summary)
-                        .details(details)
-                        .stackTrace(TritonHelper.getCurrentStackTrace())
-                        .createIssue()
-                        .integrationPayload(request, response)
-                        .transactionId(TRANSACTION_ID)                        
-                        .level(TritonTypes.Level.ERROR));
+            fromTemplate()
+                .category(TritonTypes.Category.Integration)
+                .type(type)
+                .area(area)
+                .summary(summary)
+                .details(details)
+                .stackTrace(TritonHelper.getCurrentStackTrace())
+                .createIssue()
+                .integrationPayload(request, response)
+                .transactionId(TRANSACTION_ID)
+                .level(TritonTypes.Level.ERROR)
+        );
     }
 
     /**

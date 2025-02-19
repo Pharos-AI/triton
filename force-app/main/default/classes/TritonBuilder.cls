@@ -399,6 +399,31 @@ public with sharing class TritonBuilder {
     }
 
     /**
+    * Configure builder for an exception
+    * Sets type from exception type (or defaults to Backend), sets error level,
+    * sets summary from exception message, sets details and stack trace from exception
+    * @param e -- Exception to configure the builder with
+    * @return this builder instance
+    */
+    public TritonBuilder exception(Exception e) {
+        if (e == null) return this;
+
+        // Use exception type, Backend if blank
+        this.type(String.isBlank(e.getTypeName()) ? 
+            TritonTypes.Type.Backend.name() : 
+            e.getTypeName());
+        
+        this.category(TritonTypes.Category.APEX)
+            .level(TritonTypes.Level.ERROR)
+            .summary(e.getMessage())
+            .stackTrace(e.getStackTraceString())
+            .details(String.valueOf(e) + Triton.SPACE_SEP + e.getStackTraceString())
+            .createIssue();
+
+        return this;
+    }
+
+    /**
     * Build and return the log record
     * @return pharos__Log__c instance
     */

@@ -44,12 +44,14 @@ export default class Triton {
             return Triton.instance;
         }
 
+        console.log('Triton constructor - creating new instance');
         this.transactionManager = new TransactionManager(this);
         if(isAura()) {
             this.category = CATEGORY.AURA;
         }
             
         this.transactionId = this.transactionManager.initialize();
+        console.log('transaction id from constructor after initialize', this.transactionId);
         
         Triton.instance = this;
     }
@@ -146,32 +148,30 @@ export default class Triton {
     }
 
     /**
-     * Flushes all logs in the buffer to the server
-     * @returns {Promise} Promise that resolves when logs are successfully saved
-     * @throws {Error} If there's an error saving the logs
+     * Sends all buffered logs to the server and clears the buffer
+     * @returns {Promise} Promise that resolves when logs are flushed
      */
     async flush() {
         if(this.logs.length === 0) {
             console.log('No logs to flush');
             return;
         }
+        console.log('Ready to flush logs');
 
-        // Take a snapshot of current logs
+        // Save current logs and clear buffer to prevent duplicates
         const logsToFlush = [...this.logs];
         this.logs = [];
 
         try {
             const data = await saveComponentLogs({
-                componentLogs: logsToFlush
+                componentLogs: logsToFlush.map(builder => builder.build())
             });
-            
             console.log('Logs flushed successfully:', data);
             return data;
         } catch (error) {
-            // On error, add back the logs that failed to flush
-            // but append them to any new logs that might have been added
-            this.logs = [...this.logs, ...logsToFlush];
-            console.error(error);
+            console.error('Error flushing logs:', error);
+            // Restore logs that failed to flush
+            this.logs.unshift(...logsToFlush);
             throw error;
         }
     }
@@ -201,11 +201,12 @@ export default class Triton {
     }
 
     /**
-     * Adds a log to the buffer
-     * @param {TritonBuilder} builder - Builder instance to add to the buffer
-     * @returns {TritonBuilder} The builder instance for chaining
+     * Adds a log builder to the buffer
+     * @param {TritonBuilder} builder - Builder instance to log
+     * @returns {TritonBuilder} The builder instance
      */
     log(builder) {
+        console.log('Added log to buffer: ', builder._summary);
         this.logs.push(builder);
         return builder;
     }
@@ -232,7 +233,7 @@ export default class Triton {
     }
 
     /**
-     * Creates a new builder from the saved template or default settings
+     * Creates a new log builder with default category and userId
      * @private
      * @returns {TritonBuilder} New builder instance
      */
@@ -309,11 +310,54 @@ export const TYPE = {
  */
 class TransactionManager {
     static STORAGE_KEY = 'tritonTransactionId';
-    static AUTO_FLUSH_CHECK_INTERVAL = 10000; // 10 seconds
-    static AUTO_FLUSH_DELAY = 60000; // 1 minute
+    static AUTO_FLUSH_CHECK_INTERVAL = 5000; // 10 seconds
+    static AUTO_FLUSH_DELAY = 10000; // 1 minute
 
     constructor(triton) {
-        this.triton = triton; // Reference to parent Triton instance for accessing logs
+        this.triton = triton;
+        this._transactionId = null; // Memory storage fallback
+    }
+
+    /**
+     * Safely gets item from storage
+     * @private
+     * @returns {string|null}
+     */
+    getItem() {
+        try {
+            return sessionStorage.getItem(TransactionManager.STORAGE_KEY);
+        } catch (e) {
+            console.log('Error getting item from storage', e);
+            return this._transactionId;
+        }
+    }
+
+    /**
+     * Safely sets item in storage
+     * @private
+     */
+    setItem(value) {
+        try {
+            sessionStorage.setItem(TransactionManager.STORAGE_KEY, value);
+        } catch (e) {
+            console.log('Error setting item in storage', e);
+            // Fallback to memory storage
+        }
+        this._transactionId = value;
+    }
+
+    /**
+     * Safely removes item from storage
+     * @private
+     */
+    removeItem() {
+        try {
+            sessionStorage.removeItem(TransactionManager.STORAGE_KEY);
+        } catch (e) {
+            // Fallback to memory storage   
+            console.log('Error removing item from storage', e);
+        }
+        this._transactionId = null;
     }
 
     /**
@@ -322,7 +366,7 @@ class TransactionManager {
      * @returns {string} Active transaction ID
      */
     initialize() {
-        const storedId = sessionStorage.getItem(TransactionManager.STORAGE_KEY);
+        const storedId = this.getItem();
         if (storedId) {
             return this.resume(storedId);
         }
@@ -335,7 +379,7 @@ class TransactionManager {
      */
     start() {
         const newId = generateTransactionId();
-        sessionStorage.setItem(TransactionManager.STORAGE_KEY, newId);
+        this.setItem(newId);
         this.startAutoFlushMonitor();
         return newId;
     }
@@ -346,7 +390,7 @@ class TransactionManager {
      * @returns {string} Resumed transaction ID
      */
     resume(transactionId) {
-        sessionStorage.setItem(TransactionManager.STORAGE_KEY, transactionId);
+        this.setItem(transactionId);
         this.startAutoFlushMonitor();
         return transactionId;
     }
@@ -357,7 +401,7 @@ class TransactionManager {
     stop() {
         this.stopAutoFlushMonitor();
         this.triton.flush();
-        sessionStorage.removeItem(TransactionManager.STORAGE_KEY);
+        this.removeItem();
     }
 
     /**
@@ -365,23 +409,37 @@ class TransactionManager {
      * @private
      */
     async startAutoFlushMonitor() {
+        // Clear any existing monitor
+        this.stopAutoFlushMonitor();
+        
         this.isMonitoring = true;
         
-        while (this.isMonitoring) {
-            await new Promise(resolve => setTimeout(resolve, TransactionManager.AUTO_FLUSH_CHECK_INTERVAL));
-            
-            if (!this.isMonitoring) break;
-            
-            const now = Date.now();
-            if (this.triton.logs.length > 0) {
-                const lastLog = this.triton.logs[this.triton.logs.length - 1];
-                const lastLogTime = lastLog.createdTimestamp;
-                
-                if ((now - lastLogTime) >= TransactionManager.AUTO_FLUSH_DELAY) {
-                    await this.triton.flush();
+        const checkAndFlush = async () => {
+            if (!this.isMonitoring) return;
+
+            try {
+                const now = Date.now();
+                if (this.triton?.logs?.length > 0) {
+                    const lastLog = this.triton.logs[this.triton.logs.length - 1];
+                    const lastLogTime = lastLog._createdTimestamp;
+                    
+                    if ((now - lastLogTime) >= TransactionManager.AUTO_FLUSH_DELAY) {
+                        console.log('Auto-flushing logs due to time delay');
+                        await this.triton.flush();
+                    }
                 }
+            } catch (error) {
+                console.error('Error in auto-flush monitor:', error);
             }
-        }
+
+            // Schedule next check if still monitoring
+            if (this.isMonitoring) {
+                setTimeout(checkAndFlush, TransactionManager.AUTO_FLUSH_CHECK_INTERVAL);
+            }
+        };
+
+        // Start the monitoring loop
+        checkAndFlush();
     }
 
     /**
