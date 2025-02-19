@@ -237,13 +237,12 @@ private class TritonTest {
         componentLog.area = 'test area';
         componentLog.summary = 'test summary';
         componentLog.details = 'test details';
-        componentLog.recordId = 'recordId';
-        componentLog.objectApiName = 'objectApiName';
+        componentLog.relatedObjectIds = new List<String>{'recordId'};
         TritonLwc.Component component = new TritonLwc.Component();
         component.category = 'test category';
         component.name = 'test name';
         component.function = 'test function';
-        componentLog.component = component;
+        componentLog.componentInfo = component;
         componentLogs.add(componentLog);
         TritonLwc.saveComponentLogs(componentLogs);
         Test.stopTest();
@@ -264,7 +263,7 @@ private class TritonTest {
         
         // Set invalid values to trigger error handling
         componentLog.userId = 'invalid-user-id';
-        componentLog.recordId = 'invalid-record-id';
+        componentLog.relatedObjectIds = new List<String>{'invalid-record-id'};
         componentLog.category = 'InvalidCategory';
         componentLog.area = 'InvalidArea';
         componentLog.level = 'InvalidLevel';
@@ -283,7 +282,7 @@ private class TritonTest {
         component.category = 'InvalidComponentCategory';
         component.name = 'TestComponent';
         component.function = 'testFunction';
-        componentLog.component = component;
+        componentLog.componentInfo = component;
         
         componentLogs.add(componentLog);
         TritonLwc.saveComponentLogs(componentLogs);
