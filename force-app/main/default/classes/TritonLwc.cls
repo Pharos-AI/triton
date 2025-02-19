@@ -81,7 +81,7 @@ global with sharing class TritonLwc {
                 relatedIds = validIds;
             }
 
-            String categoryStr = String.isNotBlank(componentLog.category) ? componentLog.category : componentLog.componentInfo.name;
+            String categoryStr = String.isNotBlank(componentLog.category) ? componentLog.category : componentLog.componentInfo.category;
 
             try {
                 category = TritonTypes.Category.valueOf(categoryStr);
