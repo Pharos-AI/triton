@@ -8,7 +8,7 @@
  * See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
  */
 
-import { isNotTriton, isLWCLine, isComponentLine } from 'c/tritonUtils';
+import { isNotTriton, isLWCLine, isComponentLine, extractComponentName } from 'c/tritonUtils';
 
 export default class TritonBuilder {
 
@@ -143,7 +143,7 @@ export default class TritonBuilder {
      */
     componentDetails(stack) {
         if (!this._componentInfo) this._componentInfo = {};
-        
+        console.log('stack', stack);
         // Filter and process stack trace
         const stackTraceLines = (stack || '')
             .split(/\r?\n/)  // Handles both \n and \r\n line endings
@@ -155,11 +155,8 @@ export default class TritonBuilder {
         if (componentLine) {
             const isLWC = isLWCLine(componentLine);
 
-            // Extract component name (everything between last / and .js)
-            this._componentInfo.name = componentLine.substring(
-                componentLine.lastIndexOf('/') + 1, 
-                componentLine.lastIndexOf('.js')
-            );
+            // Extract component name using shared utility
+            this._componentInfo.name = extractComponentName(componentLine);
             console.log('component.name', this._componentInfo.name);
             // Extract function name based on stack trace format
             console.log('line', componentLine);
@@ -172,9 +169,18 @@ export default class TritonBuilder {
                 .trim();
             console.log('component.function', this._componentInfo.function);
         }
+        console.log('stackTraceLines', stackTraceLines);
+        // Ensure we have a valid stack trace
+        if (!stackTraceLines || stackTraceLines.length === 0) {
+            this._stack = '';
+            console.warn('No stack trace lines available');
+            return this;
+        }
 
-        // Join filtered lines back into stack trace
-        this._stack = stackTraceLines.join('\n');
+        // Skip Error message and immediate caller if we have enough lines
+        const startIndex = stackTraceLines.length >= 1 ? 1 : 0;
+        this._stack = stackTraceLines.slice(startIndex).join('\n');
+        console.log('component.stack', this._stack);
         return this;
     }
 

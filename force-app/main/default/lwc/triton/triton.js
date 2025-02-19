@@ -11,11 +11,12 @@
 import saveComponentLogs from '@salesforce/apex/TritonLwc.saveComponentLogs';
 import USER_ID from '@salesforce/user/Id';
 import TritonBuilder from 'c/tritonBuilder';
-import { isNotTriton, isAura, generateTransactionId, captureRuntimeInfo } from 'c/tritonUtils';
+import { isNotTriton, isAura, generateTransactionId, captureRuntimeInfo, generateComponentId } from 'c/tritonUtils';
+
+// Create a shared instance in module scope
+let instance = null;
 
 export default class Triton {
-    static instance = null;
-
     /**
      * Buffer to store logs before sending to server
      * @private
@@ -24,11 +25,11 @@ export default class Triton {
     logs = [];
 
     /**
-     * Template builder for reuse
+     * Map to store component-specific templates
      * @private
-     * @type {TritonBuilder}
+     * @type {Map<string, TritonBuilder>}
      */
-    template = null;
+    templates = new Map();
 
     category = CATEGORY.LWC;
     
@@ -40,20 +41,22 @@ export default class Triton {
     transactionId = null;
 
     constructor() {
-        if (Triton.instance) {
-            return Triton.instance;
+        if (instance) {
+            console.log('Triton: returning existing instance');
+            return instance;
         }
 
-        console.log('Triton constructor - creating new instance');
+        console.log('Triton: creating new instance');
         this.transactionManager = new TransactionManager(this);
         if(isAura()) {
             this.category = CATEGORY.AURA;
         }
             
         this.transactionId = this.transactionManager.initialize();
-        console.log('transaction id from constructor after initialize', this.transactionId);
+        console.log('Triton: initialized with transaction ID:', this.transactionId);
         
-        Triton.instance = this;
+        instance = this;
+        return instance;
     }
 
     /**
@@ -177,26 +180,34 @@ export default class Triton {
     }
 
     /**
-     * Sets a builder template that can be re-used
+     * Sets a builder template that can be re-used for the calling component
      * @param {TritonBuilder} builder - Builder to be used as template
      */
     setTemplate(builder) {
-        this.template = builder;
+        const componentId = generateComponentId();
+        console.log('Triton: Setting template for component:', componentId);
+        console.log('Triton: Builder:', builder);
+        this.templates.set(componentId, builder);
+        console.log('Triton: Templates map size:', this.templates.size);
     }
 
     /**
-     * Creates a new builder from the saved template
+     * Creates a new builder from the saved template for the calling component
      * If no template exists, creates a new builder with default settings
      * @returns {TritonBuilder} New builder instance
      */
     fromTemplate() {
-        if (this.template) {
+        const componentId = generateComponentId();
+        console.log('Triton: Getting template for component:', componentId);
+        const template = this.templates.get(componentId);
+        console.log('Triton: Found template:', template);
+        
+        if (template) {
             // Clone the template and set transaction-specific properties
-            const builder = Object.assign(new TritonBuilder(), this.template);
-            return builder
-                .transactionId(this.transactionId)
-                .timestamp(Date.now());
+            const builder = Object.assign(new TritonBuilder(), template);
+            return this.refreshBuilder(builder);
         }
+        console.log('Triton: No template found, creating new builder');
         return this.makeBuilder();
     }
 
@@ -218,7 +229,8 @@ export default class Triton {
      */
     async logNow(builder) {
         const currentLogs = [...this.logs];
-        this.logs = [builder];
+        this.logs = [];
+        this.log(builder);
         
         try {
             const data = await this.flush();
@@ -233,27 +245,22 @@ export default class Triton {
     }
 
     /**
-     * Creates a new log builder with default category and userId
-     * @private
+     * Creates a new builder with default settings
      * @returns {TritonBuilder} New builder instance
      */
     makeBuilder() {
-        let builder = new TritonBuilder();
-        const componentStack = new Error().stack;
-        
-        builder.category(this.category)
+        console.log('Triton: Creating new builder');
+        return this.refreshBuilder(new TritonBuilder())
             .userId(USER_ID)
-            .timestamp(Date.now())
-            .componentDetails(componentStack)
-            .transactionId(this.transactionId);
-        
-        try {
-            builder.runtimeInfo(captureRuntimeInfo());
-        } catch (error) {
-            console.warn('Error capturing runtime details:', error);
-        }
-        
-        return builder;
+            .category(this.category)
+            .componentDetails(new Error().stack)
+    }
+
+    refreshBuilder(builder) {
+        return builder
+            .runtimeInfo(captureRuntimeInfo())
+            .transactionId(this.transactionId)
+            .timestamp(Date.now());
     }
 }
 

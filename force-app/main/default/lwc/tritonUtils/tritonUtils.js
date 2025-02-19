@@ -190,6 +190,41 @@ const captureRuntimeInfo = () => {
     return info;
 };
 
+/**
+ * Extracts the component name from a stack trace line
+ * @param {string} componentLine - Stack trace line containing component info
+ * @returns {string} Component name or 'unknown-component' if not found
+ */
+const extractComponentName = (componentLine) => {
+    const match = componentLine.match(/modules\/c\/(\w+)\.js/);
+    if (match && match[1]) {
+        return match[1];  // Returns just the component name (e.g., "productTileList")
+    }
+    console.warn('Could not parse component name from line:', componentLine);
+    return 'unknown-component';
+};
+
+/**
+ * Extracts the component identifier from a stack trace
+ * @returns {string} Component identifier
+ */
+const generateComponentId = () => {
+    const stack = new Error().stack;
+    const lines = stack.split('\n');
+    
+    // Skip the first line (Error message) and the generateComponentId call
+    const componentLine = lines.slice(2).find(line => 
+        isNotTriton(line) && isComponentLine(line)
+    );
+    
+    if (!componentLine) {
+        console.warn('Could not identify component from stack trace');
+        return 'unknown-component';
+    }
+    
+    return extractComponentName(componentLine);
+};
+
 export {
     isNotTriton,
     isLWCLine,
@@ -197,5 +232,7 @@ export {
     isAuraLine,
     isAura,
     generateTransactionId,
-    captureRuntimeInfo
-}; 
+    captureRuntimeInfo,
+    generateComponentId,
+    extractComponentName
+};

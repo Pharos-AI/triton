@@ -81,13 +81,11 @@ global with sharing class TritonLwc {
                 relatedIds = validIds;
             }
 
-            String categoryStr = String.isNotBlank(componentLog.category) ? componentLog.category : componentLog.componentInfo.category;
-
             try {
-                category = TritonTypes.Category.valueOf(categoryStr);
+                category = TritonTypes.Category.valueOf(componentLog.category);
             } catch(Exception e) {
                 //invalid category
-                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Category: {0}. Default LWC category will be used.', categoryStr);
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Category: {0}. Default LWC category will be used.', componentLog.category);
             }
 
             String areaStr = String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.componentInfo.name;
