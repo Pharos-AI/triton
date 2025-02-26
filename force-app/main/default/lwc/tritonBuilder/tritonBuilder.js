@@ -131,8 +131,10 @@ export default class TritonBuilder {
             this._error.stack = error.stack ? error.stack : error.stacktrace ? error.stacktrace : null;
             this._error.type = error.name ? error.name : error.body ? error.body.exceptionType : null;
         }
+
         this.componentDetails(this._error.stack);
-        if (!this._details) this._details = this._error.message + '\n\n' + this._stack;
+        this._details = (this._details || '') + this._error.message;
+        this._summary = (this._summary || this._error.message);
         return this;
     }
 

@@ -21,7 +21,7 @@
  * 
  */
 
-public with sharing class Triton {
+global with sharing class Triton {
 
     public static final String SPACE_SEP = '\n\n';
     

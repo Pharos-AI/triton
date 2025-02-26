@@ -70,6 +70,11 @@ global with sharing class TritonFlow {
                 .operation(flowLog.operation)
                 .level(level);
 
+        // if the log level is ERROR, create an issue
+        if(level == TritonTypes.Level.ERROR) {
+            builder.createIssue();
+        }
+
         if (String.isNotBlank(flowLog.additionalFields)) {
             try {
                 Map<String, Object> mapAdditionalFields = (Map<String, Object>)JSON.deserializeUntyped(flowLog.additionalFields);
