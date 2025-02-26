@@ -31,7 +31,6 @@ global with sharing class TritonLwc {
     */
     @AuraEnabled
     public static void saveComponentLogs(List<ComponentLog> componentLogs) {
-        System.debug('ApexLWC: saveComponentLogs');
         String transactionId = Triton.instance.startTransaction();
         Triton logInstance = Triton.instance.withCache();
         Boolean transactionIdFromCache = Triton.instance.TRANSACTION_ID != transactionId;
@@ -51,13 +50,7 @@ global with sharing class TritonLwc {
                 transactionId = componentLog.transactionId;
                 logInstance.resumeTransaction(transactionId);
                 transactionIdFromCache = true;
-                System.debug('Transaction was not obtained from cache. Resumed transaction from component: ' + transactionId);
-            } else if(transactionIdFromCache) {
-                //transaction was resumed from cache
-                System.debug('Transaction was obtained from cache. Resumed transaction from cache: ' + transactionId);
             }
-
-            System.debug('Creating LWC Log with Transaction ID: ' + transactionId);
             try {
                 userId = UserInfo.getUserId();
                 if(!String.isBlank(componentLog.userId)) {

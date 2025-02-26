@@ -643,13 +643,7 @@ private class TritonTest {
             WHERE pharos__Type__c = :TritonTypes.Type.DMLResult.name()
             ORDER BY CreatedDate
         ];
-        
-        // Debug information
-        System.debug('Number of logs found: ' + logs.size());
-        for(pharos__Log__c log : logs) {
-            System.debug('Log operation: ' + log.pharos__Apex_Name__c);
-        }
-        
+                
         System.assertEquals(5, logs.size(), 'Expected 5 DML error logs to be created (one for each DML type)');
         
         Set<String> expectedOperations = new Set<String>{'Save', 'Delete', 'Undelete', 'Upsert', 'Merge'};
@@ -705,15 +699,7 @@ private class TritonTest {
             FROM pharos__Log__c 
             WHERE pharos__Type__c = :TritonTypes.Type.DMLResult.name()
         ];
-        
-        // Debug info
-        for(pharos__Log__c log : logs) {
-            System.debug('Found unexpected error log:');
-            System.debug('Operation: ' + log.pharos__Apex_Name__c);
-            System.debug('Summary: ' + log.pharos__Summary__c);
-            System.debug('Details: ' + log.pharos__Details__c);
-        }
-        
+                
         System.assertEquals(0, logs.size(), 'No logs should be created for successful DML operations');
     }
 

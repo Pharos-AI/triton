@@ -119,8 +119,6 @@ export default class TritonBuilder {
      */
     exception(error) {
         this._error = {};
-        console.log('error', error.toString());
-        console.log('error.body', error.body);
 
         if (error.body) {
             this._error.message = error.body.message;
@@ -145,7 +143,6 @@ export default class TritonBuilder {
      */
     componentDetails(stack) {
         if (!this._componentInfo) this._componentInfo = {};
-        console.log('stack', stack);
         // Filter and process stack trace
         const stackTraceLines = (stack || '')
             .split(/\r?\n/)  // Handles both \n and \r\n line endings
@@ -159,30 +156,22 @@ export default class TritonBuilder {
 
             // Extract component name using shared utility
             this._componentInfo.name = extractComponentName(componentLine);
-            console.log('component.name', this._componentInfo.name);
             // Extract function name based on stack trace format
-            console.log('line', componentLine);
             const functionStartIndex = componentLine.indexOf(isLWC ? 'at ' : '.') + (isLWC ? 3 : 1);
             const functionEndIndex = componentLine.lastIndexOf(' (');
-            console.log('functionStartIndex', functionStartIndex);
-            console.log('functionEndIndex', functionEndIndex);
             this._componentInfo.function = componentLine
                 .substring(functionStartIndex, functionEndIndex)
                 .trim();
-            console.log('component.function', this._componentInfo.function);
         }
-        console.log('stackTraceLines', stackTraceLines);
         // Ensure we have a valid stack trace
         if (!stackTraceLines || stackTraceLines.length === 0) {
             this._stack = '';
-            console.warn('No stack trace lines available');
             return this;
         }
 
         // Skip Error message and immediate caller if we have enough lines
         const startIndex = stackTraceLines.length >= 1 ? 1 : 0;
         this._stack = stackTraceLines.slice(startIndex).join('\n');
-        console.log('component.stack', this._stack);
         return this;
     }
 
@@ -254,7 +243,6 @@ export default class TritonBuilder {
      * @returns {Object} The constructed log object
      */
     build() {
-        console.log('building log');
         return {
             level: this._level,
             category: this._category,

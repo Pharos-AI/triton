@@ -42,18 +42,14 @@ export default class Triton {
 
     constructor() {
         if (instance) {
-            console.log('Triton: returning existing instance');
             return instance;
         }
-
-        console.log('Triton: creating new instance');
         this.transactionManager = new TransactionManager(this);
         if(isAura()) {
             this.category = CATEGORY.AURA;
         }
             
         this.transactionId = this.transactionManager.initialize();
-        console.log('Triton: initialized with transaction ID:', this.transactionId);
         
         instance = this;
         return instance;
@@ -156,10 +152,8 @@ export default class Triton {
      */
     async flush() {
         if(this.logs.length === 0) {
-            console.log('No logs to flush');
             return;
         }
-        console.log('Ready to flush logs');
 
         // Save current logs and clear buffer to prevent duplicates
         const logsToFlush = [...this.logs];
@@ -169,7 +163,6 @@ export default class Triton {
             const data = await saveComponentLogs({
                 componentLogs: logsToFlush.map(builder => builder.build())
             });
-            console.log('Logs flushed successfully:', data);
             return data;
         } catch (error) {
             console.error('Error flushing logs:', error);
@@ -185,10 +178,7 @@ export default class Triton {
      */
     setTemplate(builder) {
         const componentId = generateComponentId();
-        console.log('Triton: Setting template for component:', componentId);
-        console.log('Triton: Builder:', builder);
         this.templates.set(componentId, builder);
-        console.log('Triton: Templates map size:', this.templates.size);
     }
 
     /**
@@ -198,16 +188,13 @@ export default class Triton {
      */
     fromTemplate() {
         const componentId = generateComponentId();
-        console.log('Triton: Getting template for component:', componentId);
         const template = this.templates.get(componentId);
-        console.log('Triton: Found template:', template);
         
         if (template) {
             // Clone the template and set transaction-specific properties
             const builder = Object.assign(new TritonBuilder(), template);
             return this.refreshBuilder(builder);
         }
-        console.log('Triton: No template found, creating new builder');
         return this.makeBuilder();
     }
 
@@ -217,7 +204,6 @@ export default class Triton {
      * @returns {TritonBuilder} The builder instance
      */
     log(builder) {
-        console.log('Added log to buffer: ', builder._summary);
         this.logs.push(builder);
         return builder;
     }
@@ -249,7 +235,6 @@ export default class Triton {
      * @returns {TritonBuilder} New builder instance
      */
     makeBuilder() {
-        console.log('Triton: Creating new builder');
         return this.refreshBuilder(new TritonBuilder())
             .userId(USER_ID)
             .category(this.category)
@@ -431,7 +416,6 @@ class TransactionManager {
                     const lastLogTime = lastLog._createdTimestamp;
                     
                     if ((now - lastLogTime) >= TransactionManager.AUTO_FLUSH_DELAY) {
-                        console.log('Auto-flushing logs due to time delay');
                         await this.triton.flush();
                     }
                 }
