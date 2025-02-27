@@ -117,9 +117,9 @@ global with sharing class TritonLwc {
                             .details(details)
                             .transactionId(transactionId)
                             .userId(userId)
-                            //apex name will be set to component.function or component.action
-                            .operation(componentLog.componentInfo.name + '.' +
-                                    (String.isNotBlank(componentLog.componentInfo.function) ? componentLog.componentInfo.function : componentLog.componentInfo.action))
+                            //apex name will be set to component.function or just component.name if function is not set
+                            .operation(componentLog.componentInfo.name + 
+                                    (String.isNotBlank(componentLog.componentInfo.function) ? '.' + componentLog.componentInfo.function : ''))
                             .relatedObjects(relatedIds)
                             //created timestamp will be either set from the componentLog if provided, otherwise current timestamp will be used
                             .createdTimestamp(componentLog.createdTimestamp != null ? Double.valueOf(componentLog.createdTimestamp) : Double.valueOf(System.now().getTime()))
@@ -141,8 +141,6 @@ global with sharing class TritonLwc {
         public String name { get; set; }
         @AuraEnabled
         public String function { get; set; }
-        @AuraEnabled
-        public String action { get; set; }
     }
 
     /**

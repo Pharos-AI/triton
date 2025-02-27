@@ -38,6 +38,7 @@ global with sharing class TritonFlow {
         Triton.instance.flush();
     }
     
+    @TestVisible
     private static void processFlowLog(FlowLog flowLog) {
         TritonTypes.Level level = TritonTypes.Level.INFO;
         String flowDetails = flowLog.details;
