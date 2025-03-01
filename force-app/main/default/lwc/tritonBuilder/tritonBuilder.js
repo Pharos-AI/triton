@@ -8,169 +8,258 @@
  * See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
  */
 
-const TritonBuilder = class {
+import { isNotTriton, isLWCLine, isComponentLine, extractComponentName } from 'c/tritonUtils';
+
+export default class TritonBuilder {
 
     /**
-     * Constructor used to generate each log
+     * Sets the log level
+     * @param {string} level - Log level to set
+     * @returns {TritonBuilder} Builder instance for chaining
      */
-    constructor() {
-        this._setCreatedTimestamp();
-        this._setComponentDetails(new Error().stack);
-    }
-
-    /**
-     * Sets the log Category field
-     */
-    setLevel(level) {
-        if (level) this.level = level;
+    level(level) {
+        this._level = level;
         return this;
     }
 
     /**
-     * Sets the log Category field
+     * Sets the log category
+     * @param {string} category - Log category to set
+     * @returns {TritonBuilder} Builder instance for chaining
      */
-    setCategory(category) {
-        if (category) this.category = category;
+    category(category) {
+        this._category = category;
         return this;
     }
 
     /**
-     * Sets the log Type field
+     * Sets the log type
+     * @param {string} type - Log type to set
+     * @returns {TritonBuilder} Builder instance for chaining
      */
-    setType(type) {
-        if (type) this.type = type;
+    type(type) {
+        this._type = type;
         return this;
     }
 
     /**
-     * Sets the log Area field
+     * Sets the log area
+     * @param {string} area - Log area to set
+     * @returns {TritonBuilder} Builder instance for chaining
      */
-    setArea(area) {
-        if (area) this.area = area;
+    area(area) {
+        this._area = area;
         return this;
     }
 
     /**
-     * Sets the log Summary field
+     * Sets the log summary
+     * @param {string} summary - Log summary to set
+     * @returns {TritonBuilder} Builder instance for chaining
      */
-    setSummary(summary) {
-        if (summary) this.summary = summary;
+    summary(summary) {
+        this._summary = summary;
         return this;
     }
 
     /**
-     * Sets the log Details field
+     * Sets the log details
+     * @param {string} details - Log details to set
+     * @returns {TritonBuilder} Builder instance for chaining
      */
-    setDetails(details) {
-        if (details) this.details = details;
+    details(details) {
+        this._details = details;
         return this;
     }
 
     /**
-     * Sets the log RecordId field
+     * Sets the transaction ID
+     * @param {string} transactionId - Transaction ID to set
+     * @returns {TritonBuilder} Builder instance for chaining
      */
-    setRecordId(recordId) {
-        if (recordId) this.recordId = recordId;
+    transactionId(transactionId) {
+        this._transactionId = transactionId;
         return this;
     }
 
     /**
-     * Sets the log ObjectApiName field
+     * Sets the component information
+     * @param {Object} componentInfo - Component information object
+     * @returns {TritonBuilder} Builder instance for chaining
      */
-    setObjectApiName(objectApiName) {
-        if (objectApiName) this.objectApiName = objectApiName;
-        return this;
-    }
-
-    /**
-     * Sets the transaction Id
-     */
-    setTransactionId(transactionId) {
-        if (transactionId) this.transactionId = transactionId;
-        return this;
-    }
-
-
-    /**
-     * Sets the component info structure
-     */
-    setComponent(component) {
-        if (component) {
-            if (!this.component) this.component = {};
-            this.component.name = component.name;
-            this.component.function = component.function;
-        }
+    componentInfo(componentInfo) {
+        this._componentInfo = componentInfo;
         return this;
     }
 
     /**
      * Sets the duration value
+     * @param {number} duration - Duration in milliseconds
+     * @returns {TritonBuilder} Builder instance for chaining
      */
-    setDuration(duration) {
-        if (duration) this.duration = duration;
+    duration(duration) {
+        this._duration = duration;
         return this;
     }
 
     /**
-     * Sets created timestamp
+     * Sets the created timestamp
+     * @param {number} [timestamp] - Optional timestamp to set (defaults to current time)
+     * @returns {TritonBuilder} Builder instance for chaining
      */
-    setCreatedTimestamp(startTime) {
-        if (startTime) this.createdTimestamp = startTime;
-    }
-
-    /**
-     * Sets the log Exception field
-     */
-    setError(error) {
-        if (error) {
-            this.error = {};
-            this.isApex = false;
-            if (error.body) {
-                this.isApex = true;
-                this.error.message = error.body.message;
-                this.error.stack = error.body.stackTrace;
-                this.error.type = error.body.exceptionType;
-            } else {
-                this.error.message = error.message ? error.message : null;
-                this.error.stack = error.stack ? error.stack : error.stacktrace ? error.stacktrace : null;
-                this.error.type = error.name ? error.name : error.body ? error.body.exceptionType : null;
-            }
-            this._setComponentDetails(this.error.stack);
-            if (!this.details) this.details = this.error.message + '\n\n' + this.stack;
-        }
+    timestamp(timestamp) {
+        this._createdTimestamp = timestamp;
         return this;
     }
 
-    _setCreatedTimestamp() {
-        this.createdTimestamp = Date.now();
-    }
+    /**
+     * Sets the error information
+     * @param {Error|Object} error - Error object to process
+     * @returns {TritonBuilder} Builder instance for chaining
+     */
+    exception(error) {
+        this._error = {};
 
-    _setComponentDetails(stack) {
-        if (stack != null) {
-            if (!this.component) this.component = {}
-            let stackTraceLines = [];
-            if (this.isApex) {
-                this.component.category = 'Apex';
-                this.component.name = 'Apex';
-                this.stack = stack;
-            } else {
-                stack.split('\n').filter(
-                    stackTraceLine => !stackTraceLine.includes('/c/logger.js') && !stackTraceLine.includes('/c/logBuilder.js')
-                ).forEach(stackTraceLine => {
-                    if (!this.component.category && (stackTraceLine.includes('/modules/') || stackTraceLine.includes('/components/'))) {
-                        this.component.category = stackTraceLine.includes('/modules/') ? 'LWC' : 'Aura';
-                        this.component.name = stackTraceLine.substring(stackTraceLine.lastIndexOf('/') + 1, stackTraceLine.lastIndexOf('.js'));
-                        this.component.function = stackTraceLine.substring(stackTraceLine.indexOf(this.component.category === 'LWC' ? '.' : 'at ') + (this.component.category === 'LWC' ? 1 : 3), stackTraceLine.lastIndexOf(' (')).trim();
-                    }
-                    stackTraceLines.push(stackTraceLine);
-                });
-                this.stack = stackTraceLines.join('\n');
-            }
+        if (error.body) {
+            this._error.message = error.body.message;
+            this._error.stack = error.body.stackTrace;
+            this._error.type = error.body.exceptionType;
+        } else {
+            this._error.message = error.message ? error.message : null;
+            this._error.stack = error.stack ? error.stack : error.stacktrace ? error.stacktrace : null;
+            this._error.type = error.name ? error.name : error.body ? error.body.exceptionType : null;
         }
+
+        this.componentDetails(this._error.stack);
+        this._details = (this._details || '') + this._error.message;
+        this._summary = (this._summary || this._error.message);
+        return this;
     }
 
-}
+    /**
+     * Extracts and sets component details from stack trace
+     * @param {string} stack - Stack trace to process
+     * @returns {TritonBuilder} Builder instance for chaining
+     */
+    componentDetails(stack) {
+        if (!this._componentInfo) this._componentInfo = {};
+        // Filter and process stack trace
+        const stackTraceLines = (stack || '')
+            .split(/\r?\n/)  // Handles both \n and \r\n line endings
+            .filter(line => isNotTriton(line));
+        
+        // Find first component line for metadata
+        const componentLine = stackTraceLines.find(line => isComponentLine(line));
 
-export function makeBuilder() {
-    return new TritonBuilder();
+        if (componentLine) {
+            const isLWC = isLWCLine(componentLine);
+
+            // Extract component name using shared utility
+            this._componentInfo.name = extractComponentName(componentLine);
+            // Extract function name based on stack trace format
+            const functionStartIndex = componentLine.indexOf(isLWC ? 'at ' : '.') + (isLWC ? 3 : 1);
+            const functionEndIndex = componentLine.lastIndexOf(' (');
+            this._componentInfo.function = componentLine
+                .substring(functionStartIndex, functionEndIndex)
+                .trim();
+        }
+        // Ensure we have a valid stack trace
+        if (!stackTraceLines || stackTraceLines.length === 0) {
+            this._stack = '';
+            return this;
+        }
+
+        // Skip Error message and immediate caller if we have enough lines
+        const startIndex = stackTraceLines.length >= 1 ? 1 : 0;
+        this._stack = stackTraceLines.slice(startIndex).join('\n');
+        return this;
+    }
+
+    /**
+     * Sets the user ID
+     * @param {string} userId - User ID to set
+     * @returns {TritonBuilder} Builder instance for chaining
+     */
+    userId(userId) {
+        this._userId = userId;
+        return this;
+    }
+
+    /**
+     * Adds related object(s) to the log
+     * @param {string|string[]} objectIds - Single ID or array of IDs to relate to the log
+     * @returns {TritonBuilder} Builder instance for chaining
+     */
+    relatedObjects(objectIds) {
+        if (!objectIds) return this;
+
+        // Convert single ID to array
+        const idsArray = Array.isArray(objectIds) ? objectIds : [objectIds];
+        
+        // Filter out any null/undefined/empty values
+        const validIds = idsArray.filter(id => id);
+        
+        if (validIds.length > 0) {
+            this._relatedObjectIds = validIds;
+        }
+        
+        return this;
+    }
+
+    /**
+     * Creates a deep clone of the builder
+     * @returns {TritonBuilder} New builder instance with copied properties
+     */
+    clone() {
+        const newBuilder = new TritonBuilder();
+        
+        // Copy all properties except functions
+        Object.keys(this).forEach(key => {
+            if (this[key] !== undefined && typeof this[key] !== 'function') {
+                // Handle objects that need deep cloning
+                if (this[key] && typeof this[key] === 'object') {
+                    newBuilder[key] = { ...this[key] };
+                } else {
+                    newBuilder[key] = this[key];
+                }
+            }
+        });
+        
+        return newBuilder;
+    }
+
+    /**
+     * Sets runtime information
+     * @param {Object} info - Object containing all runtime details
+     * @returns {TritonBuilder} Builder instance for chaining
+     */
+    runtimeInfo(runtimeInfo = {}) {
+        this._runtimeInfo = runtimeInfo;
+        return this;
+    }
+
+    /**
+     * Builds the final log object from the builder properties
+     * @returns {Object} The constructed log object
+     */
+    build() {
+        return {
+            level: this._level,
+            category: this._category,
+            type: this._type,
+            area: this._area,
+            summary: this._summary,
+            details: this._details,
+            transactionId: this._transactionId,
+            componentInfo: this._componentInfo,
+            duration: this._duration,
+            createdTimestamp: this._createdTimestamp,
+            error: this._error,
+            stack: this._stack,
+            userId: this._userId,
+            runtimeInfo: this._runtimeInfo,
+            relatedObjectIds: this._relatedObjectIds
+        };
+    }
+
 }

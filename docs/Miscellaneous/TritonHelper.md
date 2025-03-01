@@ -3,209 +3,239 @@ layout: default
 ---
 # TritonHelper
 
-TritonHelper provides utility methods and builder classes for the Triton logging framework.
-This class includes functionality for:
+Copyright (C) 2024 Pharos AI, Inc.
+
+This file is part of Pharos Triton.
+
+Pharos Triton is free software: you can redistribute it and/or modify
+it under the terms of the MIT License.
+See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
+
+Utility methods and builder classes for the Triton logging framework.
+This class provides core functionality for:
 - Log level management and comparison
 - UUID generation for transaction tracking
-- HTTP request/response JSON serialization for integration logging
-- Pre and post-processing controls for Pharos logging configuration
-- Message formatting utilities
+- HTTP request/response JSON serialization
+- Pre and post-processing controls
+- Message formatting and stack trace management
+- Runtime information formatting
 
-The class serves as a central utility hub for the Triton logging system, offering
-helper methods and builder patterns to configure and enhance logging capabilities.
+## Overview
+
+The TritonHelper class serves as a central utility hub for the Triton logging system,
+providing essential helper methods and builder patterns to enhance logging capabilities.
+
+## Constants
+
+### Transaction Cache
+```apex
+private static final String TRANSACTION_CACHE_KEY = 'tritonTransactionId';
+private static final Integer DEFAULT_TRANSACTION_CACHE_DURATION = 300;
+```
 
 ## Methods
-### `public static String buildLogLevelKey(String category, String type, String area)`
 
-Creates a key for log level based on:
+### Transaction Management
 
-#### Parameters
+#### `public static void cacheTransactionId(String transactionId)`
+Saves transaction ID to platform cache with user-specific key.
 
-|Param|Description|
-|---|---|
-|`category`|-- log category field|
-|`tye`|-- log type field|
-|`area`|-- log functional area field|
+**Parameters**  
+- `transactionId` - `String` - The transaction ID to cache
 
-#### Returns
+**Example**
+```apex
+String transactionId = TritonHelper.generateUUID4();
+TritonHelper.cacheTransactionId(transactionId);
+```
 
-|Type|Description|
-|---|---|
-|`String`|-- a string with values in the following format: Category:{0};Type:{1};Area:{2}|
+#### `public static String getCachedTransactionId()`
+Retrieves transaction ID from platform cache using user-specific key.
 
-### `public static Boolean compareLevel(TritonTypes.Level value, TritonTypes.Level toCompare)`
+**Returns**  
+- `String` - The cached transaction ID or null if not found
 
-Compares 2 log levels.
+#### `public static void clearCachedTransactionId()`
+Clears transaction ID from platform cache.
 
-#### Parameters
+### Log Level Management
 
-|Param|Description|
-|---|---|
-|`value`|-- this is the value compared against|
-|`toCompare`|-- comparison performed against this value|
+#### `public static String buildLogLevelKey(String category, String type, String area)`
+Creates a composite key for log level lookup.
 
-#### Returns
+**Parameters**  
+- `category` - `String` - Log category
+- `type` - `String` - Log type
+- `area` - `String` - Functional area
 
-|Type|Description|
-|---|---|
-|`Boolean`|-- if value is higher than toCompare returns false, otherwise true|
+**Returns**  
+- `String` - Key in format: "Category:{0};Type:{1};Area:{2}"
 
-### `public static String generateUUID4()`
+**Example**
+```apex
+String key = TritonHelper.buildLogLevelKey(
+    TritonTypes.Category.APEX.name(),
+    TritonTypes.Type.BACKEND.name(),
+    TritonTypes.Area.ACCOUNTS.name()
+);
+```
 
-Generates a UUID.
-Used to create a transaction Id
+#### `public static Boolean compareLevel(TritonTypes.Level value, TritonTypes.Level toCompare)`
+Compares two log levels to determine if logging should occur.
 
-### `public static String toJson(RestRequest request, RestResponse response)`
+**Parameters**  
+- `value` - `TritonTypes.Level` - The level being checked
+- `toCompare` - `TritonTypes.Level` - The level to compare against
 
-Json serialization for http request and response objects.
-Used by integration logs.
+**Returns**  
+- `Boolean` - True if value is higher or equal to toCompare
 
-### `public static String toJson(HttpRequest request, HttpResponse response)`
-### `public static String formatMessage(String template, String param)`
+**Example**
+```apex
+if (TritonHelper.compareLevel(TritonTypes.Level.DEBUG, TritonTypes.Level.INFO)) {
+    // Log debug message
+}
+```
 
-Formats a message by replacing {0} placeholder with the provided parameter
+### Stack Trace Management
 
-#### Parameters
+#### `public static String getCurrentStackTrace()`
+Returns the current stack trace, excluding Triton-related entries.
 
-|Param|Description|
-|---|---|
-|`template`|The message template containing {0} placeholder|
-|`param`|The parameter to replace the placeholder with|
+**Returns**  
+- `String` - Filtered stack trace with Triton entries removed
 
-#### Returns
+**Example**
+```apex
+String stackTrace = TritonHelper.getCurrentStackTrace();
+builder.stackTrace(stackTrace);
+```
 
-|Type|Description|
-|---|---|
-|`String`|Formatted message|
+#### `public static String getOperation(String stackTrace)`
+Extracts the operation (Class.Method) from a stack trace.
 
-### `public static String formatMessage(String template, List<String> params)`
+**Parameters**  
+- `stackTrace` - `String` - The stack trace to parse
 
-Formats a message by replacing {0}, {1}, etc. placeholders with the provided parameters
+**Returns**  
+- `String` - Operation in format "ClassName.MethodName"
 
-#### Parameters
+### Message Formatting
 
-|Param|Description|
-|---|---|
-|`template`|The message template containing numbered placeholders|
-|`params`|The list of parameters to replace the placeholders with|
+#### `public static String formatMessage(String template, String param)`
+Formats a message by replacing {0} placeholder.
 
-#### Returns
+**Parameters**  
+- `template` - `String` - Message template with {0} placeholder
+- `param` - `String` - Value to replace placeholder
 
-|Type|Description|
-|---|---|
-|`String`|Formatted message|
+**Returns**  
+- `String` - Formatted message
 
----
+**Example**
+```apex
+String msg = TritonHelper.formatMessage('Processing account: {0}', account.Name);
+```
+
+#### `public static String formatMessage(String template, List<String> params)`
+Formats a message by replacing multiple placeholders.
+
+**Parameters**  
+- `template` - `String` - Message template with {0}, {1}, etc.
+- `params` - `List<String>` - Values to replace placeholders
+
+**Returns**  
+- `String` - Formatted message
+
+### Integration Payload
+
+#### `public static String toJson(RestRequest request, RestResponse response)`
+JSON serialization for REST request/response.
+
+**Parameters**  
+- `request` - `RestRequest` - The REST request
+- `response` - `RestResponse` - The REST response
+
+**Returns**  
+- `String` - JSON string containing request and response details
+
+#### `public static String toJson(HttpRequest request, HttpResponse response)`
+JSON serialization for HTTP request/response.
+
+**Parameters**  
+- `request` - `HttpRequest` - The HTTP request
+- `response` - `HttpResponse` - The HTTP response
+
+**Returns**  
+- `String` - JSON string containing request and response details
+
+### Runtime Information
+
+#### `public static String formatLwcRuntimeInfo(TritonLwc.RuntimeInfo runtime)`
+Formats runtime information into a readable string.
+
+**Parameters**  
+- `runtime` - `TritonLwc.RuntimeInfo` - Runtime information object
+
+**Returns**  
+- `String` - Formatted string with runtime details
+
 ## Classes
+
 ### IntegrationWrapper
 
-Wrapper class for integration logs
-Used to create the Json structure that combines http objects
+Wrapper class for integration logs.
 
-#### Constructors
-##### `public IntegrationWrapper(Map&lt;String,Object&gt; request, Map&lt;String,Object&gt; response)`
----
-#### Fields
-
-##### `public request` → `Map&lt;String,Object&gt;`
-
-
-##### `public response` → `Map&lt;String,Object&gt;`
-
-
----
-
-### PreProcessingControlsBuilder
-
-Builder class for constructing Pharos pre processing settings
-
+#### Properties
+- `public Map<String,Object> request` - Request details
+- `public Map<String,Object> response` - Response details
 
 ### PostProcessingControlsBuilder
 
-Builder class for constructing Pharos post processing settings
+Builder class for Pharos post-processing settings.
 
-#### Constructors
-##### `public PostProcessingControlsBuilder()`
----
-#### Fields
-
-##### `private controls` → `Map&lt;String,Boolean&gt;`
-
-
-##### `private AUDIT_TRAIL_KEY` → `String`
-
-
-##### `private DEPLOY_RESULT_KEY` → `String`
-
-
-##### `private INSTALLED_PACKAGES_KEY` → `String`
-
-
-##### `private AREA_KEY` → `String`
-
-
-##### `private PENDING_JOBS_KEY` → `String`
-
-
-##### `private RELATED_OBJECTS_KEY` → `String`
-
-
-##### `private STACK_TRACE_KEY` → `String`
-
-
-##### `private TOTAL_ACTIVE_SESSION_KEY` → `String`
-
-
-##### `private USER_INFO_KEY` → `String`
-
-
----
 #### Methods
+
 ##### `public PostProcessingControlsBuilder auditTrail(Boolean value)`
-
-Controls whether Pharos fetches recent audit trail
-
-##### `public String build()`
-
-Returns a Json version of the settings
+Controls audit trail fetching.
 
 ##### `public PostProcessingControlsBuilder deployResult(Boolean value)`
-
-Controls whether Pharos fetches recent deployments
+Controls recent deployments fetching.
 
 ##### `public PostProcessingControlsBuilder installedPackages(Boolean value)`
-
-Controls whether Pharos fetches the number of currently installed packages
+Controls installed packages count fetching.
 
 ##### `public PostProcessingControlsBuilder area(Boolean value)`
-
-Controls whether Pharos automatically sets functional area
+Controls automatic area setting.
 
 ##### `public PostProcessingControlsBuilder pendingJobs(Boolean value)`
-
-Controls whether Pharos fetches jobs currently in the flox queue
+Controls pending jobs fetching.
 
 ##### `public PostProcessingControlsBuilder relatedObjects(Boolean value)`
-
-Controls whether Pharos fetches related objects names
+Controls related objects name fetching.
 
 ##### `public PostProcessingControlsBuilder setAll(Boolean value)`
-
-Sets all flags to the value provided
+Sets all flags to the provided value.
 
 ##### `public PostProcessingControlsBuilder stackTrace(Boolean value)`
-
-Controls whether stack trace is enhanced by Pharos
-Only applicable to Apex and Integration logs
+Controls stack trace enhancement.
 
 ##### `public PostProcessingControlsBuilder userInfo(Boolean value)`
-
-Controls whether Pharos fetches User name
+Controls user name fetching.
 
 ##### `public PostProcessingControlsBuilder totalActiveSession(Boolean value)`
+Controls active session count fetching.
 
-Controls whether Pharos fetches the number of currently logged in users
+##### `public String build()`
+Returns JSON settings string.
 
----
+**Example**
+```apex
+String settings = new TritonHelper.PostProcessingControlsBuilder()
+    .auditTrail(true)
+    .stackTrace(true)
+    .userInfo(true)
+    .build();
+```
 
 ---

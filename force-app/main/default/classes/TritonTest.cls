@@ -235,23 +235,142 @@ private class TritonTest {
         componentLog.category = 'test category';
         componentLog.type = 'test type';
         componentLog.area = 'test area';
+        componentLog.transactionId = TritonHelper.generateUUID4();
         componentLog.summary = 'test summary';
         componentLog.details = 'test details';
-        componentLog.recordId = 'recordId';
-        componentLog.objectApiName = 'objectApiName';
+        componentLog.relatedObjectIds = new List<String>{'recordId'};
         TritonLwc.Component component = new TritonLwc.Component();
         component.category = 'test category';
         component.name = 'test name';
         component.function = 'test function';
-        componentLog.component = component;
+        componentLog.componentInfo = component;
         componentLogs.add(componentLog);
         TritonLwc.saveComponentLogs(componentLogs);
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Transaction_Id_External__c, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
         System.assertEquals(1, logs.size());
+        System.assertEquals(componentLog.transactionId, logs.get(0).pharos__Transaction_Id_External__c);
         System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
         System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
+    }
+
+    @IsTest
+    private static void test_lwc_runtime_info() {
+        assertBefore();
+        
+        Test.startTest();
+        
+        // Create a mock ComponentLog with RuntimeInfo
+        TritonLwc.ComponentLog componentLog = new TritonLwc.ComponentLog();
+        componentLog.category = TritonTypes.Category.LWC.name();
+        componentLog.type = 'test type';
+        componentLog.area = 'test area';
+        componentLog.summary = 'Runtime Info Test';
+        componentLog.details = 'Initial details';
+        
+        // Add component info
+        TritonLwc.Component component = new TritonLwc.Component();
+        component.name = 'TestComponent';
+        component.function = 'testFunction';
+        componentLog.componentInfo = component;
+        
+        // Create and populate RuntimeInfo
+        TritonLwc.RuntimeInfo runtimeInfo = new TritonLwc.RuntimeInfo();
+        runtimeInfo.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
+        runtimeInfo.platform = 'Windows';
+        runtimeInfo.language = 'en-US';
+        runtimeInfo.mobile = false;
+        runtimeInfo.viewportWidth = 1920;
+        runtimeInfo.viewportHeight = 1080;
+        runtimeInfo.theme = 'Light';
+        runtimeInfo.pageLoadTime = 1234.56;
+        runtimeInfo.domInteractive = 800.12;
+        runtimeInfo.domContentLoaded = 900.34;
+        runtimeInfo.firstByte = 200.0;
+        runtimeInfo.serverTime = 150.0;
+        runtimeInfo.firstPaint = 850.0;
+        runtimeInfo.firstContentfulPaint = 900.0;
+        runtimeInfo.memoryUsage = 50 * 1024 * 1024; // 50MB in bytes
+        runtimeInfo.memoryLimit = 100 * 1024 * 1024; // 100MB in bytes
+        runtimeInfo.connectionType = '4g';
+        runtimeInfo.connectionSpeed = 10.5;
+        runtimeInfo.connectionRtt = 50.0;
+        runtimeInfo.saveData = false;
+        runtimeInfo.pathname = '/lightning/page/home';
+        runtimeInfo.hostname = 'myorg.lightning.force.com';
+        runtimeInfo.isOnline = true;
+        runtimeInfo.formFactor = 'Large';
+        runtimeInfo.screenWidth = 1920;
+        runtimeInfo.screenHeight = 1080;
+        runtimeInfo.orientation = 'landscape';
+        
+        componentLog.runtimeInfo = runtimeInfo;
+        
+        // Save the component log
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{componentLog});
+        
+        Test.stopTest();
+        
+        // Verify the log was created with runtime info
+        List<pharos__Log__c> logs = [
+            SELECT Id, 
+                   pharos__Category__c,
+                   pharos__Type__c,
+                   pharos__Area__c,
+                   pharos__Details__c,
+                   pharos__Summary__c,
+                   pharos__Apex_Name__c
+            FROM pharos__Log__c
+        ];
+        
+        System.assertEquals(1, logs.size(), 'One log should be created');
+        pharos__Log__c log = logs[0];
+        
+        // Verify log properties
+        System.assertEquals(TritonTypes.Category.LWC.name(), log.pharos__Category__c);
+        System.assertEquals('test type', log.pharos__Type__c);
+        System.assertEquals(TritonTypes.Area.LWC.name(), log.pharos__Area__c);
+        System.assertEquals('Runtime Info Test', log.pharos__Summary__c);
+        System.assertEquals('TestComponent.testFunction', log.pharos__Apex_Name__c);
+        
+        // Verify runtime info in details
+        String details = log.pharos__Details__c;
+        System.assert(details.contains('Initial details'), 'Original details should be preserved');
+        System.assert(details.contains('Runtime Info:'), 'Runtime info header should be present');
+        
+        // Verify environment section
+        System.assert(details.contains('=== Environment ==='), 'Environment section should be present');
+        System.assert(details.contains('User Agent: Mozilla/5.0'), 'User agent should be present');
+        System.assert(details.contains('Platform: Windows'), 'Platform should be present');
+        System.assert(details.contains('Language: en-US'), 'Language should be present');
+        System.assert(details.contains('Mobile: false'), 'Mobile status should be present and false');
+        System.assert(details.contains('Viewport: 1920x1080'), 'Viewport dimensions should be present');
+        System.assert(details.contains('Theme: Light'), 'Theme should be present');
+        
+        // Verify performance section
+        System.assert(details.contains('=== Performance ==='), 'Performance section should be present');
+        System.assert(details.contains('Page Load Time: 1234.56ms'), 'Page load time should be present');
+        System.assert(details.contains('DOM Interactive: 800.12ms'), 'DOM interactive time should be present');
+        System.assert(details.contains('First Paint: 850.00ms'), 'First paint time should be present');
+        
+        // Verify memory section
+        System.assert(details.contains('=== Memory ==='), 'Memory section should be present');
+        System.assert(details.contains('Memory Usage: 50.00MB'), 'Memory usage should be present');
+        System.assert(details.contains('Memory Limit: 100.00MB'), 'Memory limit should be present');
+        
+        // Verify network section
+        System.assert(details.contains('=== Network ==='), 'Network section should be present');
+        System.assert(details.contains('Connection Type: 4g'), 'Connection type should be present');
+        System.assert(details.contains('Connection Speed: 10.5Mbps'), 'Connection speed should be present');
+        System.assert(details.contains('Connection RTT: 50.00ms'), 'Connection RTT should be present');
+        System.assert(details.contains('Path: /lightning/page/home'), 'Path should be present');
+        
+        // Verify device section
+        System.assert(details.contains('=== Device ==='), 'Device section should be present');
+        System.assert(details.contains('Form Factor: Large'), 'Form factor should be present');
+        System.assert(details.contains('Screen: 1920x1080'), 'Screen dimensions should be present');
+        System.assert(details.contains('Orientation: landscape'), 'Orientation should be present');
     }
 
     @IsTest
@@ -262,14 +381,18 @@ private class TritonTest {
         List<TritonLwc.ComponentLog> componentLogs = new List<TritonLwc.ComponentLog>();
         TritonLwc.ComponentLog componentLog = new TritonLwc.ComponentLog();
         
-        // Set invalid values to trigger error handling
-        componentLog.userId = 'invalid-user-id';
-        componentLog.recordId = 'invalid-record-id';
+        // Set mixed valid and invalid record IDs
+        componentLog.relatedObjectIds = new List<String>{
+            UserInfo.getUserId(),
+            'invalid-record-id'
+        };
         componentLog.category = 'InvalidCategory';
         componentLog.area = 'InvalidArea';
         componentLog.level = 'InvalidLevel';
         componentLog.details = 'Initial details';
-        componentLog.summary = 'Test summary';
+        componentLog.userId = 'invalid-user-id';
+        //blank summary
+        componentLog.summary = '';
         
         // Test error object handling
         TritonLwc.Error error = new TritonLwc.Error();
@@ -283,7 +406,7 @@ private class TritonTest {
         component.category = 'InvalidComponentCategory';
         component.name = 'TestComponent';
         component.function = 'testFunction';
-        componentLog.component = component;
+        componentLog.componentInfo = component;
         
         componentLogs.add(componentLog);
         TritonLwc.saveComponentLogs(componentLogs);
@@ -310,7 +433,7 @@ private class TritonTest {
         System.assertEquals(TritonTypes.Level.INFO.name(), log.Log_Level__c, 'Should fall back to INFO level');
         System.assertEquals('Error type', log.pharos__Type__c, 'Should use error type');
         System.assertEquals('TestComponent.testFunction', log.pharos__Apex_Name__c, 'Should combine component name and function');
-        
+        System.assertEquals(error.message, log.pharos__Summary__c, 'Should use error message as summary');
         // Verify error messages in details
         String details = log.pharos__Details__c;
         System.assert(details.contains('Invalid User Id'), 'Should contain user ID error message');
@@ -321,7 +444,11 @@ private class TritonTest {
         
         // Verify null values for invalid IDs
         System.assertEquals(UserInfo.getUserId(), log.pharos__User_Id__c, 'User ID should be current user for invalid');
-        System.assertEquals(null, log.pharos__Related_Objects__c, 'Related objects should be null for invalid input');
+        System.assertEquals(
+            JSON.serialize(new List<String>{UserInfo.getUserId()}), 
+            log.pharos__Related_Objects__c, 
+            'Related objects should only contain the valid ID'
+        );
     }
 
     @IsTest
@@ -348,7 +475,48 @@ private class TritonTest {
     }
 
     @IsTest
-    private static void test_flow_negative() {
+    private static void test_flow_wrong_category() {
+        assertBefore();
+
+        Test.startTest();
+        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
+        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
+        flowLog.category = 'InvalidCategory';
+        flowLog.type = 'type';
+        flowLog.area = 'area';
+        flowLog.summary = 'test';
+        flowLog.details = 'test';
+        flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
+        flowLogs.add(flowLog);
+        TritonFlow.log(flowLogs);
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Hash__c FROM pharos__Log__c];
+        System.assertEquals(1, logs.size());
+        System.assertEquals(TritonTypes.Category.Flow.name(), logs.get(0).pharos__Category__c);
+    }
+
+    @IsTest
+    private static void test_flow_create_issue() {
+        assertBefore();
+
+        Test.startTest();
+        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
+        flowLog.category = TritonTypes.Category.Flow.name();
+        flowLog.type = 'type';
+        flowLog.area = 'area';
+        flowLog.summary = 'test';
+        flowLog.details = 'test';
+        flowLog.level = 'ERROR';
+        flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
+        TritonFlow.processFlowLog(flowLog);
+        Test.stopTest();
+        System.assertEquals(1, Triton.instance.logs.size());
+        System.assertEquals(false, Triton.instance.logs.get(0).pharos__Do_Not_Create_Issue__c);
+    }    
+
+    @IsTest
+    private static void test_flow_bad_additional_fields_json() {
         assertBefore();
         
         Test.startTest();
@@ -644,13 +812,7 @@ private class TritonTest {
             WHERE pharos__Type__c = :TritonTypes.Type.DMLResult.name()
             ORDER BY CreatedDate
         ];
-        
-        // Debug information
-        System.debug('Number of logs found: ' + logs.size());
-        for(pharos__Log__c log : logs) {
-            System.debug('Log operation: ' + log.pharos__Apex_Name__c);
-        }
-        
+                
         System.assertEquals(5, logs.size(), 'Expected 5 DML error logs to be created (one for each DML type)');
         
         Set<String> expectedOperations = new Set<String>{'Save', 'Delete', 'Undelete', 'Upsert', 'Merge'};
@@ -706,15 +868,7 @@ private class TritonTest {
             FROM pharos__Log__c 
             WHERE pharos__Type__c = :TritonTypes.Type.DMLResult.name()
         ];
-        
-        // Debug info
-        for(pharos__Log__c log : logs) {
-            System.debug('Found unexpected error log:');
-            System.debug('Operation: ' + log.pharos__Apex_Name__c);
-            System.debug('Summary: ' + log.pharos__Summary__c);
-            System.debug('Details: ' + log.pharos__Details__c);
-        }
-        
+                
         System.assertEquals(0, logs.size(), 'No logs should be created for successful DML operations');
     }
 
@@ -743,5 +897,668 @@ private class TritonTest {
         Set<String> mixedIds = new Set<String>{validId, 'invalid-id'};
         builder.relatedObjects(mixedIds);
         System.assertEquals(JSON.serialize(new Set<Id>{validId}), builder.build().pharos__Related_Objects__c);
+    }
+
+    @IsTest
+    private static void test_flush_top_buffer() {
+        assertBefore();
+        
+        Test.startTest();
+        
+        // Add multiple logs to buffer without flushing
+        Triton.instance.addError(
+            TritonTypes.Type.Backend, 
+            TritonTypes.Area.Community, 
+            'first error', 
+            'first details'
+        );
+        Triton.instance.addError(
+            TritonTypes.Type.Backend, 
+            TritonTypes.Area.Community, 
+            'second error', 
+            'second details'
+        );
+        Triton.instance.addError(
+            TritonTypes.Type.Backend, 
+            TritonTypes.Area.Community, 
+            'third error', 
+            'third details'
+        );
+        
+        // Test flushTop with populated buffer
+        Triton.instance.flushTop();
+        Test.stopTest();
+        
+        // Verify only last log was persisted
+        List<pharos__Log__c> logs = [
+            SELECT Id, pharos__Summary__c 
+            FROM pharos__Log__c 
+            ORDER BY CreatedDate ASC
+        ];
+        System.assertEquals(1, logs.size(), 'Only one log should be persisted');
+        System.assertEquals('third error', logs[0].pharos__Summary__c, 'Last added log should be persisted');
+        System.assertEquals(2, Triton.instance.logs.size(), 'Should have two logs remaining in buffer');
+    }
+
+    @IsTest
+    private static void test_flush_top_immediate() {
+        assertBefore();
+        
+        Test.startTest();
+        Triton.instance.addError(
+            TritonTypes.Type.Backend, 
+            TritonTypes.Area.Community, 
+            'first error', 
+            'first details'
+        );
+
+        // Test immediate error method - should only flush that error
+        Triton.instance.error(
+            TritonTypes.Type.Backend, 
+            TritonTypes.Area.Community, 
+            'immediate error', 
+            'immediate details'
+        );
+        Test.stopTest();
+        
+        List<pharos__Log__c> logs = [
+            SELECT Id, pharos__Summary__c 
+            FROM pharos__Log__c 
+            ORDER BY CreatedDate ASC
+        ];
+        System.assertEquals(1, logs.size(), 'Should have one log persisted');
+        System.assertEquals('immediate error', logs[0].pharos__Summary__c, 'Immediate error should be persisted');
+        System.assertEquals(1, Triton.instance.logs.size(), 'Should have one log remaining in buffer');
+    }
+
+    @IsTest
+    private static void test_flush_top_empty_buffer() {
+        assertBefore();
+        
+        Test.startTest();
+        Triton.instance.flushTop();
+        Test.stopTest();
+        
+        List<pharos__Log__c> logs = [SELECT Id FROM pharos__Log__c];
+        System.assertEquals(0, logs.size(), 'No logs should be created with empty buffer');
+    }
+
+    @IsTest
+    private static void test_limit_info() {
+        assertBefore();
+        
+        Test.startTest();
+        
+        // Create some limit usage
+        for(Integer i = 0; i < 5; i++) {
+            List<Account> accounts = [SELECT Id FROM Account LIMIT 1];
+        }
+        Account acc = new Account(Name = 'Test');
+        insert acc;
+        
+        // Test via builder
+        TritonBuilder builder = Triton.makeBuilder()
+            .category(TritonTypes.Category.Debug)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .summary('Testing limits')
+            .details('Limit info test')
+            .limitInfo();
+        
+        Triton.instance.log(builder);
+        
+        // Test via addLog
+        Triton.instance.addLog(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Debug)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('Testing limits via addLog')
+                .details('Limit info test via addLog')
+                .limitInfo()
+        );
+        Triton.instance.flush();
+        
+        Test.stopTest();
+        
+        List<pharos__Log__c> logs = [
+            SELECT Id, 
+                   SOQL_Queries__c,
+                   SOQL_Queries_Limit__c,
+                   SOQL_Rows__c,
+                   SOQL_Rows_Limit__c,
+                   DML_Statements__c,
+                   DML_Statements_Limit__c,
+                   DML_Rows__c,
+                   DML_Rows_Limit__c,
+                   CPU_Time__c,
+                   CPU_Time_Limit__c,
+                   Heap_Size__c,
+                   Heap_Size_Limit__c,
+                   Callouts__c,
+                   Callouts_Limit__c,
+                   SOSL_Queries__c,
+                   SOSL_Queries_Limit__c,
+                   Future_Calls__c,
+                   Future_Calls_Limit__c,
+                   Queueable_Jobs__c,
+                   Queueable_Jobs_Limit__c,
+                   Email_Invocations__c,
+                   Email_Invocations_Limit__c,
+                   Push_Notifications__c,
+                   Push_Notifications_Limit__c,
+                   Batch_Jobs__c,
+                   Batch_Jobs_Limit__c,
+                   Publish_Immediate_DML__c,
+                   Publish_Immediate_DML_Limit__c
+            FROM pharos__Log__c 
+            ORDER BY CreatedDate
+        ];
+        
+        System.assertEquals(2, logs.size(), 'Should have created two logs');
+        
+        // Verify limits were captured for both logs
+        for(pharos__Log__c log : logs) {
+            // SOQL Queries
+            System.assert(log.SOQL_Queries__c >= 5, 'Should have recorded SOQL queries');
+            System.assertEquals(System.Limits.getLimitQueries(), log.SOQL_Queries_Limit__c, 'Should match SOQL queries limit');
+            
+            // DML Statements
+            System.assert(log.DML_Statements__c >= 1, 'Should have recorded DML statements');
+            System.assertEquals(System.Limits.getLimitDMLStatements(), log.DML_Statements_Limit__c, 'Should match DML statements limit');
+            
+            // DML Rows
+            System.assert(log.DML_Rows__c >= 1, 'Should have recorded DML rows');
+            System.assertEquals(System.Limits.getLimitDMLRows(), log.DML_Rows_Limit__c, 'Should match DML rows limit');
+            
+            // CPU Time and Heap Size
+            System.assert(log.CPU_Time__c > 0, 'Should have recorded CPU time');
+            System.assertEquals(System.Limits.getLimitCpuTime(), log.CPU_Time_Limit__c, 'Should match CPU time limit');
+            System.assert(log.Heap_Size__c > 0, 'Should have recorded heap size');
+            System.assertEquals(System.Limits.getLimitHeapSize(), log.Heap_Size_Limit__c, 'Should match heap size limit');
+            
+            // Unused limits - verify both usage and limits
+            System.assertEquals(0, log.Callouts__c, 'Should have recorded zero callouts');
+            System.assertEquals(System.Limits.getLimitCallouts(), log.Callouts_Limit__c, 'Should match callouts limit');
+            
+            System.assertEquals(0, log.SOSL_Queries__c, 'Should have recorded zero SOSL queries');
+            System.assertEquals(System.Limits.getLimitSoslQueries(), log.SOSL_Queries_Limit__c, 'Should match SOSL queries limit');
+            
+            System.assertEquals(0, log.Future_Calls__c, 'Should have recorded zero future calls');
+            System.assertEquals(System.Limits.getLimitFutureCalls(), log.Future_Calls_Limit__c, 'Should match future calls limit');
+            
+            System.assertEquals(0, log.Queueable_Jobs__c, 'Should have recorded zero queueable jobs');
+            System.assertEquals(System.Limits.getLimitQueueableJobs(), log.Queueable_Jobs_Limit__c, 'Should match queueable jobs limit');
+            
+            System.assertEquals(0, log.Email_Invocations__c, 'Should have recorded zero email invocations');
+            System.assertEquals(System.Limits.getLimitEmailInvocations(), log.Email_Invocations_Limit__c, 'Should match email invocations limit');
+            
+            System.assertEquals(0, log.Push_Notifications__c, 'Should have recorded zero push notifications');
+            System.assertEquals(System.Limits.getLimitMobilePushApexCalls(), log.Push_Notifications_Limit__c, 'Should match push notifications limit');
+            
+            System.assertEquals(0, log.Batch_Jobs__c, 'Should have recorded zero batch jobs');
+            System.assertEquals(System.Limits.getLimitAsyncCalls(), log.Batch_Jobs_Limit__c, 'Should match batch jobs limit');
+            
+            System.assertEquals(0, log.Publish_Immediate_DML__c, 'Should have recorded zero publish immediate DML');
+            System.assertEquals(System.Limits.getLimitPublishImmediateDML(), log.Publish_Immediate_DML_Limit__c, 'Should match publish immediate DML limit');
+        }
+    }
+
+    @IsTest
+    private static void test_get_current_stack_trace() {
+        // Test with mock stack trace containing Triton entries
+        String mockStackTraceWithTriton = 
+            'Class.TritonHelper.someMethod: line 5, column 1\n' +
+            'Class.TestClass.testMethod: line 10, column 1\n' +
+            'Class.TritonBuilder.build: line 15, column 1\n' +
+            'Class.AnotherClass.anotherMethod: line 20, column 1';
+        
+        String filteredStackTrace = TritonHelper.filterStackTrace(mockStackTraceWithTriton);
+        System.assert(!filteredStackTrace.contains('Triton'), 'Filtered stack trace should not contain Triton entries');
+        System.assert(filteredStackTrace.contains('TestClass.testMethod'), 'Should preserve non-Triton entries');
+        System.assert(filteredStackTrace.contains('AnotherClass.anotherMethod'), 'Should preserve non-Triton entries');
+
+        // Test with mock stack trace containing no Triton entries
+        String mockStackTraceNoTriton = 
+            'Class.TestClass.testMethod: line 10, column 1\n' +
+            'Class.AnotherClass.anotherMethod: line 20, column 1\n' +
+            'Class.ThirdClass.thirdMethod: line 30, column 1';
+        
+        String unchangedStackTrace = TritonHelper.filterStackTrace(mockStackTraceNoTriton);
+        System.assertEquals(mockStackTraceNoTriton, unchangedStackTrace, 'Stack trace without Triton entries should remain unchanged');
+    }
+
+    @IsTest
+    private static void test_cache_functionality() {
+        Test.startTest();
+        
+        // Test withCache when cache is available
+        Cache.Org.put('test', 'test'); // This will make CACHE_AVAILABLE true
+        Triton instance = Triton.instance.withCache();
+        System.assert(instance.withCache, 'Cache should be enabled');
+        
+        // Start a transaction and verify it's cached
+        String transactionId = instance.startTransaction();
+        System.assertNotEquals(null, transactionId, 'Transaction ID should be generated');
+        System.assertEquals(transactionId, TritonHelper.getCachedTransactionId(), 'Transaction ID should be cached');
+        
+        // Resume transaction and verify cache is updated
+        String newTransactionId = 'test-transaction-id';
+        instance.resumeTransaction(newTransactionId);
+        System.assertEquals(newTransactionId, TritonHelper.getCachedTransactionId(), 'New transaction ID should be cached');
+        
+        // Stop transaction and verify cache is cleared
+        instance.stopTransaction();
+        System.assertEquals(null, TritonHelper.getCachedTransactionId(), 'Cache should be cleared after stopping transaction');
+        
+        Test.stopTest();
+    }
+
+    @IsTest
+    private static void test_cache_functionality_negative() {
+        Test.startTest();
+        
+        // Force cache to be unavailable by simulating a Platform Cache exception
+        Cache.Org.remove('test'); // Clear any existing cache entries
+        
+        // Create instance with cache disabled
+        Triton instance = Triton.instance;
+        instance.withCache = false; // Explicitly disable cache
+        
+        // Verify transaction management still works without cache
+        String transactionId = instance.startTransaction();
+        System.assertNotEquals(null, transactionId, 'Transaction ID should be generated even without cache');
+        System.assertEquals(null, TritonHelper.getCachedTransactionId(), 'Transaction should not be cached when cache is disabled');
+        
+        Test.stopTest();
+    }
+
+    @IsTest
+    private static void test_get_operation_from_stack_trace() {
+        // Test various stack trace formats
+        String stackTrace1 = 'Class.TestClass.testMethod: line 10, column 1\n' +
+                            'Class.AnotherClass.anotherMethod: line 20, column 1';
+        String operation1 = TritonHelper.getOperation(stackTrace1);
+        System.assertEquals('Class.TestClass.testMethod', operation1, 'Should extract first operation from stack trace');
+        
+        String stackTrace2 = 'Class.TritonHelper.someMethod: line 5, column 1\n' +
+                            'Class.TestClass.testMethod: line 10, column 1';
+        String operation2 = TritonHelper.getOperation(stackTrace2);
+        System.assertEquals('Class.TestClass.testMethod', operation2, 'Should skip Triton entries');
+        
+        // Test edge cases
+        System.assertEquals('', TritonHelper.getOperation(''), 'Should handle empty stack trace');
+        System.assertEquals('', TritonHelper.getOperation('Invalid stack trace'), 'Should handle invalid stack trace');
+        System.assertEquals('', TritonHelper.getOperation(null), 'Should handle null stack trace');
+    }
+
+    @IsTest
+    private static void test_log_buffering() {
+        Test.startTest();
+        
+        // Add multiple logs to buffer using direct builder
+        for(Integer i = 0; i < 3; i++) {
+            Triton.instance.addLog(
+                Triton.makeBuilder()
+                    .category(TritonTypes.Category.Apex)
+                    .type(TritonTypes.Type.Backend)
+                    .area(TritonTypes.Area.Community)
+                    .summary('Error ' + i)
+                    .details('Details ' + i)
+                    .level(TritonTypes.Level.ERROR)
+            );
+        }
+        
+        // Verify logs are in buffer but not persisted
+        System.assertEquals(3, Triton.instance.logs.size(), 'Should have 3 logs in buffer');
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c], 'No logs should be persisted yet');
+        
+        // Test flush - should persist all logs
+        Triton.instance.flush();
+        
+        // Wait for async operations to complete
+        Test.stopTest();
+        
+        List<pharos__Log__c> persistedLogs = [
+            SELECT pharos__Summary__c 
+            FROM pharos__Log__c 
+            ORDER BY CreatedDate
+        ];
+        System.assertEquals(3, persistedLogs.size(), 'All logs should be persisted');
+        
+        // Verify log summaries
+        Set<String> expectedSummaries = new Set<String>{'Error 0', 'Error 1', 'Error 2'};
+        Set<String> actualSummaries = new Set<String>();
+        for(pharos__Log__c log : persistedLogs) {
+            actualSummaries.add(log.pharos__Summary__c);
+        }
+        System.assertEquals(expectedSummaries, actualSummaries, 'All expected logs should be persisted');
+    }
+
+    @IsTest
+    private static void test_log_buffering_with_template() {
+        Test.startTest();
+        
+        // Set up a template
+        TritonBuilder template = Triton.makeBuilder()
+            .category(TritonTypes.Category.Debug)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community);
+        Triton.instance.setTemplate(template);
+        
+        // Add logs using template
+        for(Integer i = 0; i < 3; i++) {
+            Triton.instance.addLog(
+                Triton.instance.fromTemplate()
+                    .summary('Log ' + i)
+                    .details('Template test ' + i)
+            );
+        }
+        
+        // Verify template properties are applied
+        for(pharos__Log__c log : Triton.instance.logs) {
+            System.assertEquals(TritonTypes.Category.Debug.name(), log.pharos__Category__c, 
+                'Template category should be applied');
+            System.assertEquals(TritonTypes.Type.Backend.name(), log.pharos__Type__c, 
+                'Template type should be applied');
+            System.assertEquals(TritonTypes.Area.Community.name(), log.pharos__Area__c, 
+                'Template area should be applied');
+        }
+        
+        Test.stopTest();
+    }
+
+    @IsTest
+    private static void test_cache_error_handling() {
+        Test.startTest();
+        
+        Triton.CACHE_AVAILABLE = false;
+        
+        // Test withCache() when cache is unavailable
+        Triton.instance.withCache();
+        System.assertEquals(false, Triton.CACHE_AVAILABLE, 'Cache should remain disabled');
+        System.assertNotEquals(null, Triton.instance.TRANSACTION_ID, 'Transaction ID should be generated');
+        
+        Test.stopTest();
+    }
+
+    @IsTest
+    private static void test_warning_and_debug_with_related_objects() {
+        Account testAccount = new Account(Name = 'Test Account');
+        insert testAccount;
+        Set<Id> relatedIds = new Set<Id>{testAccount.Id};
+        
+        Test.startTest();
+        
+        // Test warning with related objects
+        Triton.instance.warning(
+            TritonTypes.Type.Backend,
+            TritonTypes.Area.Community,
+            'Test Warning',
+            'Warning details'
+        );
+        
+        // Test debug with duration and related objects
+        Triton.instance.debug(
+            TritonTypes.Type.Backend,
+            TritonTypes.Area.Community,
+            'Test Debug',
+            'Debug details',
+            100 // duration in ms
+        );
+        
+        // Add debug with related objects
+        Triton.instance.addDebug(
+            TritonTypes.Type.Backend,
+            TritonTypes.Area.Community,
+            'Test Debug with Related',
+            'Debug details with related records',
+            200 // duration
+        );
+        
+        Test.stopTest();
+        
+        List<pharos__Log__c> logs = [
+            SELECT Id, 
+                   pharos__Category__c,
+                   Log_Level__c,
+                   pharos__Duration__c,
+                   pharos__Summary__c
+            FROM pharos__Log__c 
+            ORDER BY CreatedDate
+        ];
+        
+        System.assertEquals(2, logs.size(), 'Should have created warning and debug logs');
+        
+        // Verify warning log
+        System.assertEquals(TritonTypes.Category.Warning.name(), logs[0].pharos__Category__c);
+        System.assertEquals(TritonTypes.Level.WARNING.name(), logs[0].Log_Level__c);
+        
+        // Verify debug log with duration
+        System.assertEquals(TritonTypes.Category.Debug.name(), logs[1].pharos__Category__c);
+        System.assertEquals(100, logs[1].pharos__Duration__c);
+    }
+
+    @IsTest
+    private static void test_event_and_integration_error_variations() {
+        Test.startTest();
+        
+        // Test event with related objects
+        Triton.instance.event(
+            TritonTypes.Level.INFO,
+            TritonTypes.Type.Backend,
+            TritonTypes.Area.Community,
+            'Test Event',
+            'Event details'
+        );
+        
+        // Test integration error with different request/response combinations
+        RestRequest restReq = new RestRequest();
+        RestResponse restRes = new RestResponse();
+        restReq.requestURI = '/services/apexrest/Account';
+        restReq.httpMethod = 'GET';
+        
+        // Test with RestRequest/Response
+        try {
+            throw new CalloutException('Test exception');
+        } catch(Exception e) {
+            Triton.instance.integrationError(
+                TritonTypes.Area.Community,
+                e,
+                restReq,
+                restRes
+            );
+        }
+        
+        // Test with HttpRequest/Response
+        HttpRequest httpReq = new HttpRequest();
+        httpReq.setEndpoint('https://example.com');
+        httpReq.setMethod('GET');
+        HttpResponse httpRes = new HttpResponse();
+        httpRes.setStatusCode(500);
+        httpRes.setStatus('Internal Server Error');
+        
+        Triton.instance.integrationError(
+            TritonTypes.Type.Backend,
+            TritonTypes.Area.Community,
+            'HTTP Error',
+            'Error details',
+            httpReq,
+            httpRes
+        );
+        
+        Test.stopTest();
+        
+        List<pharos__Log__c> logs = [
+            SELECT Id, 
+                   pharos__Category__c,
+                   pharos__Type__c,
+                   pharos__Stacktrace_Parse_Result__c
+            FROM pharos__Log__c 
+            ORDER BY CreatedDate
+        ];
+        
+        System.assertEquals(3, logs.size(), 'Should have created event and integration error logs');
+        
+        // Verify integration logs have parsed request/response data
+        for(pharos__Log__c log : logs) {
+            if(log.pharos__Category__c == TritonTypes.Category.Integration.name()) {
+                System.assertNotEquals(null, log.pharos__Stacktrace_Parse_Result__c, 
+                    'Integration log should have parsed request/response data');
+            }
+        }
+    }
+
+    @IsTest
+    private static void test_add_error_with_exception() {
+        assertBefore();
+        
+        Test.startTest();
+        String msg;
+        // Test addError with just area and exception
+        try {
+            // Force an exception
+            Integer i = 1/0;
+        } catch(Exception e) {
+            msg = e.getMessage();
+            Triton.instance.addError(TritonTypes.Area.Community, e);
+        }
+        
+        // Verify log is in buffer but not persisted yet
+        System.assertEquals(1, Triton.instance.logs.size(), 'Should have one log in buffer');
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c], 'No logs should be persisted yet');
+        
+        // Flush and verify log
+        Triton.instance.flush();
+        
+        Test.stopTest();
+        
+        List<pharos__Log__c> logs = [
+            SELECT Id, 
+                   pharos__Category__c,
+                   pharos__Type__c,
+                   pharos__Area__c,
+                   pharos__Summary__c,
+                   pharos__Details__c,
+                   pharos__Stacktrace__c,
+                   Log_Level__c
+            FROM pharos__Log__c
+        ];
+        
+        System.assertEquals(1, logs.size(), 'Should have created one log');
+        pharos__Log__c log = logs[0];
+        
+        // Verify log properties
+        System.assertEquals(TritonTypes.Category.Apex.name(), log.pharos__Category__c);
+        System.assertEquals(TritonTypes.Area.Community.name(), log.pharos__Area__c);
+        System.assertEquals(TritonTypes.Level.ERROR.name(), log.Log_Level__c);
+        System.assert(log.pharos__Summary__c.contains(msg), 'Summary should contain exception message');
+        System.assertNotEquals(null, log.pharos__Stacktrace__c, 'Stack trace should be captured');
+    }
+
+    @IsTest
+    private static void test_add_event() {
+        assertBefore();
+        
+        Test.startTest();
+        
+        // Test addEvent with default INFO level
+        Triton.instance.addEvent(
+            TritonTypes.Type.Backend,
+            TritonTypes.Area.Community,
+            'Test Event Summary',
+            'Test Event Details'
+        );
+        
+        // Verify log is in buffer but not persisted yet
+        System.assertEquals(1, Triton.instance.logs.size(), 'Should have one log in buffer');
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c], 'No logs should be persisted yet');
+        
+        // Flush and verify log
+        Triton.instance.flush();
+        
+        Test.stopTest();
+        
+        List<pharos__Log__c> logs = [
+            SELECT Id, 
+                   pharos__Category__c,
+                   pharos__Type__c,
+                   pharos__Area__c,
+                   pharos__Summary__c,
+                   pharos__Details__c,
+                   Log_Level__c,
+                   pharos__Stacktrace__c
+            FROM pharos__Log__c
+        ];
+        
+        System.assertEquals(1, logs.size(), 'Should have created one log');
+        pharos__Log__c log = logs[0];
+        
+        // Verify log properties
+        System.assertEquals(TritonTypes.Category.Event.name(), log.pharos__Category__c);
+        System.assertEquals(TritonTypes.Type.Backend.name(), log.pharos__Type__c);
+        System.assertEquals(TritonTypes.Area.Community.name(), log.pharos__Area__c);
+        System.assertEquals(TritonTypes.Level.INFO.name(), log.Log_Level__c);
+        System.assertEquals('Test Event Summary', log.pharos__Summary__c);
+        System.assertEquals('Test Event Details', log.pharos__Details__c);
+        System.assertNotEquals(null, log.pharos__Stacktrace__c, 'Stack trace should be captured');
+    }
+
+    @IsTest
+    private static void test_post_processing_controls_builder() {
+        Test.startTest();
+        
+        // Test individual settings
+        TritonHelper.PostProcessingControlsBuilder builder = new TritonHelper.PostProcessingControlsBuilder();
+        String jsonString = builder
+            .auditTrail(true)
+            .deployResult(true)
+            .installedPackages(true)
+            .area(true)
+            .pendingJobs(true)
+            .relatedObjects(true)
+            .stackTrace(true)
+            .totalActiveSession(true)
+            .userInfo(true)
+            .build();
+        
+        // Verify JSON structure
+        Map<String, Object> controls = (Map<String, Object>)JSON.deserializeUntyped(jsonString);
+        System.assertEquals(true, controls.get('auditTrail'), 'Audit trail should be enabled');
+        System.assertEquals(true, controls.get('deployResult'), 'Deploy result should be enabled');
+        System.assertEquals(true, controls.get('installedPackages'), 'Installed packages should be enabled');
+        System.assertEquals(true, controls.get('objectInfo'), 'Object info should be enabled');
+        System.assertEquals(true, controls.get('pendingJobs'), 'Pending jobs should be enabled');
+        System.assertEquals(true, controls.get('relatedObjects'), 'Related objects should be enabled');
+        System.assertEquals(true, controls.get('stackTrace'), 'Stack trace should be enabled');
+        System.assertEquals(true, controls.get('totalActiveSession'), 'Total active session should be enabled');
+        System.assertEquals(true, controls.get('userInfo'), 'User info should be enabled');
+        
+        // Test setAll method
+        builder = new TritonHelper.PostProcessingControlsBuilder();
+        jsonString = builder.setAll(true).build();
+        controls = (Map<String, Object>)JSON.deserializeUntyped(jsonString);
+        
+        // Verify all settings are enabled
+        for(String key : controls.keySet()) {
+            System.assertEquals(true, controls.get(key), 'All controls should be enabled: ' + key);
+        }
+        
+        // Test mixed settings
+        builder = new TritonHelper.PostProcessingControlsBuilder();
+        jsonString = builder
+            .setAll(false)
+            .auditTrail(true)
+            .stackTrace(true)
+            .build();
+        controls = (Map<String, Object>)JSON.deserializeUntyped(jsonString);
+        
+        // Verify mixed settings
+        System.assertEquals(true, controls.get('auditTrail'), 'Audit trail should be enabled');
+        System.assertEquals(true, controls.get('stackTrace'), 'Stack trace should be enabled');
+        System.assertEquals(false, controls.get('userInfo'), 'User info should be disabled');
+        System.assertEquals(false, controls.get('pendingJobs'), 'Pending jobs should be disabled');
+        
+        Test.stopTest();
     }
 }

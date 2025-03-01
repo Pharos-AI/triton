@@ -22,7 +22,7 @@
  * - Validation and fallback for category, area and log level enums
  * - Timestamp and duration tracking
  */
-public with sharing class TritonLwc {
+global with sharing class TritonLwc {
 
     /**
     * Create component logs from LWC
@@ -31,40 +31,57 @@ public with sharing class TritonLwc {
     */
     @AuraEnabled
     public static void saveComponentLogs(List<ComponentLog> componentLogs) {
-        Triton logInstance = Triton.instance;
+        String transactionId = Triton.instance.startTransaction();
+        Triton logInstance = Triton.instance.withCache();
+        Boolean transactionIdFromCache = Triton.instance.TRANSACTION_ID != transactionId;
+        transactionId = Triton.instance.TRANSACTION_ID;
+
         for (ComponentLog componentLog : componentLogs) {
             Id userId = null;
-            Id relatedId = null;
-            TritonTypes.Category category = null;
-            TritonTypes.Area area = null;
-            TritonTypes.Level level = null;
+            Id[] relatedIds = new Id[0];
+            TritonTypes.Category category = TritonTypes.Category.LWC;
+            TritonTypes.Area area = TritonTypes.Area.LWC;
+            TritonTypes.Level level = TritonTypes.Level.INFO;
             String details = componentLog.details == null ? '' : componentLog.details;
-
+            
+            //transaction was not resumed from cache
+            //transaction id was provided by the component
+            if(!transactionIdFromCache && String.isNotBlank(componentLog.transactionId)) {
+                transactionId = componentLog.transactionId;
+                logInstance.resumeTransaction(transactionId);
+                transactionIdFromCache = true;
+            }
             try {
-                userId = Id.valueOf(componentLog.userId);
-            } catch (Exception e) {
-                //invalid user id
                 userId = UserInfo.getUserId();
+                if(!String.isBlank(componentLog.userId)) {
+                    userId = Id.valueOf(componentLog.userId);
+                }
+            } catch (Exception e) {
                 details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid User Id: {0}. Context user will be used.', componentLog.userId);
             }
 
-            try {
-                relatedId = Id.valueOf(componentLog.recordId);
-            } catch (Exception e) {
-                //invalid record id
-                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Record Id: {0}. This log will not be linked to a record.', componentLog.recordId);
+            if(componentLog.relatedObjectIds?.size() > 0) {
+                List<String> validIds = new List<String>();
+                for(String idStr : componentLog.relatedObjectIds) {
+                    try {
+                        // Attempt to convert to Id to validate
+                        Id validId = Id.valueOf(idStr);
+                        validIds.add(validId);
+                    } catch (Exception e) {
+                        details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Record Id: {0}. This ID will be skipped.', idStr);
+                    }
+                }
+                relatedIds = validIds;
             }
 
-            String categoryStr = String.isNotBlank(componentLog.category) ? componentLog.category : componentLog.component.category;
-
             try {
-                category = TritonTypes.Category.valueOf(categoryStr);
+                category = TritonTypes.Category.valueOf(componentLog.category);
             } catch(Exception e) {
                 //invalid category
-                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Category: {0}. Default LWC category will be used.', categoryStr);
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Category: {0}. Default LWC category will be used.', componentLog.category);
             }
 
-            String areaStr = String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.component.name;
+            String areaStr = String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.componentInfo.name;
 
             try {
                 area = TritonTypes.Area.valueOf(areaStr);
@@ -82,34 +99,35 @@ public with sharing class TritonLwc {
                 details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Level: {0}. Default INFO level will be used.', levelStr);
             }
 
-            logInstance.add(
+            details += TritonHelper.formatLwcRuntimeInfo(componentLog.runtimeInfo);
+
+            logInstance.addLog(
                     Triton.makeBuilder()
                             //category will be fetched from the componentLog
-                            .category(category == null ? TritonTypes.Category.LWC : category)
+                            .category(category)
                             //type will be fetched from the componentLog directly, of from the error. If neither are set, Frontend will be used
                             .type(String.isNotBlank(componentLog.type) ? componentLog.type :
                                     componentLog.error != null ? componentLog.error.type : TritonTypes.Type.Frontend.name())
                             //area will be fetched from the componentLog directly if set. Otherwise component name will be used
-                            .area(area == null ? TritonTypes.Area.LWC : area)
+                            .area(area)
                             //summary will be fetched from the componentLog directly if set. Otherwise, error message will be used if provided.
                             .summary(String.isNotBlank(componentLog.summary) ? componentLog.summary :
                                     componentLog.error != null ? componentLog.error.message : null)
                             .stackTrace(componentLog.stack)
                             .details(details)
-                            //transaction id will be used from the componentLog, or a new transaction id will be generated
-                            .transactionId(String.isNotBlank(componentLog.transactionId) ? componentLog.transactionId : logInstance.TRANSACTION_ID)
+                            .transactionId(transactionId)
                             .userId(userId)
-                            //apex name will be set to component.function or component.action
-                            .operation(componentLog.component.name + '.' +
-                                    (String.isNotBlank(componentLog.component.function) ? componentLog.component.function : componentLog.component.action))
-                            .relatedObject(relatedId)
+                            //apex name will be set to component.function or just component.name if function is not set
+                            .operation(componentLog.componentInfo.name + 
+                                    (String.isNotBlank(componentLog.componentInfo.function) ? '.' + componentLog.componentInfo.function : ''))
+                            .relatedObjects(relatedIds)
                             //created timestamp will be either set from the componentLog if provided, otherwise current timestamp will be used
                             .createdTimestamp(componentLog.createdTimestamp != null ? Double.valueOf(componentLog.createdTimestamp) : Double.valueOf(System.now().getTime()))
                             //log level will be taken from the componentLog if provided, otherwise INFO will be used
-                            .level(level == null ? TritonTypes.Level.INFO : level)
-                            .duration(componentLog.duration)
-                            .build());
-        }
+                            .level(level)
+                            .duration(componentLog.duration));
+        }               
+        
         logInstance.flush();
     }
 
@@ -123,14 +141,14 @@ public with sharing class TritonLwc {
         public String name { get; set; }
         @AuraEnabled
         public String function { get; set; }
-        @AuraEnabled
-        public String action { get; set; }
     }
 
     /**
      * A wrapper class for passing log data from LWC
      */
     public class ComponentLog {
+        @AuraEnabled
+        public String level { get; set; }
         @AuraEnabled
         public String category { get; set; }
         @AuraEnabled
@@ -142,27 +160,23 @@ public with sharing class TritonLwc {
         @AuraEnabled
         public String details { get; set; }
         @AuraEnabled
-        public Decimal totalTime { get; set; }
-        @AuraEnabled
-        public String userId { get; set; }
-        @AuraEnabled
-        public String recordId { get; set; }
-        @AuraEnabled
-        public String objectApiName { get; set; }
-        @AuraEnabled
-        public String stack { get; set; }
-        @AuraEnabled
-        public Error error { get; set; }
-        @AuraEnabled
-        public Component component { get; set; }
-        @AuraEnabled
         public String transactionId { get; set; }
+        @AuraEnabled
+        public Component componentInfo { get; set; }
+        @AuraEnabled
+        public Decimal duration { get; set; }
         @AuraEnabled
         public Decimal createdTimestamp { get; set; }
         @AuraEnabled
-        public String level { get; set; }
+        public Error error { get; set; }
         @AuraEnabled
-        public Decimal duration { get; set; }
+        public String stack { get; set; }
+        @AuraEnabled
+        public String userId { get; set; }
+        @AuraEnabled
+        public RuntimeInfo runtimeInfo { get; set; }
+        @AuraEnabled
+        public List<String> relatedObjectIds { get; set; }
     }
 
     /**
@@ -175,5 +189,64 @@ public with sharing class TritonLwc {
         public String stack { get; set; }
         @AuraEnabled
         public String type { get; set; }
+    }
+
+    public class RuntimeInfo {
+        @AuraEnabled
+        public String userAgent { get; set; }
+        @AuraEnabled
+        public String platform { get; set; }
+        @AuraEnabled
+        public String language { get; set; }
+        @AuraEnabled
+        public Boolean mobile { get; set; }
+        @AuraEnabled
+        public List<Object> brands { get; set; }
+        @AuraEnabled
+        public Integer viewportWidth { get; set; }
+        @AuraEnabled
+        public Integer viewportHeight { get; set; }
+        @AuraEnabled
+        public String theme { get; set; }
+        @AuraEnabled
+        public Double pageLoadTime { get; set; }
+        @AuraEnabled
+        public Double domInteractive { get; set; }
+        @AuraEnabled
+        public Double domContentLoaded { get; set; }
+        @AuraEnabled
+        public Double firstByte { get; set; }
+        @AuraEnabled
+        public Double serverTime { get; set; }
+        @AuraEnabled
+        public Double firstPaint { get; set; }
+        @AuraEnabled
+        public Double firstContentfulPaint { get; set; }
+        @AuraEnabled
+        public Double memoryUsage { get; set; }
+        @AuraEnabled
+        public Double memoryLimit { get; set; }
+        @AuraEnabled
+        public String connectionType { get; set; }
+        @AuraEnabled
+        public Double connectionSpeed { get; set; }
+        @AuraEnabled
+        public Double connectionRtt { get; set; }
+        @AuraEnabled
+        public Boolean saveData { get; set; }
+        @AuraEnabled
+        public String pathname { get; set; }
+        @AuraEnabled
+        public String hostname { get; set; }
+        @AuraEnabled
+        public Boolean isOnline { get; set; }
+        @AuraEnabled
+        public String formFactor { get; set; }
+        @AuraEnabled
+        public Integer screenWidth { get; set; }
+        @AuraEnabled
+        public Integer screenHeight { get; set; }
+        @AuraEnabled
+        public String orientation { get; set; }
     }
 }

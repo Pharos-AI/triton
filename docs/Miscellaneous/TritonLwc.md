@@ -3,149 +3,249 @@ layout: default
 ---
 # TritonLwc
 
+Copyright (C) 2024 Pharos AI, Inc.
+
+This file is part of Pharos Triton.
+
+Pharos Triton is free software: you can redistribute it and/or modify
+it under the terms of the MIT License.
+See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
+
 Provides logging capabilities for Lightning Web Components (LWC).
 This class exposes an AuraEnabled method that can be called from LWC to create log records
 with customizable attributes like category, type, area, and level.
 
-The class handles:
-- Log creation with default INFO level if not specified
-- Automatic transaction management
-- Component context capture (name, function, action)
-- Error details capture (message, stack trace, type)
+## Overview
+
+The TritonLwc class serves as a bridge between client-side Lightning Web Components and
+the server-side logging infrastructure. It handles:
+
+- Log creation with automatic level defaulting
+- Transaction management across component boundaries
+- Component context capture and validation
+- Error details extraction and formatting
 - User and record ID validation
-- Validation and fallback for category, area and log level enums
-- Timestamp and duration tracking
+- Runtime environment information capture
 
 ## Methods
-### `public static void saveComponentLogs(List<ComponentLog> componentLogs)`
 
-`AURAENABLED`
+### `@AuraEnabled public static void saveComponentLogs(List<ComponentLog> componentLogs)`
 
-Create component logs from LWC
-Use this method to persist logs generated from LWC components
+Creates and persists log records from Lightning Web Components.
 
-#### Parameters
+**Description**  
+Primary entry point for LWC logging. Processes a batch of component logs,
+validates their contents, and persists them to the database.
 
-|Param|Description|
-|---|---|
-|`componentLogs`|-- a collection of ComponentLog objects|
+**Parameters**  
+- `componentLogs` - `List<ComponentLog>` - Collection of component logs to process
 
----
+**Throws**  
+- `AuraHandledException` - If there's an error processing or saving the logs
+- `System.LimitException` - If governor limits are exceeded
+
+**Example**
+```javascript
+import saveComponentLogs from '@salesforce/apex/TritonLwc.saveComponentLogs';
+
+const logs = [{
+    category: 'LWC',
+    type: 'Frontend',
+    area: 'Accounts',
+    summary: 'Record loaded',
+    component: {
+        name: 'accountDetail',
+        function: 'handleLoad'
+    }
+}];
+
+saveComponentLogs({ componentLogs: logs })
+    .then(() => console.log('Logs saved'))
+    .catch(error => console.error('Failed to save logs', error));
+```
+
 ## Classes
+
 ### Component
 
-A wrapper class for passing component info data from LWC
+Wrapper class for component context information.
 
 #### Properties
 
-##### `public category` → `String`
+##### `@AuraEnabled public String category`
+The component's logging category. Defaults to 'LWC' if not specified.
 
-`AURAENABLED` 
+##### `@AuraEnabled public String name`
+The component's name (e.g., 'accountDetail', 'opportunityList').
 
-##### `public name` → `String`
+##### `@AuraEnabled public String function`
+The function or method where the log was created.
 
-`AURAENABLED` 
+##### `@AuraEnabled public String action`
+The action being performed (alternative to function for event handlers).
 
-##### `public function` → `String`
-
-`AURAENABLED` 
-
-##### `public action` → `String`
-
-`AURAENABLED` 
-
----
+**Example**
+```javascript
+const component = {
+    category: 'LWC',
+    name: 'accountDetail',
+    function: 'handleSave',
+    action: 'save'
+};
+```
 
 ### ComponentLog
 
-A wrapper class for passing log data from LWC
+Wrapper class for log entry data from LWC.
 
 #### Properties
 
-##### `public category` → `String`
+##### `@AuraEnabled public String category`
+Log category from TritonTypes.Category.
 
-`AURAENABLED` 
+##### `@AuraEnabled public String type`
+Log type from TritonTypes.Type.
 
-##### `public type` → `String`
+##### `@AuraEnabled public String area`
+Functional area from TritonTypes.Area.
 
-`AURAENABLED` 
+##### `@AuraEnabled public String summary`
+Brief summary of the log entry.
 
-##### `public area` → `String`
+##### `@AuraEnabled public String details`
+Detailed log message.
 
-`AURAENABLED` 
+##### `@AuraEnabled public Decimal totalTime`
+Total execution time in milliseconds.
 
-##### `public summary` → `String`
+##### `@AuraEnabled public String userId`
+ID of the user associated with the log.
 
-`AURAENABLED` 
+##### `@AuraEnabled public String recordId`
+ID of the record being operated on.
 
-##### `public details` → `String`
+##### `@AuraEnabled public String objectApiName`
+API name of the object being operated on.
 
-`AURAENABLED` 
+##### `@AuraEnabled public String stack`
+Stack trace for error tracking.
 
-##### `public totalTime` → `Decimal`
+##### `@AuraEnabled public Error error`
+Error details if logging an exception.
 
-`AURAENABLED` 
+##### `@AuraEnabled public Component component`
+Component context information.
 
-##### `public userId` → `String`
+##### `@AuraEnabled public String transactionId`
+Transaction ID for grouping related logs.
 
-`AURAENABLED` 
+##### `@AuraEnabled public Decimal createdTimestamp`
+Log creation timestamp in milliseconds since epoch.
 
-##### `public recordId` → `String`
+##### `@AuraEnabled public String level`
+Log level from TritonTypes.Level.
 
-`AURAENABLED` 
+##### `@AuraEnabled public Decimal duration`
+Operation duration in milliseconds.
 
-##### `public objectApiName` → `String`
+##### `@AuraEnabled public RuntimeInfo runtime`
+Runtime environment information.
 
-`AURAENABLED` 
-
-##### `public stack` → `String`
-
-`AURAENABLED` 
-
-##### `public error` → `Error`
-
-`AURAENABLED` 
-
-##### `public component` → `Component`
-
-`AURAENABLED` 
-
-##### `public transactionId` → `String`
-
-`AURAENABLED` 
-
-##### `public createdTimestamp` → `Decimal`
-
-`AURAENABLED` 
-
-##### `public level` → `String`
-
-`AURAENABLED` 
-
-##### `public duration` → `Decimal`
-
-`AURAENABLED` 
-
----
+**Example**
+```javascript
+const log = {
+    category: 'LWC',
+    type: 'Frontend',
+    area: 'Accounts',
+    summary: 'Failed to save record',
+    details: 'Validation error on Name field',
+    component: {
+        name: 'accountDetail',
+        function: 'handleSave'
+    },
+    level: 'ERROR',
+    recordId: '001xx000003DGb2AAG'
+};
+```
 
 ### Error
 
-A wrapper class for passing error log data from LWC
+Wrapper class for error information.
 
 #### Properties
 
-##### `public message` → `String`
+##### `@AuraEnabled public String message`
+The error message.
 
-`AURAENABLED` 
+##### `@AuraEnabled public String stack`
+The error stack trace.
 
-##### `public stack` → `String`
+##### `@AuraEnabled public String type`
+The error type or name.
 
-`AURAENABLED` 
+**Example**
+```javascript
+const error = {
+    message: 'Invalid field value',
+    stack: 'Error: Invalid field value\n    at handleSave',
+    type: 'ValidationError'
+};
+```
 
-##### `public type` → `String`
+### RuntimeInfo
 
-`AURAENABLED` 
+Wrapper class for runtime environment information.
 
----
+#### Properties
+
+##### Environment Information
+- `@AuraEnabled public String userAgent` - Browser user agent string
+- `@AuraEnabled public String platform` - Operating system platform
+- `@AuraEnabled public String language` - Browser language
+- `@AuraEnabled public Boolean mobile` - Whether device is mobile
+- `@AuraEnabled public List<Object> brands` - Browser brand information
+
+##### Viewport Information
+- `@AuraEnabled public Integer viewportWidth` - Browser viewport width
+- `@AuraEnabled public Integer viewportHeight` - Browser viewport height
+- `@AuraEnabled public String theme` - UI theme setting
+
+##### Performance Metrics
+- `@AuraEnabled public Double pageLoadTime` - Total page load time
+- `@AuraEnabled public Double domInteractive` - Time until DOM is interactive
+- `@AuraEnabled public Double domContentLoaded` - DOM content loaded time
+- `@AuraEnabled public Double firstByte` - Time to first byte
+- `@AuraEnabled public Double serverTime` - Server response time
+- `@AuraEnabled public Double firstPaint` - First paint timing
+- `@AuraEnabled public Double firstContentfulPaint` - First contentful paint timing
+- `@AuraEnabled public Double memoryUsage` - JS heap memory usage
+- `@AuraEnabled public Double memoryLimit` - JS heap memory limit
+
+##### Network Information
+- `@AuraEnabled public String connectionType` - Network connection type
+- `@AuraEnabled public Double connectionSpeed` - Network connection speed
+- `@AuraEnabled public Double connectionRtt` - Network round trip time
+- `@AuraEnabled public Boolean saveData` - Data saver mode enabled
+- `@AuraEnabled public String pathname` - Current page path
+- `@AuraEnabled public String hostname` - Current hostname
+- `@AuraEnabled public Boolean isOnline` - Online status
+
+##### Device Information
+- `@AuraEnabled public String formFactor` - Device form factor
+- `@AuraEnabled public Integer screenWidth` - Screen width
+- `@AuraEnabled public Integer screenHeight` - Screen height
+- `@AuraEnabled public String orientation` - Screen orientation
+
+**Example**
+```javascript
+const runtime = {
+    userAgent: navigator.userAgent,
+    platform: 'Windows',
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    connectionType: 'wifi',
+    formFactor: 'LARGE'
+};
+```
 
 ---
