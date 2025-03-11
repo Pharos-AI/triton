@@ -31,15 +31,22 @@ global with sharing class TritonFlow {
      * @param flowLogs The list of FlowLog instances to save
      */
     @InvocableMethod(Category='TritonLogging' Label='Add Log' Description='Creates a log for a flow or process builder')
-    public static void log(List<FlowLog> flowLogs) {
+    public static List<FlowLogOutput> log(List<FlowLog> flowLogs) {
+        List<FlowLogOutput> flowLogOutputs = new List<FlowLogOutput>();
         for (FlowLog flowLog : flowLogs) {
             processFlowLog(flowLog);
+            flowLogOutputs.add(new FlowLogOutput(flowLog));
         }
         Triton.instance.flush();
+        return flowLogOutputs;
     }
     
     @TestVisible
-    private static void processFlowLog(FlowLog flowLog) {
+    private static FlowLogOutput processFlowLog(FlowLog flowLog) {
+        FlowLogOutput result = new FlowLogOutput();
+
+        result.fullStacktrace = (String.isNotBlank(flowLog?.fullStacktrace)) ? flowLog.fullStacktrace + flowLog?.stacktrace : flowLog?.stacktrace;
+
         TritonTypes.Level level = TritonTypes.Level.INFO;
         String flowDetails = flowLog.details;
         try {
@@ -65,6 +72,7 @@ global with sharing class TritonFlow {
                 .area(flowLog.area)
                 .summary(flowLog.summary)
                 .details(flowDetails)
+                .stacktrace(result?.fullStacktrace)
                 .transactionId(Triton.instance.TRANSACTION_ID)
                 .interviewGuid(flowLog.interviewGUID)
                 .flowApiName(flowLog.flowApiName)
@@ -117,5 +125,17 @@ global with sharing class TritonFlow {
         global String operation;
         @InvocableVariable(Required=false Label='Additional Fields')
         global String additionalFields;
+        @InvocableVariable(Required=false Label='Stacktrace')
+        public String stacktrace;
+        @InvocableVariable(Required=false Label='Full Stacktrace')
+        public String fullStacktrace; 
+    }
+
+    /**
+     * A wrapper class for returning log data from flow
+     */
+    public class FlowLogOutput {
+        @InvocableVariable(Required=false Label='Full Stacktrace')
+        public String fullStacktrace;
     }
 }
