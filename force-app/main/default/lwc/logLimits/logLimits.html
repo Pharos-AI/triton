@@ -1,0 +1,46 @@
+<template>
+    <lightning-card title="Limits Usage" icon-name="utility:metrics">
+        <div class="slds-p-around_medium">
+            <template if:true={limitsWithStyle}>
+                <template if:true={hasLimits}>
+                    <template for:each={limitsWithStyle} for:item="limit">
+                        <div key={limit.name} class="slds-m-bottom_small">
+                            <div class="slds-grid slds-gutters slds-grid_vertical">
+                                <div class="slds-col slds-size_12-of-12">
+                                    <div class="slds-grid slds-gutters">
+                                        <div class="slds-col">
+                                            <div class="slds-text-body_small">{limit.name}</div>
+                                        </div>
+                                        <div class="slds-col">
+                                            <div class="slds-text-body_small slds-text-align_right">
+                                                {limit.current} / {limit.max} ({limit.percentage}%)
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="slds-col slds-size_12-of-12">
+                                    <div class="slds-progress-bar slds-progress-bar_large" 
+                                         aria-valuemin="0" 
+                                         aria-valuemax="100" 
+                                         aria-valuenow={limit.percentage} 
+                                         role="progressbar"
+                                         title={limit.current}>
+                                        <span class={limit.progressBarClass} style={limit.style}></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </template>
+                <template if:false={hasLimits}>
+                    <div class="slds-text-body_small">No limits data available.</div>
+                </template>
+            </template>
+            <template if:true={error}>
+                <div class="slds-text-color_error">
+                    Error loading limits data: {error}
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>

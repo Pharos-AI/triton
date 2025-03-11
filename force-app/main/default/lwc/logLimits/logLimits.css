@@ -1,0 +1,11 @@
+.progress-bar-green {
+    background-color: #4bca81;  /* SLDS color token for success */
+}
+
+.progress-bar-yellow {
+    background-color: #ffb75d;  /* SLDS color token for warning */
+}
+
+.progress-bar-red {
+    background-color: #e0182d;  /* SLDS color token for error */
+}
