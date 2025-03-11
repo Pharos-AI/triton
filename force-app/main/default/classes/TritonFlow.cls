@@ -34,8 +34,8 @@ global with sharing class TritonFlow {
     public static List<FlowLogOutput> log(List<FlowLog> flowLogs) {
         List<FlowLogOutput> flowLogOutputs = new List<FlowLogOutput>();
         for (FlowLog flowLog : flowLogs) {
-            processFlowLog(flowLog);
-            flowLogOutputs.add(new FlowLogOutput(flowLog));
+            FlowLogOutput result = processFlowLog(flowLog);
+            flowLogOutputs.add(result);
         }
         Triton.instance.flush();
         return flowLogOutputs;
@@ -98,6 +98,7 @@ global with sharing class TritonFlow {
             }
         }
         Triton.instance.addLog(builder);
+        return result;
     }
 
 
@@ -134,8 +135,8 @@ global with sharing class TritonFlow {
     /**
      * A wrapper class for returning log data from flow
      */
-    public class FlowLogOutput {
+    global class FlowLogOutput {
         @InvocableVariable(Required=false Label='Full Stacktrace')
-        public String fullStacktrace;
+        global String fullStacktrace;
     }
 }
