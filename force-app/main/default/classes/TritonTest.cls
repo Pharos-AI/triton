@@ -475,6 +475,75 @@ private class TritonTest {
     }
 
     @IsTest
+    private static void test_flow_with_stacktrace() {
+        assertBefore();
+
+        Test.startTest();
+        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
+        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
+        flowLog.category = TritonTypes.Category.Flow.name();
+        flowLog.type = 'type';
+        flowLog.area = 'area';
+        flowLog.summary = 'test';
+        flowLog.details = 'test';
+        flowLog.stacktrace = 'test stacktrace';
+        flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
+        flowLogs.add(flowLog);
+        List<TritonFlow.FlowLogOutput> results = TritonFlow.log(flowLogs);
+        Test.stopTest();
+
+        System.assertEquals(1, results.size());
+        System.assertEquals('test stacktrace', results.get(0).fullStacktrace);
+
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
+        System.assertEquals(1, logs.size());
+        System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
+        System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
+    }
+
+    @IsTest
+    private static void test_flow_with_stacktrace_multiple_logs() {
+        assertBefore();
+
+        Test.startTest();
+        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
+        TritonFlow.FlowLog flowLog1 = new TritonFlow.FlowLog();
+        flowLog1.category = TritonTypes.Category.Flow.name();
+        flowLog1.type = 'type';
+        flowLog1.area = 'area';
+        flowLog1.summary = 'test';
+        flowLog1.details = 'test';
+        flowLog1.stacktrace = 'teststacktrace1';
+        flowLog1.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
+        flowLogs.add(flowLog1);
+        TritonFlow.FlowLog flowLog2 = new TritonFlow.FlowLog();
+        flowLog2.category = TritonTypes.Category.Flow.name();
+        flowLog2.type = 'type';
+        flowLog2.area = 'area';
+        flowLog2.summary = 'test';
+        flowLog2.details = 'test';
+        flowLog2.fullStacktrace = flowLog1.stacktrace;
+        flowLog2.stacktrace = 'teststacktrace2';
+        flowLog2.additionalFields = '{"pharos__Summary__c":"test summary 2","pharos__Details__c":"test Details 2"}';
+        flowLogs.add(flowLog2);
+        List<TritonFlow.FlowLogOutput> results = TritonFlow.log(flowLogs);
+        Test.stopTest();
+
+        System.assertEquals(2, results.size());
+        System.assertEquals('teststacktrace1', results.get(0).fullStacktrace);
+        System.assertEquals('teststacktrace1teststacktrace2', results.get(1).fullStacktrace);
+
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c, pharos__Stacktrace__c FROM pharos__Log__c];
+        System.assertEquals(2, logs.size());
+        System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
+        System.assertEquals('test summary 2', logs.get(1).pharos__Summary__c);
+        System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
+        System.assertNotEquals(null, logs.get(1).pharos__Hash__c);
+        System.assertEquals('teststacktrace1', logs.get(0).pharos__Stacktrace__c);
+        System.assertEquals('teststacktrace1teststacktrace2', logs.get(1).pharos__Stacktrace__c);
+    }
+
+    @IsTest
     private static void test_flow_wrong_category() {
         assertBefore();
 
