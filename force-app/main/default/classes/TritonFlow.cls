@@ -31,17 +31,27 @@ global with sharing class TritonFlow {
      * @param flowLogs The list of FlowLog instances to save
      */
     @InvocableMethod(Category='TritonLogging' Label='Add Log' Description='Creates a log for a flow or process builder')
-    public static void log(List<FlowLog> flowLogs) {
+    public static List<FlowLogOutput> log(List<FlowLog> flowLogs) {
+        List<FlowLogOutput> flowLogOutputs = new List<FlowLogOutput>();
         for (FlowLog flowLog : flowLogs) {
-            processFlowLog(flowLog);
+            FlowLogOutput result = processFlowLog(flowLog);
+            flowLogOutputs.add(result);
         }
         Triton.instance.flush();
+        return flowLogOutputs;
     }
     
     @TestVisible
-    private static void processFlowLog(FlowLog flowLog) {
+    private static FlowLogOutput processFlowLog(FlowLog flowLog) {
+        FlowLogOutput result = new FlowLogOutput();
+
+        result.fullStacktrace = (String.isNotBlank(flowLog?.fullStacktrace)) ? 
+                                    flowLog.fullStacktrace + flowLog?.stacktrace : 
+                                    flowLog?.stacktrace;
+                                    
         TritonTypes.Level level = TritonTypes.Level.INFO;
         String flowDetails = flowLog.details;
+        
         try {
             level = TritonTypes.Level.valueOf(flowLog.level);
         } catch (Exception e) {
@@ -52,12 +62,18 @@ global with sharing class TritonFlow {
         try {
             category = TritonTypes.Category.valueOf(flowLog.category);
         } catch (Exception e) {
-            flowDetails += Triton.SPACE_SEP + TritonHelper.formatMessage(INVALID_CATEGORY, flowLog.category);
+            if(String.isNotBlank(flowLog.category)) {
+                flowDetails += Triton.SPACE_SEP + TritonHelper.formatMessage(INVALID_CATEGORY, flowLog.category);
+            }
         }
         
-        //start transaction if one isn't already in progress
-        if(Triton.instance.TRANSACTION_ID == null) Triton.instance.startTransaction();
-        
+        //resume or start transaction if one isn't already in progress
+        if(String.isNotBlank(flowLog.transactionId)) {
+            Triton.instance.resumeTransaction(flowLog.transactionId);
+        } else if(Triton.instance.TRANSACTION_ID == null) {
+            Triton.instance.startTransaction();
+        }
+                
         TritonBuilder builder = Triton.makeBuilder();
         builder
                 .category(category)
@@ -65,10 +81,10 @@ global with sharing class TritonFlow {
                 .area(flowLog.area)
                 .summary(flowLog.summary)
                 .details(flowDetails)
-                .transactionId(Triton.instance.TRANSACTION_ID)
                 .interviewGuid(flowLog.interviewGUID)
                 .flowApiName(flowLog.flowApiName)
                 .operation(flowLog.operation)
+                .stacktrace(result.fullStacktrace)
                 .level(level);
 
         // if the log level is ERROR, create an issue
@@ -90,6 +106,7 @@ global with sharing class TritonFlow {
             }
         }
         Triton.instance.addLog(builder);
+        return result;
     }
 
 
@@ -103,6 +120,8 @@ global with sharing class TritonFlow {
         global String type;
         @InvocableVariable(Required=true Label='Area')
         global String area;
+        @InvocableVariable(Required=false Label='Operation')
+        global String operation;
         @InvocableVariable(Required=true Label='Summary')
         global String summary;
         @InvocableVariable(Required=false Label='Details')
@@ -113,9 +132,23 @@ global with sharing class TritonFlow {
         global String flowApiName;
         @InvocableVariable(Required=false Label='Level')
         global String level;
-        @InvocableVariable(Required=false Label='Operation')
-        global String operation;
+        @InvocableVariable(Required=false Label='Transaction ID')
+        global String transactionId;
         @InvocableVariable(Required=false Label='Additional Fields')
         global String additionalFields;
+        @InvocableVariable(Required=false Label='Stacktrace')
+        global String stacktrace;
+        @InvocableVariable(Required=false Label='Full Stacktrace')
+        global String fullStacktrace; 
+    }
+
+    /**
+     * A wrapper class for returning log data from flow
+     */
+    global class FlowLogOutput {
+        @InvocableVariable(Required=false Label='Stacktrace')
+        global String stacktrace;
+        @InvocableVariable(Required=false Label='Full Stacktrace')
+        global String fullStacktrace;
     }
 }

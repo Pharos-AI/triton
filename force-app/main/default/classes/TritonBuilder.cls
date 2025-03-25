@@ -31,47 +31,91 @@ public with sharing class TritonBuilder {
     public static final String REQUEST_ID = 'pharos__Request_Id_External__c';
 
     /** transaction limit field names */
+    @TestVisible
     private static final String SOQL_QUERIES = 'SOQL_Queries__c';
+    @TestVisible
     private static final String SOQL_QUERIES_LIMIT = 'SOQL_Queries_Limit__c';
+    @TestVisible
     private static final String SOQL_ROWS = 'SOQL_Rows__c';
+    @TestVisible
     private static final String SOQL_ROWS_LIMIT = 'SOQL_Rows_Limit__c';
+    @TestVisible
     private static final String SOQL_AGGREGATES = 'SOQL_Aggregates__c';
+    @TestVisible
     private static final String SOQL_AGGREGATES_LIMIT = 'SOQL_Aggregates_Limit__c';
+    @TestVisible
     private static final String DML_STATEMENTS = 'DML_Statements__c';
+    @TestVisible
     private static final String DML_STATEMENTS_LIMIT = 'DML_Statements_Limit__c';
+    @TestVisible
     private static final String DML_ROWS = 'DML_Rows__c';
+    @TestVisible
     private static final String DML_ROWS_LIMIT = 'DML_Rows_Limit__c';
+    @TestVisible
     private static final String CPU_TIME = 'CPU_Time__c';
+    @TestVisible
     private static final String CPU_TIME_LIMIT = 'CPU_Time_Limit__c';
+    @TestVisible
     private static final String HEAP_SIZE = 'Heap_Size__c';
+    @TestVisible
     private static final String HEAP_SIZE_LIMIT = 'Heap_Size_Limit__c';
+    @TestVisible
     private static final String CALLOUTS = 'Callouts__c';
+    @TestVisible
     private static final String CALLOUTS_LIMIT = 'Callouts_Limit__c';
+    @TestVisible
     private static final String SOSL_QUERIES = 'SOSL_Queries__c';
+    @TestVisible
     private static final String SOSL_QUERIES_LIMIT = 'SOSL_Queries_Limit__c';
+    @TestVisible
     private static final String FUTURE_CALLS = 'Future_Calls__c';
+    @TestVisible
     private static final String FUTURE_CALLS_LIMIT = 'Future_Calls_Limit__c';
+    @TestVisible
     private static final String QUEUEABLE_JOBS = 'Queueable_Jobs__c';
+    @TestVisible
     private static final String QUEUEABLE_JOBS_LIMIT = 'Queueable_Jobs_Limit__c';
+    @TestVisible
     private static final String EMAIL_INVOCATIONS = 'Email_Invocations__c';
+    @TestVisible
     private static final String EMAIL_INVOCATIONS_LIMIT = 'Email_Invocations_Limit__c';
+    @TestVisible
     private static final String PUSH_NOTIFICATIONS = 'Push_Notifications__c';
+    @TestVisible
     private static final String PUSH_NOTIFICATIONS_LIMIT = 'Push_Notifications_Limit__c';
+    @TestVisible
     private static final String BATCH_JOBS = 'Batch_Jobs__c';
+    @TestVisible
     private static final String BATCH_JOBS_LIMIT = 'Batch_Jobs_Limit__c';
+    @TestVisible
     private static final String PUBLISH_IMMEDIATE_DML = 'Publish_Immediate_DML__c';
+    @TestVisible
     private static final String PUBLISH_IMMEDIATE_DML_LIMIT = 'Publish_Immediate_DML_Limit__c';
+
+    private static final Set<String> LOG_FIELDS = Schema.SObjectType.pharos__Log__c.fields.getMap().keySet();
 
     private pharos.LogBuilder builder;
 
     public TritonBuilder cloneBuilder() {
         TritonBuilder cloned = new TritonBuilder();
-        cloned.builder = (pharos.LogBuilder)this.builder.clone();
+        // Copy all attributes from the original log to the new one
+        pharos__Log__c originalLog = this.builder.build();
+        for (String field : LOG_FIELDS) {
+            Object value = originalLog.get(field);
+            if (value != null) {
+                cloned.builder.attribute(field, value);
+            }
+        }
+        cloned.initBuilder();
         return cloned;
     }
 
     public TritonBuilder() {
-        this.builder = pharos.LogBuilder.getInstance().clone();
+        this.builder = pharos.LogBuilder.getInstance();
+        initBuilder();
+    }
+
+    private void initBuilder() {
         createdTimestamp();
         this.builder.attribute(DO_NOT_CREATE_ISSUE, true);
         this.builder.attribute(REQUEST_ID, System.Request.getCurrent().getRequestId());

@@ -25,6 +25,46 @@ public with sharing class TritonHelper {
     private static final String TRANSACTION_CACHE_KEY = 'tritonTransactionId';
     private static final Integer DEFAULT_TRANSACTION_CACHE_DURATION = 300;
     /**
+     * Platform event allocation threshold (95%)
+     * Used to determine when to delay log publishing
+     */
+    public static final Decimal PLATFORM_EVENT_ALLOCATION_THRESHOLD = 0.95;
+    
+    /**
+     * For testing only - allows tests to control the return value of isPlatformEventAllocationNearThreshold
+     */
+    @TestVisible
+    private static Boolean mockThresholdExceeded = false;
+    
+    /**
+     * For testing only - allows tests to set whether the threshold check should be mocked
+     */
+    @TestVisible
+    private static Boolean isMockingThreshold = false;
+    
+    /**
+     * Checks if the current platform event allocation is near or above the threshold
+     * @return True if platform event allocation is near or above threshold, false otherwise
+     */
+    public static Boolean isPlatformEventAllocationNearThreshold() {
+        // In test context, check if we're mocking the threshold
+        if (Test.isRunningTest() && isMockingThreshold) {
+            return mockThresholdExceeded;
+        }
+        
+        // Check current platform event usage
+        Long maxPlatformEvents = Limits.getLimitPublishImmediateDML();
+        Long usedPlatformEvents = Limits.getPublishImmediateDML();
+        
+        // Calculate current usage ratio
+        Decimal usageRatio = maxPlatformEvents > 0 ? 
+            (Decimal)usedPlatformEvents / maxPlatformEvents : 0;
+        
+        // Return true if we're approaching the limit
+        return usageRatio >= PLATFORM_EVENT_ALLOCATION_THRESHOLD;
+    }
+    
+    /**
      * Generates a user-specific cache key
      * @return Cache key specific to current user
      */
@@ -430,5 +470,31 @@ public with sharing class TritonHelper {
         details += formatMessage('\nOrientation: {0}', runtime.orientation);
         
         return details;
+    }
+
+    /**
+    * Format a DML error message including field-level information
+    * @param err -- Database.Error instance
+    * @param recordId -- ID of the record that caused the error
+    * @return -- Formatted error message string
+    */
+    public static String formatDMLError(Database.Error err, Id recordId) {
+        String errorMsg = 'Error: ' + err.getMessage();
+        
+        // Add status code
+        errorMsg += ' (Status Code: ' + err.getStatusCode() + ')';
+        
+        // Add record ID if available
+        if (recordId != null) {
+            errorMsg += ' on record: ' + recordId;
+        }
+        
+        // Add field information if available
+        List<String> fields = err.getFields();
+        if (fields != null && !fields.isEmpty()) {
+            errorMsg += ' | Fields: ' + String.join(fields, ', ');
+        }
+        
+        return errorMsg;
     }
 }

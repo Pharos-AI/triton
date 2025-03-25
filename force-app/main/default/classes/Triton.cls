@@ -144,15 +144,40 @@ global with sharing class Triton {
     */
     public TritonBuilder fromTemplate() {
         return (TritonBuilder)this.template.cloneBuilder()
-                .transactionId(TRANSACTION_ID)
-                .createdTimestamp();
+                .transactionId(TRANSACTION_ID);
     }
 
     /**
     * Persist Log records immediately.
     * Use this method to persist logs to the database right away.
+    * If platform event allocation is near capacity (95%), logs will be scheduled
+    * for delayed publishing with exponential backoff using a singleton batch.
     */
     public void flush() {
+        // Check if we have any logs to flush
+        if (logs.isEmpty()) {
+            return;
+        }
+        
+        // If we're approaching the limit, schedule delayed publishing
+        if (TritonHelper.isPlatformEventAllocationNearThreshold()) {
+            // Clone the logger to pass to the batch
+            pharos.Logger clonedLogger = this.logger.clone();
+            
+            // Add all logs to the cloned logger
+            for(pharos__Log__c log : logs) {
+                clonedLogger.add(log);
+            }
+            
+            // Add to the singleton batch queue
+            TritonDelayedPublishBatch.addToQueue(clonedLogger);
+            
+            // Clear the logs from the current instance
+            this.logs.clear();
+            return;
+        }
+        
+        // If we're below the threshold, proceed with immediate publishing
         for(pharos__Log__c log : logs) {
             this.logger.add(log);
         }
@@ -163,11 +188,31 @@ global with sharing class Triton {
     /**
     * Persist the last Log in the queue only, immediately.
     * Use this method to persist a single log to the database right away.
+    * If platform event allocation is near capacity (95%), the log will be scheduled
+    * for delayed publishing with exponential backoff using a singleton batch.
     */
     public void flushTop() {
         if (logs.size() == 0) {
             return;
         }
+        
+        // If we're approaching the limit, schedule delayed publishing
+        if (TritonHelper.isPlatformEventAllocationNearThreshold()) {
+            // Clone the logger to pass to the batch
+            pharos.Logger clonedLogger = this.logger.clone();
+            
+            // Add only the top log to the cloned logger
+            clonedLogger.add(logs.get(logs.size() - 1));
+            
+            // Add to the singleton batch queue
+            TritonDelayedPublishBatch.addToQueue(clonedLogger);
+            
+            // Remove the top log from the current instance
+            this.logs.remove(logs.size() - 1);
+            return;
+        }
+        
+        // If we're below the threshold, proceed with immediate publishing
         this.logger.add(logs.get(logs.size() - 1));
         this.logger.flush();
         this.logs.remove(logs.size() - 1);
@@ -252,6 +297,8 @@ global with sharing class Triton {
         if (!isLogAllowedForLogLevel(log)) {
             return;
         }
+        builder.transactionId(TRANSACTION_ID);
+
         //get the stacktrace if one isn't provided
         String stackTrace = log.pharos__Stacktrace__c;
         if(String.isBlank(log.pharos__Stacktrace__c)) {
@@ -710,7 +757,7 @@ global with sharing class Triton {
                     failCount++;
                     failedIds.add(sr.getId());
                     for(Database.Error err : sr.getErrors()) {
-                        errorMessages.add(err.getMessage());
+                        errorMessages.add(TritonHelper.formatDMLError(err, sr.getId()));
                     }
                 }
             } else if(result instanceof Database.DeleteResult) {
@@ -720,7 +767,7 @@ global with sharing class Triton {
                     failCount++;
                     failedIds.add(dr.getId());
                     for(Database.Error err : dr.getErrors()) {
-                        errorMessages.add(err.getMessage());
+                        errorMessages.add(TritonHelper.formatDMLError(err, dr.getId()));
                     }
                 }
             } else if(result instanceof Database.UndeleteResult) {
@@ -730,7 +777,7 @@ global with sharing class Triton {
                     failCount++;
                     failedIds.add(ur.getId());
                     for(Database.Error err : ur.getErrors()) {
-                        errorMessages.add(err.getMessage());
+                        errorMessages.add(TritonHelper.formatDMLError(err, ur.getId()));
                     }
                 }
             } else if(result instanceof Database.UpsertResult) {
@@ -740,7 +787,7 @@ global with sharing class Triton {
                     failCount++;
                     failedIds.add(ur.getId());
                     for(Database.Error err : ur.getErrors()) {
-                        errorMessages.add(err.getMessage());
+                        errorMessages.add(TritonHelper.formatDMLError(err, ur.getId()));
                     }
                 }
             } else if(result instanceof Database.MergeResult) {
@@ -750,7 +797,7 @@ global with sharing class Triton {
                     failCount++;
                     failedIds.add(mr.getId());
                     for(Database.Error err : mr.getErrors()) {
-                        errorMessages.add(err.getMessage());
+                        errorMessages.add(TritonHelper.formatDMLError(err, mr.getId()));
                     }
                 }
             }
