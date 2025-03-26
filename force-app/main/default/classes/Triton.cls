@@ -159,25 +159,6 @@ global with sharing class Triton {
             return;
         }
         
-        // If we're approaching the limit, schedule delayed publishing
-        if (TritonHelper.isPlatformEventAllocationNearThreshold()) {
-            // Clone the logger to pass to the batch
-            pharos.Logger clonedLogger = this.logger.clone();
-            
-            // Add all logs to the cloned logger
-            for(pharos__Log__c log : logs) {
-                clonedLogger.add(log);
-            }
-            
-            // Add to the singleton batch queue
-            TritonDelayedPublishBatch.addToQueue(clonedLogger);
-            
-            // Clear the logs from the current instance
-            this.logs.clear();
-            return;
-        }
-        
-        // If we're below the threshold, proceed with immediate publishing
         for(pharos__Log__c log : logs) {
             this.logger.add(log);
         }
@@ -196,23 +177,6 @@ global with sharing class Triton {
             return;
         }
         
-        // If we're approaching the limit, schedule delayed publishing
-        if (TritonHelper.isPlatformEventAllocationNearThreshold()) {
-            // Clone the logger to pass to the batch
-            pharos.Logger clonedLogger = this.logger.clone();
-            
-            // Add only the top log to the cloned logger
-            clonedLogger.add(logs.get(logs.size() - 1));
-            
-            // Add to the singleton batch queue
-            TritonDelayedPublishBatch.addToQueue(clonedLogger);
-            
-            // Remove the top log from the current instance
-            this.logs.remove(logs.size() - 1);
-            return;
-        }
-        
-        // If we're below the threshold, proceed with immediate publishing
         this.logger.add(logs.get(logs.size() - 1));
         this.logger.flush();
         this.logs.remove(logs.size() - 1);

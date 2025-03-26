@@ -85,6 +85,13 @@ global with sharing class TritonFlow {
                 .flowApiName(flowLog.flowApiName)
                 .operation(flowLog.operation)
                 .stacktrace(result.fullStacktrace)
+                .postProcessing(Triton.makePostProcessingBuilder()
+                                    .stackTrace(true)
+                                    .userInfo(true)
+                                    .relatedObjects(true)
+                                    .installedPackages(true)
+                                    .pendingJobs(true)
+                                    .totalActiveSession(true))
                 .level(level);
 
         // if the log level is ERROR, create an issue
