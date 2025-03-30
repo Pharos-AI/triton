@@ -9,6 +9,7 @@
  */
 
 const TRITON_COMPONENTS = ['triton', 'tritonBuilder', 'tritonHelper'];
+const TRITON_METHOD_NAMES = ['makeBuilder', 'debug', 'info', 'warning', 'error', 'exception', 'log', 'logNow'];
 
 /**
  * Checks if a stack trace line is from internal Triton files
@@ -18,44 +19,26 @@ const TRITON_COMPONENTS = ['triton', 'tritonBuilder', 'tritonHelper'];
 const isNotTriton = (stackTraceLine) => {
     return !TRITON_COMPONENTS.some(component => 
         stackTraceLine.indexOf(`c/${component}.js`) !== -1
+    ) && !TRITON_METHOD_NAMES.some(method => 
+        stackTraceLine.indexOf(`${method} (`) !== -1
     );
 };
 
 /**
- * Determines if a stack trace line is from an LWC component
- * @param {string} stackTraceLine - Line from stack trace to check
- * @returns {boolean} True if the line is from an LWC component
+ * Extracts the function name from a stack trace line
+ * @param {string} stackTraceLine - Line from stack trace to extract function name from
+ * @returns {string} The function name
  */
-const isLWCLine = (stackTraceLine) => {
-    return stackTraceLine.includes('modules/');
-};
-
-/**
- * Checks if a stack trace line is from a component (LWC or Aura)
- * @param {string} stackTraceLine - Line from stack trace to check
- * @returns {boolean} True if the line is from a component
- */
-const isComponentLine = (stackTraceLine) => {
-    return isLWCLine(stackTraceLine) || isAuraLine(stackTraceLine);
-};
-
-/**
- * Determines if a stack trace line is from an Aura component
- * @param {string} stackTraceLine - Line from stack trace to check
- * @returns {boolean} True if the line is from an Aura component
- */
-const isAuraLine = (stackTraceLine) => {
-    return stackTraceLine.includes('components/');
-};
-
-/**
- * Determines if a stack trace is from an Aura component
- * @param {string} [stack] - Stack trace to analyze. If not provided, gets current stack trace
- * @returns {boolean} True if the stack trace contains Aura component references
- */
-const isAura = (stack) => {
-    return (stack || new Error().stack).split('\n').some(line => isAuraLine(line));
-};
+const getFunctionName = (stackTraceLine) => {
+    const functionStartIndex = stackTraceLine.indexOf('at ') + 3;
+    const functionEndIndex = stackTraceLine.lastIndexOf(' (');
+    if(functionEndIndex !== -1) {
+        return stackTraceLine
+            .substring(functionStartIndex, functionEndIndex)
+            .trim();
+    }
+    return '';
+}
 
 /**
  * Generates a UUID v4 (random UUID)
@@ -190,49 +173,9 @@ const captureRuntimeInfo = () => {
     return info;
 };
 
-/**
- * Extracts the component name from a stack trace line
- * @param {string} componentLine - Stack trace line containing component info
- * @returns {string} Component name or 'unknown-component' if not found
- */
-const extractComponentName = (componentLine) => {
-    const match = componentLine.match(/modules\/c\/(\w+)\.js/);
-    if (match && match[1]) {
-        return match[1];  // Returns just the component name (e.g., "productTileList")
-    }
-    console.warn('Could not parse component name from line:', componentLine);
-    return 'unknown-component';
-};
-
-/**
- * Extracts the component identifier from a stack trace
- * @returns {string} Component identifier
- */
-const generateComponentId = () => {
-    const stack = new Error().stack;
-    const lines = stack.split('\n');
-    
-    // Skip the first line (Error message) and the generateComponentId call
-    const componentLine = lines.slice(2).find(line => 
-        isNotTriton(line) && isComponentLine(line)
-    );
-    
-    if (!componentLine) {
-        console.warn('Could not identify component from stack trace');
-        return 'unknown-component';
-    }
-    
-    return extractComponentName(componentLine);
-};
-
 export {
     isNotTriton,
-    isLWCLine,
-    isComponentLine,
-    isAuraLine,
-    isAura,
     generateTransactionId,
     captureRuntimeInfo,
-    generateComponentId,
-    extractComponentName
+    getFunctionName
 };

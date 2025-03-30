@@ -820,12 +820,14 @@ global with sharing class Triton {
         };
 
         TritonTypes.Level currentLevel = TritonTypes.Level.valueOf(log.Log_Level__c);
+        Boolean allPermutationsDontExistInMdt = true;
         for (String key : permutations) {
             if (LOG_LEVELS.containsKey(key)) {
                 if (TritonHelper.compareLevel(LOG_LEVELS.get(key), currentLevel)) return true;
             }
+            allPermutationsDontExistInMdt = allPermutationsDontExistInMdt && !LOG_LEVELS.containsKey(key);
         }
 
-        return false;
+        return allPermutationsDontExistInMdt;
     }
 }
