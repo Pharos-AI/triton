@@ -8,8 +8,8 @@
  * See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
  */
 
-const TRITON_COMPONENTS = ['triton', 'tritonBuilder', 'tritonHelper'];
-const TRITON_METHOD_NAMES = ['makeBuilder', 'debug', 'info', 'warning', 'error', 'exception', 'log', 'logNow'];
+const TRITON_COMPONENTS = ['triton', 'tritonBuilder', 'tritonHelper', 'tritonUtils'];
+const TRITON_METHOD_NAMES = ['makeBuilder', 'refreshBuilder', 'debug', 'info', 'warning', 'error', 'exception', 'log', 'logNow'];
 
 /**
  * Checks if a stack trace line is from internal Triton files
