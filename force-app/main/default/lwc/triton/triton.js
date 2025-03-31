@@ -69,7 +69,7 @@ export default class Triton {
                     return () => {
                         const template = self.templates.get(componentId);
                         if (template) {
-                            const builder = Object.assign(new TritonBuilder(), template);
+                            const builder = template.clone();
                             return self.refreshBuilder(builder);
                         }
                         return self.makeBuilder();
