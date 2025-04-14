@@ -306,7 +306,6 @@ global with sharing class Triton {
                 .summary(summary)
                 .details(details)
                 .stackTrace(TritonHelper.getCurrentStackTrace())
-                .transactionId(TRANSACTION_ID)
                 .level(TritonTypes.Level.ERROR)
                 .createIssue()
         );
@@ -389,7 +388,6 @@ global with sharing class Triton {
                                     .userInfo(true)
                                     .relatedObjects(true))
                         .stackTrace(TritonHelper.getCurrentStackTrace())
-                        .transactionId(TRANSACTION_ID)
                         .level(TritonTypes.Level.WARNING));
     }
 
@@ -424,7 +422,6 @@ global with sharing class Triton {
                                     .userInfo(true)
                                     .relatedObjects(true))
                         .stackTrace(TritonHelper.getCurrentStackTrace())
-                        .transactionId(TRANSACTION_ID)
                         .level(TritonTypes.Level.DEBUG));
     }
 
@@ -465,7 +462,6 @@ global with sharing class Triton {
                                     .userInfo(true)
                                     .relatedObjects(true))
                         .stackTrace(TritonHelper.getCurrentStackTrace())
-                        .transactionId(TRANSACTION_ID)
                         .level(TritonTypes.Level.DEBUG)
                         .duration(duration));
     }
@@ -512,7 +508,6 @@ global with sharing class Triton {
                                     .userInfo(true)
                                     .relatedObjects(true))
                         .stackTrace(TritonHelper.getCurrentStackTrace())
-                        .transactionId(TRANSACTION_ID)
                         .level(level));
     }
 
@@ -566,7 +561,6 @@ global with sharing class Triton {
                 .category(TritonTypes.Category.Integration)
                 .area(area)
                 .integrationPayload(request, response)
-                .transactionId(TRANSACTION_ID)
         );
     }
 
@@ -593,7 +587,6 @@ global with sharing class Triton {
                 .category(TritonTypes.Category.Integration)
                 .area(area)
                 .integrationPayload(request, response)
-                .transactionId(TRANSACTION_ID)
         );
     }
 
@@ -633,7 +626,6 @@ global with sharing class Triton {
                 .stackTrace(TritonHelper.getCurrentStackTrace())
                 .createIssue()
                 .integrationPayload(request, response)
-                .transactionId(TRANSACTION_ID)
                 .level(TritonTypes.Level.ERROR)
         );
     }
@@ -681,7 +673,6 @@ global with sharing class Triton {
                 .stackTrace(TritonHelper.getCurrentStackTrace())
                 .createIssue()
                 .integrationPayload(request, response)
-                .transactionId(TRANSACTION_ID)
                 .level(TritonTypes.Level.ERROR)
         );
     }
@@ -781,7 +772,6 @@ global with sharing class Triton {
                     .details(String.join(errorMessages, SPACE_SEP))
                     .stackTrace(TritonHelper.getCurrentStackTrace())
                     .relatedObjects(failedIds)
-                    .transactionId(TRANSACTION_ID)
                     .level(TritonTypes.Level.ERROR)
                     .createIssue());
         }

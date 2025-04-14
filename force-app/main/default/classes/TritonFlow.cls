@@ -29,8 +29,11 @@ global with sharing class TritonFlow {
      * Invocable method, that can be called via flow.
      * Defaults to INFO log level
      * @param flowLogs The list of FlowLog instances to save
+     * @return List<FlowLogOutput> The list of FlowLogOutput instances to save
      */
-    @InvocableMethod(Category='TritonLogging' Label='Add Log' Description='Creates a log for a flow or process builder')
+    @InvocableMethod(Category='TritonLogging' 
+                    Label='Log' 
+                    Description='Creates a log for a flow or process builder')
     public static List<FlowLogOutput> log(List<FlowLog> flowLogs) {
         List<FlowLogOutput> flowLogOutputs = new List<FlowLogOutput>();
         for (FlowLog flowLog : flowLogs) {

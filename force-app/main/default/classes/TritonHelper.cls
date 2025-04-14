@@ -24,45 +24,6 @@ public with sharing class TritonHelper {
 
     private static final String TRANSACTION_CACHE_KEY = 'tritonTransactionId';
     private static final Integer DEFAULT_TRANSACTION_CACHE_DURATION = 300;
-    /**
-     * Platform event allocation threshold (95%)
-     * Used to determine when to delay log publishing
-     */
-    public static final Decimal PLATFORM_EVENT_ALLOCATION_THRESHOLD = 0.95;
-    
-    /**
-     * For testing only - allows tests to control the return value of isPlatformEventAllocationNearThreshold
-     */
-    @TestVisible
-    private static Boolean mockThresholdExceeded = false;
-    
-    /**
-     * For testing only - allows tests to set whether the threshold check should be mocked
-     */
-    @TestVisible
-    private static Boolean isMockingThreshold = false;
-    
-    /**
-     * Checks if the current platform event allocation is near or above the threshold
-     * @return True if platform event allocation is near or above threshold, false otherwise
-     */
-    public static Boolean isPlatformEventAllocationNearThreshold() {
-        // In test context, check if we're mocking the threshold
-        if (Test.isRunningTest() && isMockingThreshold) {
-            return mockThresholdExceeded;
-        }
-        
-        // Check current platform event usage
-        Long maxPlatformEvents = Limits.getLimitPublishImmediateDML();
-        Long usedPlatformEvents = Limits.getPublishImmediateDML();
-        
-        // Calculate current usage ratio
-        Decimal usageRatio = maxPlatformEvents > 0 ? 
-            (Decimal)usedPlatformEvents / maxPlatformEvents : 0;
-        
-        // Return true if we're approaching the limit
-        return usageRatio >= PLATFORM_EVENT_ALLOCATION_THRESHOLD;
-    }
     
     /**
      * Generates a user-specific cache key

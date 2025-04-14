@@ -238,6 +238,7 @@ private class TritonTest {
         componentLog.category = 'test category';
         componentLog.type = 'test type';
         componentLog.area = 'test area';
+        componentLog.level = TritonTypes.Level.ERROR.name();
         componentLog.transactionId = TritonHelper.generateUUID4();
         componentLog.summary = 'test summary';
         componentLog.details = 'test details';
@@ -246,14 +247,16 @@ private class TritonTest {
         component.category = 'test category';
         component.name = 'test name';
         component.function = 'test function';
+        
         componentLog.componentInfo = component;
         componentLogs.add(componentLog);
         TritonLwc.saveComponentLogs(componentLogs);
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Transaction_Id_External__c, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Do_Not_Create_Issue__c, pharos__Transaction_Id_External__c, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
         System.assertEquals(1, logs.size());
         System.assertEquals(componentLog.transactionId, logs.get(0).pharos__Transaction_Id_External__c);
+        System.assertEquals(false, logs.get(0).pharos__Do_Not_Create_Issue__c);
         System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
         System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
     }
