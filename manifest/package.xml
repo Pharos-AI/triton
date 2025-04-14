@@ -33,7 +33,7 @@
         <name>StaticResource</name>
     </types>
     <types>
-        <members>Log_Level__mdt</members>
+        <members>*</members>
         <name>CustomMetadata</name>
     </types>
     <types>
