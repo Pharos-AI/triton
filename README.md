@@ -36,9 +36,9 @@ To get started with Pharos Triton:
 2. Integrate Triton into your Salesforce org by following the installation instructions
 3. Assign appropriate permission sets to your users (see Access Control section below)
 4. Start capturing logs from your Salesforce automation using the appropriate interface:
-   - `Triton.instance` for Apex code
+   - `Triton` for Apex code
    - `TritonFlow` invocable actions for Flows and Process Builder
-   - `triton` Lightning web component for LWC and Aura
+   - `triton.js` Lightning web component for LWC and Aura
 
 ## Access Control
 
