@@ -100,9 +100,13 @@ global with sharing class TritonLwc {
             }
 
             details += TritonHelper.formatLwcRuntimeInfo(componentLog.runtimeInfo);
-
-            logInstance.addLog(
-                    Triton.makeBuilder()
+            
+            TritonBuilder builder = Triton.makeBuilder();
+            if(level == TritonTypes.Level.ERROR) {
+                builder.createIssue();
+            }
+            
+            logInstance.addLog(builder
                             //category will be fetched from the componentLog
                             .category(category)
                             //type will be fetched from the componentLog directly, of from the error. If neither are set, Frontend will be used

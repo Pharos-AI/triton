@@ -24,6 +24,7 @@ public with sharing class TritonHelper {
 
     private static final String TRANSACTION_CACHE_KEY = 'tritonTransactionId';
     private static final Integer DEFAULT_TRANSACTION_CACHE_DURATION = 300;
+    
     /**
      * Generates a user-specific cache key
      * @return Cache key specific to current user
@@ -430,5 +431,31 @@ public with sharing class TritonHelper {
         details += formatMessage('\nOrientation: {0}', runtime.orientation);
         
         return details;
+    }
+
+    /**
+    * Format a DML error message including field-level information
+    * @param err -- Database.Error instance
+    * @param recordId -- ID of the record that caused the error
+    * @return -- Formatted error message string
+    */
+    public static String formatDMLError(Database.Error err, Id recordId) {
+        String errorMsg = 'Error: ' + err.getMessage();
+        
+        // Add status code
+        errorMsg += ' (Status Code: ' + err.getStatusCode() + ')';
+        
+        // Add record ID if available
+        if (recordId != null) {
+            errorMsg += ' on record: ' + recordId;
+        }
+        
+        // Add field information if available
+        List<String> fields = err.getFields();
+        if (fields != null && !fields.isEmpty()) {
+            errorMsg += ' | Fields: ' + String.join(fields, ', ');
+        }
+        
+        return errorMsg;
     }
 }

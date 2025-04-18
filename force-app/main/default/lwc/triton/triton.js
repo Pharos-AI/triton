@@ -11,7 +11,7 @@
 import saveComponentLogs from '@salesforce/apex/TritonLwc.saveComponentLogs';
 import USER_ID from '@salesforce/user/Id';
 import TritonBuilder from 'c/tritonBuilder';
-import { isNotTriton, isAura, generateTransactionId, captureRuntimeInfo, generateComponentId } from 'c/tritonUtils';
+import { generateTransactionId, captureRuntimeInfo } from 'c/tritonUtils';
 
 // Create a shared instance in module scope
 let instance = null;
@@ -44,15 +44,41 @@ export default class Triton {
         if (instance) {
             return instance;
         }
-        this.transactionManager = new TransactionManager(this);
-        if(isAura()) {
-            this.category = CATEGORY.AURA;
-        }
-            
+        this.transactionManager = new TransactionManager(this);        
         this.transactionId = this.transactionManager.initialize();
         
         instance = this;
         return instance;
+    }
+
+    /**
+     * Binds logger methods to a specific component context
+     * @param {string} componentId - Unique component ID
+     * @returns {Proxy} Scoped logger instance
+     */
+    bindToComponent(componentId) {
+        const self = this;
+        return new Proxy(this, {
+            get(target, prop, receiver) {
+                if (prop === '_componentId') return componentId;
+
+                if (prop === 'setTemplate') {
+                    return (builder) => self.templates.set(componentId, builder);
+                }
+                if (prop === 'fromTemplate') {
+                    return () => {
+                        const template = self.templates.get(componentId);
+                        if (template) {
+                            const builder = template.clone();
+                            return self.refreshBuilder(builder);
+                        }
+                        return self.makeBuilder();
+                    };
+                }
+                // default behavior for all other methods
+                return Reflect.get(target, prop, receiver);
+            }
+        });
     }
 
     /**
@@ -173,37 +199,12 @@ export default class Triton {
     }
 
     /**
-     * Sets a builder template that can be re-used for the calling component
-     * @param {TritonBuilder} builder - Builder to be used as template
-     */
-    setTemplate(builder) {
-        const componentId = generateComponentId();
-        this.templates.set(componentId, builder);
-    }
-
-    /**
-     * Creates a new builder from the saved template for the calling component
-     * If no template exists, creates a new builder with default settings
-     * @returns {TritonBuilder} New builder instance
-     */
-    fromTemplate() {
-        const componentId = generateComponentId();
-        const template = this.templates.get(componentId);
-        
-        if (template) {
-            // Clone the template and set transaction-specific properties
-            const builder = Object.assign(new TritonBuilder(), template);
-            return this.refreshBuilder(builder);
-        }
-        return this.makeBuilder();
-    }
-
-    /**
      * Adds a log builder to the buffer
      * @param {TritonBuilder} builder - Builder instance to log
      * @returns {TritonBuilder} The builder instance
      */
     log(builder) {
+        builder.componentDetails(new Error().stack);
         this.logs.push(builder);
         return builder;
     }
@@ -237,11 +238,13 @@ export default class Triton {
     makeBuilder() {
         return this.refreshBuilder(new TritonBuilder())
             .userId(USER_ID)
-            .category(this.category)
-            .componentDetails(new Error().stack)
+            .category(this.category);
     }
 
     refreshBuilder(builder) {
+        if (this._componentId) {
+            builder._componentInfo = {name: this._componentId, function: ''};
+        }
         return builder
             .runtimeInfo(captureRuntimeInfo())
             .transactionId(this.transactionId)

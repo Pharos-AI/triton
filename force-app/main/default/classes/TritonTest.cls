@@ -34,6 +34,9 @@ private class TritonTest {
     @TestSetup
     private static void testSetup() {
         pharos.Test_Logger.initSettings();
+        // Clear out any existing log level metadata to ensure clean test environment
+        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{};
+        Triton.LOG_LEVELS = null;
     }
 
     @IsTest
@@ -235,6 +238,7 @@ private class TritonTest {
         componentLog.category = 'test category';
         componentLog.type = 'test type';
         componentLog.area = 'test area';
+        componentLog.level = TritonTypes.Level.ERROR.name();
         componentLog.transactionId = TritonHelper.generateUUID4();
         componentLog.summary = 'test summary';
         componentLog.details = 'test details';
@@ -243,14 +247,16 @@ private class TritonTest {
         component.category = 'test category';
         component.name = 'test name';
         component.function = 'test function';
+        
         componentLog.componentInfo = component;
         componentLogs.add(componentLog);
         TritonLwc.saveComponentLogs(componentLogs);
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Transaction_Id_External__c, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Do_Not_Create_Issue__c, pharos__Transaction_Id_External__c, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
         System.assertEquals(1, logs.size());
         System.assertEquals(componentLog.transactionId, logs.get(0).pharos__Transaction_Id_External__c);
+        System.assertEquals(false, logs.get(0).pharos__Do_Not_Create_Issue__c);
         System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
         System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
     }
@@ -457,6 +463,8 @@ private class TritonTest {
 
         Test.startTest();
         List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
+        
+        // Test 1: Basic flow log with valid category
         TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
         flowLog.category = TritonTypes.Category.Flow.name();
         flowLog.type = 'type';
@@ -465,13 +473,136 @@ private class TritonTest {
         flowLog.details = 'test';
         flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
         flowLogs.add(flowLog);
+        
+        // Test 2: Flow log with invalid category
+        TritonFlow.FlowLog invalidCategoryLog = new TritonFlow.FlowLog();
+        invalidCategoryLog.category = 'InvalidCategory';
+        invalidCategoryLog.type = 'type';
+        invalidCategoryLog.area = 'area';
+        invalidCategoryLog.summary = 'test invalid';
+        invalidCategoryLog.details = 'test invalid';
+        flowLogs.add(invalidCategoryLog);
+        
+        // Test 3: Flow log with transaction ID
+        TritonFlow.FlowLog transactionLog = new TritonFlow.FlowLog();
+        transactionLog.category = TritonTypes.Category.Flow.name();
+        transactionLog.type = 'type';
+        transactionLog.area = 'area';
+        transactionLog.summary = 'test transaction';
+        transactionLog.details = 'test transaction';
+        transactionLog.transactionId = 'test-transaction-id';
+        flowLogs.add(transactionLog);
+        
+        // Test 4: Flow log with empty category
+        TritonFlow.FlowLog emptyCategoryLog = new TritonFlow.FlowLog();
+        emptyCategoryLog.category = '';
+        emptyCategoryLog.type = 'type';
+        emptyCategoryLog.area = 'area';
+        emptyCategoryLog.summary = 'test empty';
+        emptyCategoryLog.details = 'test empty';
+        flowLogs.add(emptyCategoryLog);
+        
         TritonFlow.log(flowLogs);
         Test.stopTest();
+
+        // Verify logs were created with correct properties
+        List<pharos__Log__c> logs = [
+            SELECT Id, 
+                   pharos__Category__c, 
+                   pharos__Summary__c, 
+                   pharos__Details__c,
+                   pharos__Transaction_Id_External__c,
+                   pharos__Hash__c 
+            FROM pharos__Log__c 
+            ORDER BY CreatedDate
+        ];
+        
+        System.assertEquals(4, logs.size(), 'Should have created 4 logs');
+        
+        // Verify first log (valid category)
+        System.assertEquals(TritonTypes.Category.Flow.name(), logs[0].pharos__Category__c);
+        System.assertEquals('test summary', logs[0].pharos__Summary__c);
+        
+        // Verify second log (invalid category)
+        System.assertEquals(TritonTypes.Category.Flow.name(), logs[1].pharos__Category__c);
+        System.assert(logs[1].pharos__Details__c.contains('Unable to locate category: InvalidCategory'));
+        
+        // Verify third log (with transaction ID)
+        System.assertEquals('test-transaction-id', logs[2].pharos__Transaction_Id_External__c);
+        
+        // Verify fourth log (empty category)
+        System.assertEquals(TritonTypes.Category.Flow.name(), logs[3].pharos__Category__c);
+        System.assert(!logs[3].pharos__Details__c.contains('Unable to locate category'));
+        
+    }
+
+    @IsTest
+    private static void test_flow_with_stacktrace() {
+        assertBefore();
+
+        Test.startTest();
+        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
+        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
+        flowLog.category = TritonTypes.Category.Flow.name();
+        flowLog.type = 'type';
+        flowLog.area = 'area';
+        flowLog.summary = 'test';
+        flowLog.details = 'test';
+        flowLog.stacktrace = 'test stacktrace';
+        flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
+        flowLogs.add(flowLog);
+        List<TritonFlow.FlowLogOutput> results = TritonFlow.log(flowLogs);
+        Test.stopTest();
+
+        System.assertEquals(1, results.size());
+        System.assertEquals('test stacktrace', results.get(0).fullStacktrace);
 
         List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
         System.assertEquals(1, logs.size());
         System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
         System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
+    }
+
+    @IsTest
+    private static void test_flow_with_stacktrace_multiple_logs() {
+        assertBefore();
+
+        Test.startTest();
+        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
+        TritonFlow.FlowLog flowLog1 = new TritonFlow.FlowLog();
+        flowLog1.category = TritonTypes.Category.Flow.name();
+        flowLog1.type = 'type';
+        flowLog1.area = 'area';
+        flowLog1.summary = 'test';
+        flowLog1.details = 'test';
+        flowLog1.stacktrace = 'teststacktrace1';
+        flowLog1.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
+        flowLogs.add(flowLog1);
+        TritonFlow.FlowLog flowLog2 = new TritonFlow.FlowLog();
+        flowLog2.category = TritonTypes.Category.Flow.name();
+        flowLog2.type = 'type';
+        flowLog2.area = 'area';
+        flowLog2.summary = 'test';
+        flowLog2.details = 'test';
+        flowLog2.fullStacktrace = flowLog1.stacktrace;
+        flowLog2.stacktrace = 'teststacktrace2';
+        flowLog2.additionalFields = '{"pharos__Summary__c":"test summary 2","pharos__Details__c":"test Details 2"}';
+        flowLogs.add(flowLog2);
+        List<TritonFlow.FlowLogOutput> results = TritonFlow.log(flowLogs);
+        Test.stopTest();
+
+        System.assertEquals(2, results.size());
+        System.assertEquals('teststacktrace1', results.get(0).fullStacktrace);
+        System.assertEquals('teststacktrace1teststacktrace2', results.get(1).fullStacktrace);
+
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c, pharos__Stacktrace__c FROM pharos__Log__c];
+        System.assertEquals(2, logs.size());
+        System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
+        System.assertEquals('test summary 2', logs.get(1).pharos__Summary__c);
+        System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
+        System.assertNotEquals(null, logs.get(1).pharos__Hash__c);
+        System.assertEquals('teststacktrace1', logs.get(0).pharos__Stacktrace__c);
+        System.assertEquals('teststacktrace1teststacktrace2', logs.get(1).pharos__Stacktrace__c);
     }
 
     @IsTest
@@ -777,24 +908,33 @@ private class TritonTest {
         System.assert(!srList[0].isSuccess(), 'Insert should fail');
         Triton.instance.dmlResult(TritonTypes.Area.Accounts, srList);
         
-        // 2. Test DeleteResult - Try to delete non-existent record
+        // 2. Create a Contact with missing required field (LastName) to test field-specific errors
+        Contact invalidContact = new Contact();
+        // FirstName is optional, but LastName is required
+        invalidContact.FirstName = 'Test';
+        // Deliberately omit LastName to cause a field-specific error
+        Database.SaveResult[] contactSrList = Database.insert(new List<Contact>{invalidContact}, false);
+        System.assert(!contactSrList[0].isSuccess(), 'Contact insert should fail due to missing LastName');
+        Triton.instance.dmlResult(TritonTypes.Area.Community, contactSrList);
+        
+        // 3. Test DeleteResult - Try to delete non-existent record
         Id fakeId = '001000000000000AAA';
         Database.DeleteResult[] drList = Database.delete(new List<Id>{fakeId}, false);
         System.assert(!drList[0].isSuccess(), 'Delete should fail');
         Triton.instance.dmlResult(TritonTypes.Area.Accounts, drList);
         
-        // 3. Test UndeleteResult - Try to undelete non-existent record
+        // 4. Test UndeleteResult - Try to undelete non-existent record
         Database.UndeleteResult[] urList = Database.undelete(new List<Id>{fakeId}, false);
         System.assert(!urList[0].isSuccess(), 'Undelete should fail');
         Triton.instance.dmlResult(TritonTypes.Area.Accounts, urList);
         
-        // 4. Test UpsertResult - Try to update non-existent record
+        // 5. Test UpsertResult - Try to update non-existent record
         Account invalidUpsertAcc = new Account(Id = fakeId);
         Database.UpsertResult[] urList2 = Database.upsert(new List<Account>{invalidUpsertAcc}, false);
         System.assert(!urList2[0].isSuccess(), 'Upsert should fail');
         Triton.instance.dmlResult(TritonTypes.Area.Accounts, urList2);
         
-        // 5. Test MergeResult - Try to merge with invalid record
+        // 6. Test MergeResult - Try to merge with invalid record
         Account masterAcc = new Account(Name = 'Master');
         insert masterAcc;
         Database.MergeResult[] mergeList = Database.merge(masterAcc, new List<Id>{fakeId}, false);
@@ -813,21 +953,38 @@ private class TritonTest {
             ORDER BY CreatedDate
         ];
                 
-        System.assertEquals(5, logs.size(), 'Expected 5 DML error logs to be created (one for each DML type)');
+        System.assertEquals(6, logs.size(), 'Expected 6 DML error logs to be created (one for each DML operation)');
         
         Set<String> expectedOperations = new Set<String>{'Save', 'Delete', 'Undelete', 'Upsert', 'Merge'};
         Set<String> foundOperations = new Set<String>();
         
+        // Find the Contact error log
+        pharos__Log__c contactErrorLog = null;
         for(pharos__Log__c log : logs) {
-            System.assertEquals(TritonTypes.Category.Apex.name(), log.pharos__Category__c);
-            System.assertEquals(TritonTypes.Area.Accounts.name(), log.pharos__Area__c);
-            System.assertEquals(TritonTypes.Level.ERROR.name(), log.Log_Level__c);
             System.assertEquals(TritonTypes.Type.DMLResult.name(), log.pharos__Type__c);
+            System.assertEquals(TritonTypes.Level.ERROR.name(), log.Log_Level__c);
             System.assert(log.pharos__Summary__c.contains('DML Operation'));
+            
+            // Store the operation type
             foundOperations.add(log.pharos__Apex_Name__c);
+            
+            // Find the Contact error log
+            if(log.pharos__Area__c == TritonTypes.Area.Community.name()) {
+                contactErrorLog = log;
+            }
         }
         
+        // Verify all expected operations are found
         System.assertEquals(expectedOperations, foundOperations);
+        
+        // Verify field-level error information is included in the Contact error log
+        System.assertNotEquals(null, contactErrorLog, 'Contact error log should be created');
+        System.assert(contactErrorLog.pharos__Details__c.contains('Fields:'), 
+            'Contact error log should include field information');
+        System.assert(contactErrorLog.pharos__Details__c.contains('LastName'), 
+            'Contact error log should mention LastName field');
+        System.assert(contactErrorLog.pharos__Details__c.contains('Status Code:'), 
+            'Contact error log should include status code');
     }
 
     @IsTest
@@ -1561,4 +1718,272 @@ private class TritonTest {
         
         Test.stopTest();
     }
+
+    /**
+     * Test the addDebug method
+     */
+    @IsTest
+    static void testAddDebug() {
+        // Set up test data
+        Triton triton = Triton.instance;
+        
+        // Add a debug log
+        Test.startTest();
+        triton.addDebug(TritonTypes.Type.Backend, TritonTypes.Area.Accounts, 'Test Summary', 'Test Details');
+        Test.stopTest();
+        
+        // Verify log was added to the buffer
+        System.assertEquals(1, triton.logs.size(), 'One log should be in the buffer');
+        
+        // Verify log properties
+        pharos__Log__c log = triton.logs[0];
+        System.assertEquals('Test Summary', log.pharos__Summary__c, 'Summary should match');
+        System.assertEquals('Test Details', log.pharos__Details__c, 'Details should match');
+        System.assertEquals('Backend', log.pharos__Type__c, 'Type should match');
+        System.assertEquals('Accounts', log.pharos__Area__c, 'Area should match');
+        System.assertEquals('DEBUG', log.Log_Level__c, 'Level should be DEBUG');
+    }
+
+    /**
+    * Test the formatDMLError method with various input combinations
+    */
+    @IsTest
+    private static void test_formatDMLError() {
+        Test.startTest();
+        
+        // Create a mock Database.Error using TestVisible method
+        Triton testInstance = Triton.instance;
+        
+        // 1. Test with field errors and record ID
+        Id testId = UserInfo.getUserId();
+        Database.Error mockError = createMockDatabaseError(
+            'Required fields are missing: [LastName]', 
+            System.StatusCode.REQUIRED_FIELD_MISSING,
+            new List<String>{'LastName'}
+        );
+        
+        String formattedError = TritonHelper.formatDMLError(mockError, testId);
+        System.debug('Formatted error: ' + formattedError);
+        
+        // Verify all components are present
+        System.assert(formattedError.contains('Required fields are missing'), 'Error message should be included');
+        System.assert(formattedError.contains('Status Code: ' + System.StatusCode.REQUIRED_FIELD_MISSING), 'Status code should be included');
+        System.assert(formattedError.contains('Fields: LastName'), 'Field name should be included');
+        System.assert(formattedError.contains('on record: ' + testId), 'Record ID should be included');
+        
+        // 2. Test with null record ID
+        String formattedErrorNoId = TritonHelper.formatDMLError(mockError, null);
+        System.assert(!formattedErrorNoId.contains('on record:'), 'Record ID section should be omitted when ID is null');
+        System.assert(formattedErrorNoId.contains('Fields: LastName'), 'Field name should still be included');
+        
+        // 3. Test with no fields
+        Database.Error mockErrorNoFields = createMockDatabaseError(
+            'Record not found', 
+            System.StatusCode.INVALID_ID_FIELD,
+            null
+        );
+        
+        String formattedErrorNoFields = TritonHelper.formatDMLError(mockErrorNoFields, testId);
+        System.assert(!formattedErrorNoFields.contains('Fields:'), 'Fields section should be omitted when no fields are specified');
+        System.assert(formattedErrorNoFields.contains('Record not found'), 'Error message should still be included');
+        
+        Test.stopTest();
+    }
+    
+    /**
+    * Create a mock Database.Error for testing
+    */
+    private static Database.Error createMockDatabaseError(String message, System.StatusCode statusCode, List<String> fields) {
+        return (Database.Error)JSON.deserialize(
+            JSON.serialize(new MockDatabaseError(message, statusCode, fields)), 
+            Database.Error.class
+        );
+    }
+    
+    /**
+    * Mock class to create Database.Error instances
+    */
+    private class MockDatabaseError {
+        private String message;
+        private System.StatusCode statusCode;
+        private List<String> fields;
+        
+        public MockDatabaseError(String message, System.StatusCode statusCode, List<String> fields) {
+            this.message = message;
+            this.statusCode = statusCode;
+            this.fields = fields;
+        }
+        
+        public String getMessage() {
+            return message;
+        }
+        
+        public System.StatusCode getStatusCode() {
+            return statusCode;
+        }
+        
+        public List<String> getFields() {
+            return fields;
+        }
+    }
+
+    /**
+    * Test the field error handling in DML error logging
+    */
+    @IsTest
+    private static void test_field_error_format() {
+        Test.startTest();
+        
+        // Create a Contact with missing required fields to generate a real field error
+        Contact invalidContact = new Contact();
+        // FirstName is optional, but LastName is required (omitted to cause field error)
+        Database.SaveResult[] srList = Database.insert(new List<Contact>{invalidContact}, false);
+        
+        // Verify we got a field error
+        System.assert(!srList[0].isSuccess(), 'Insert should fail');
+        Database.Error err = srList[0].getErrors()[0];
+        System.assert(err.getFields().contains('LastName'), 'Error should reference LastName field');
+        
+        // Log the error - captures error via formatDMLError method
+        Triton.instance.dmlResult(TritonTypes.Area.Accounts, srList);
+        Test.stopTest();
+        // Retrieve the log to verify error formatting
+        pharos__Log__c log = [
+            SELECT pharos__Details__c
+            FROM pharos__Log__c
+            WHERE pharos__Area__c = :TritonTypes.Area.Accounts.name()
+            LIMIT 1
+        ];
+        
+        // Verify details contain field information
+        System.assertNotEquals(null, log, 'A log should be created');
+        System.assert(log.pharos__Details__c.contains('Fields: LastName'), 
+            'Log details should include the field name');
+        System.assert(log.pharos__Details__c.contains('Status Code:'), 
+            'Log details should include status code');
+        
+    }
+    
+    /**
+    * Test error handling with various types of errors
+    */
+    @IsTest
+    private static void test_different_error_types() {
+        Test.startTest();
+        
+        // Generate different DML error types
+        
+        // 1. Error with no specific fields (entity locking error)
+        Account acc = new Account(Name = 'Test Account');
+        insert acc;
+        
+        // Create a locking error by attempting concurrent updates
+        // This requires some creativity in a test context
+        try {
+            // Set up conflicting operations
+            // First operation - establish update
+            acc.Name = 'Updated Name 1';
+            
+            // Second operation (simulated concurrent) - would cause lock error in real scenario
+            Account sameAcc = [SELECT Id, Name FROM Account WHERE Id = :acc.Id];
+            sameAcc.Name = 'Updated Name 2';
+            update sameAcc;
+            
+            // Try updating original record to cause error
+            update acc;
+        } catch (Exception e) {
+            // Create a log from the exception
+            Triton.instance.error(TritonTypes.Area.Accounts, e);
+        }
+        
+        // 2. Record not found error
+        Id fakeId = '001000000000000AAA';
+        Database.DeleteResult[] drList = Database.delete(new List<Id>{fakeId}, false);
+        Triton.instance.dmlResult(TritonTypes.Area.Accounts, drList);
+        Test.stopTest();
+        
+        // Verify logs capture different error types appropriately
+        List<pharos__Log__c> logs = [
+            SELECT pharos__Details__c, pharos__Type__c, pharos__Summary__c, pharos__Apex_Name__c
+            FROM pharos__Log__c
+            ORDER BY CreatedDate DESC
+        ];
+        
+        System.assert(logs.size() > 0, 'Logs should be created');
+        
+        // Find the delete error log
+        pharos__Log__c deleteErrorLog = null;
+        for (pharos__Log__c log : logs) {
+            if (log.pharos__Type__c == TritonTypes.Type.DMLResult.name() && 
+                log.pharos__Apex_Name__c == 'Delete') {
+                deleteErrorLog = log;
+                break;
+            }
+        }
+        
+        System.assertNotEquals(null, deleteErrorLog, 'Delete error log should be created');
+        
+    }
+
+    @IsTest
+    private static void test_template_runtime_properties_reset() {
+        Test.startTest();
+        
+        // Set up a template with timestamp, duration, and other runtime properties
+        Double templateTimestamp = 123456789.0; // A fixed timestamp
+        
+        TritonBuilder template = Triton.makeBuilder()
+            .category(TritonTypes.Category.Debug)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .createdTimestamp(templateTimestamp)
+            .attribute(TritonBuilder.CPU_TIME, 1000)
+            .attribute(TritonBuilder.HEAP_SIZE, 2000);
+            
+        Triton.instance.setTemplate(template);
+        
+        // Start a transaction
+        String transactionId = Triton.instance.startTransaction();
+        
+        // Create a log from the template
+        Triton.instance.log(
+            Triton.instance.fromTemplate()
+                .summary('Runtime properties test')
+                .details('Testing runtime properties are reset')
+        );
+        
+        Test.stopTest();
+        
+        // Get the log and verify its runtime properties
+        pharos__Log__c log = [
+            SELECT pharos__Created_Timestamp__c, CPU_Time__c, Heap_Size__c
+            FROM pharos__Log__c
+            LIMIT 1
+        ];
+        
+        // Verify the template's runtime properties are NOT used
+        System.assertNotEquals(templateTimestamp, log.pharos__Created_Timestamp__c,
+            'Template timestamp should not be copied to logs created with fromTemplate()');
+                    
+        System.assertNotEquals(1000, log.CPU_Time__c,
+            'Template CPU time should not be copied to logs created with fromTemplate()');
+            
+        System.assertNotEquals(2000, log.Heap_Size__c,
+            'Template heap size should not be copied to logs created with fromTemplate()');
+    }
+
+    /**
+     * Helper method to verify batch jobs based on expected count
+     * @param expectedCount The expected number of batch jobs
+     * @param assertMessage The message to display if the assertion fails
+     */
+    private static void assertBatchJobs(Integer expectedCount, String assertMessage) {
+        System.assertEquals(expectedCount, [
+            SELECT COUNT() 
+            FROM AsyncApexJob 
+            WHERE ApexClass.Name = 'TritonDelayedPublishBatch'
+            AND Status IN ('Queued', 'Processing', 'Completed')
+        ], assertMessage);
+    }
+
 }

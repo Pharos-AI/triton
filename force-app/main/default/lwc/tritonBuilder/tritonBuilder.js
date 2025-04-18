@@ -8,7 +8,7 @@
  * See LICENSE file or go to https://github.com/Pharos-AI/triton/blob/main/LICENSE.
  */
 
-import { isNotTriton, isLWCLine, isComponentLine, extractComponentName } from 'c/tritonUtils';
+import { isNotTriton, getFunctionName } from 'c/tritonUtils';
 
 export default class TritonBuilder {
 
@@ -83,16 +83,6 @@ export default class TritonBuilder {
     }
 
     /**
-     * Sets the component information
-     * @param {Object} componentInfo - Component information object
-     * @returns {TritonBuilder} Builder instance for chaining
-     */
-    componentInfo(componentInfo) {
-        this._componentInfo = componentInfo;
-        return this;
-    }
-
-    /**
      * Sets the duration value
      * @param {number} duration - Duration in milliseconds
      * @returns {TritonBuilder} Builder instance for chaining
@@ -142,36 +132,23 @@ export default class TritonBuilder {
      * @returns {TritonBuilder} Builder instance for chaining
      */
     componentDetails(stack) {
-        if (!this._componentInfo) this._componentInfo = {};
+        if(!this._componentInfo) {
+            this._componentInfo = {};
+        }
         // Filter and process stack trace
         const stackTraceLines = (stack || '')
-            .split(/\r?\n/)  // Handles both \n and \r\n line endings
+            .split(/\r?\n/) 
             .filter(line => isNotTriton(line));
         
-        // Find first component line for metadata
-        const componentLine = stackTraceLines.find(line => isComponentLine(line));
-
-        if (componentLine) {
-            const isLWC = isLWCLine(componentLine);
-
-            // Extract component name using shared utility
-            this._componentInfo.name = extractComponentName(componentLine);
-            // Extract function name based on stack trace format
-            const functionStartIndex = componentLine.indexOf(isLWC ? 'at ' : '.') + (isLWC ? 3 : 1);
-            const functionEndIndex = componentLine.lastIndexOf(' (');
-            this._componentInfo.function = componentLine
-                .substring(functionStartIndex, functionEndIndex)
-                .trim();
-        }
-        // Ensure we have a valid stack trace
-        if (!stackTraceLines || stackTraceLines.length === 0) {
-            this._stack = '';
-            return this;
+        if(stackTraceLines.length > 1) {
+            //skip the first line as it is the error message
+            this._componentInfo.function = getFunctionName(stackTraceLines[1]);
+            // reconstruct the stack trace without the error message
+            this._stack = stackTraceLines.slice(1).join('\n');                                               
+        } else {
+            this._componentInfo.function = '';
         }
 
-        // Skip Error message and immediate caller if we have enough lines
-        const startIndex = stackTraceLines.length >= 1 ? 1 : 0;
-        this._stack = stackTraceLines.slice(startIndex).join('\n');
         return this;
     }
 

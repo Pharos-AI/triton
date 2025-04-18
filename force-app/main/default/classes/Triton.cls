@@ -144,15 +144,21 @@ global with sharing class Triton {
     */
     public TritonBuilder fromTemplate() {
         return (TritonBuilder)this.template.cloneBuilder()
-                .transactionId(TRANSACTION_ID)
-                .createdTimestamp();
+                .transactionId(TRANSACTION_ID);
     }
 
     /**
     * Persist Log records immediately.
     * Use this method to persist logs to the database right away.
+    * If platform event allocation is near capacity (95%), logs will be scheduled
+    * for delayed publishing with exponential backoff using a singleton batch.
     */
     public void flush() {
+        // Check if we have any logs to flush
+        if (logs.isEmpty()) {
+            return;
+        }
+        
         for(pharos__Log__c log : logs) {
             this.logger.add(log);
         }
@@ -163,11 +169,14 @@ global with sharing class Triton {
     /**
     * Persist the last Log in the queue only, immediately.
     * Use this method to persist a single log to the database right away.
+    * If platform event allocation is near capacity (95%), the log will be scheduled
+    * for delayed publishing with exponential backoff using a singleton batch.
     */
     public void flushTop() {
         if (logs.size() == 0) {
             return;
         }
+        
         this.logger.add(logs.get(logs.size() - 1));
         this.logger.flush();
         this.logs.remove(logs.size() - 1);
@@ -252,6 +261,8 @@ global with sharing class Triton {
         if (!isLogAllowedForLogLevel(log)) {
             return;
         }
+        builder.transactionId(TRANSACTION_ID);
+
         //get the stacktrace if one isn't provided
         String stackTrace = log.pharos__Stacktrace__c;
         if(String.isBlank(log.pharos__Stacktrace__c)) {
@@ -295,7 +306,6 @@ global with sharing class Triton {
                 .summary(summary)
                 .details(details)
                 .stackTrace(TritonHelper.getCurrentStackTrace())
-                .transactionId(TRANSACTION_ID)
                 .level(TritonTypes.Level.ERROR)
                 .createIssue()
         );
@@ -378,7 +388,6 @@ global with sharing class Triton {
                                     .userInfo(true)
                                     .relatedObjects(true))
                         .stackTrace(TritonHelper.getCurrentStackTrace())
-                        .transactionId(TRANSACTION_ID)
                         .level(TritonTypes.Level.WARNING));
     }
 
@@ -413,7 +422,6 @@ global with sharing class Triton {
                                     .userInfo(true)
                                     .relatedObjects(true))
                         .stackTrace(TritonHelper.getCurrentStackTrace())
-                        .transactionId(TRANSACTION_ID)
                         .level(TritonTypes.Level.DEBUG));
     }
 
@@ -454,7 +462,6 @@ global with sharing class Triton {
                                     .userInfo(true)
                                     .relatedObjects(true))
                         .stackTrace(TritonHelper.getCurrentStackTrace())
-                        .transactionId(TRANSACTION_ID)
                         .level(TritonTypes.Level.DEBUG)
                         .duration(duration));
     }
@@ -501,7 +508,6 @@ global with sharing class Triton {
                                     .userInfo(true)
                                     .relatedObjects(true))
                         .stackTrace(TritonHelper.getCurrentStackTrace())
-                        .transactionId(TRANSACTION_ID)
                         .level(level));
     }
 
@@ -555,7 +561,6 @@ global with sharing class Triton {
                 .category(TritonTypes.Category.Integration)
                 .area(area)
                 .integrationPayload(request, response)
-                .transactionId(TRANSACTION_ID)
         );
     }
 
@@ -582,7 +587,6 @@ global with sharing class Triton {
                 .category(TritonTypes.Category.Integration)
                 .area(area)
                 .integrationPayload(request, response)
-                .transactionId(TRANSACTION_ID)
         );
     }
 
@@ -622,7 +626,6 @@ global with sharing class Triton {
                 .stackTrace(TritonHelper.getCurrentStackTrace())
                 .createIssue()
                 .integrationPayload(request, response)
-                .transactionId(TRANSACTION_ID)
                 .level(TritonTypes.Level.ERROR)
         );
     }
@@ -670,7 +673,6 @@ global with sharing class Triton {
                 .stackTrace(TritonHelper.getCurrentStackTrace())
                 .createIssue()
                 .integrationPayload(request, response)
-                .transactionId(TRANSACTION_ID)
                 .level(TritonTypes.Level.ERROR)
         );
     }
@@ -710,7 +712,7 @@ global with sharing class Triton {
                     failCount++;
                     failedIds.add(sr.getId());
                     for(Database.Error err : sr.getErrors()) {
-                        errorMessages.add(err.getMessage());
+                        errorMessages.add(TritonHelper.formatDMLError(err, sr.getId()));
                     }
                 }
             } else if(result instanceof Database.DeleteResult) {
@@ -720,7 +722,7 @@ global with sharing class Triton {
                     failCount++;
                     failedIds.add(dr.getId());
                     for(Database.Error err : dr.getErrors()) {
-                        errorMessages.add(err.getMessage());
+                        errorMessages.add(TritonHelper.formatDMLError(err, dr.getId()));
                     }
                 }
             } else if(result instanceof Database.UndeleteResult) {
@@ -730,7 +732,7 @@ global with sharing class Triton {
                     failCount++;
                     failedIds.add(ur.getId());
                     for(Database.Error err : ur.getErrors()) {
-                        errorMessages.add(err.getMessage());
+                        errorMessages.add(TritonHelper.formatDMLError(err, ur.getId()));
                     }
                 }
             } else if(result instanceof Database.UpsertResult) {
@@ -740,7 +742,7 @@ global with sharing class Triton {
                     failCount++;
                     failedIds.add(ur.getId());
                     for(Database.Error err : ur.getErrors()) {
-                        errorMessages.add(err.getMessage());
+                        errorMessages.add(TritonHelper.formatDMLError(err, ur.getId()));
                     }
                 }
             } else if(result instanceof Database.MergeResult) {
@@ -750,7 +752,7 @@ global with sharing class Triton {
                     failCount++;
                     failedIds.add(mr.getId());
                     for(Database.Error err : mr.getErrors()) {
-                        errorMessages.add(err.getMessage());
+                        errorMessages.add(TritonHelper.formatDMLError(err, mr.getId()));
                     }
                 }
             }
@@ -770,7 +772,6 @@ global with sharing class Triton {
                     .details(String.join(errorMessages, SPACE_SEP))
                     .stackTrace(TritonHelper.getCurrentStackTrace())
                     .relatedObjects(failedIds)
-                    .transactionId(TRANSACTION_ID)
                     .level(TritonTypes.Level.ERROR)
                     .createIssue());
         }
@@ -809,12 +810,14 @@ global with sharing class Triton {
         };
 
         TritonTypes.Level currentLevel = TritonTypes.Level.valueOf(log.Log_Level__c);
+        Boolean allPermutationsDontExistInMdt = true;
         for (String key : permutations) {
             if (LOG_LEVELS.containsKey(key)) {
                 if (TritonHelper.compareLevel(LOG_LEVELS.get(key), currentLevel)) return true;
             }
+            allPermutationsDontExistInMdt = allPermutationsDontExistInMdt && !LOG_LEVELS.containsKey(key);
         }
 
-        return false;
+        return allPermutationsDontExistInMdt;
     }
 }
