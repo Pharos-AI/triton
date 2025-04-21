@@ -50,14 +50,6 @@ Returns the builder instance for chaining.
 Sets the transaction ID.
 Returns the builder instance for chaining.
 
-#### `componentInfo(component)`
-Sets the component information.
-Component object should contain:
-- name: Component name
-- function: Function name
-- action: Action name
-Returns the builder instance for chaining.
-
 #### `duration(duration)`
 Sets the duration value in milliseconds.
 Returns the builder instance for chaining.
@@ -81,7 +73,7 @@ Returns the builder instance for chaining.
 #### `componentDetails(stack)`
 Extracts and sets component details from stack trace.
 Filters out Triton-related entries.
-Extracts component name and function name.
+Extracts function name from non-Triton stack frames.
 Returns the builder instance for chaining.
 
 ### Related Data
@@ -106,14 +98,13 @@ Returns a new builder instance.
 
 #### `runtimeInfo(info)`
 Sets runtime information about the execution environment.
-Info object can include:
-- Environment details (userAgent, platform, language)
-- Viewport dimensions
-- Theme settings
-- Performance metrics
-- Memory usage
-- Network information
-- Device details
+Info object can include all details captured by the captureRuntimeInfo function.
 Returns the builder instance for chaining.
+
+### Final Build
+
+#### `build()`
+Builds the final log object from the builder properties.
+Returns the constructed log object with all configured properties.
 
 --- 
