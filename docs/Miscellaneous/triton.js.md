@@ -17,22 +17,28 @@ and automatic runtime information capture.
 
 ## Properties
 
-### `static instance` → `Triton`
+### `instance` → `Triton`
 Singleton instance of the Triton logger.
 
 ### `logs` → `Array`
 Buffer to store logs before sending to server.
 
-### `template` → `TritonBuilder`
-Template builder for reuse.
+### `templates` → `Map`
+Map to store component-specific templates.
 
 ### `category` → `String`
-Current component category (LWC or AURA).
+Current component category.
 
 ### `transactionId` → `String`
 Current transaction ID.
 
 ## Methods
+
+### Component Binding
+
+#### `bindToComponent(componentId)`
+Binds logger methods to a specific component context.
+Returns a Proxy that scopes logger methods to the specified component.
 
 ### Transaction Management
 
@@ -74,69 +80,26 @@ Returns a new builder instance with INFO level.
 ### Log Management
 
 #### `async flush()`
-Flushes all logs in the buffer to the server.
-Returns a Promise that resolves when logs are successfully saved.
-Throws an Error if there's an error saving the logs.
-
-#### `setTemplate(builder)`
-Sets a builder template that can be re-used.
-
-#### `fromTemplate()`
-Creates a new builder from the saved template.
-If no template exists, creates a new builder with default settings.
-Returns a new builder instance.
+Sends all buffered logs to the server and clears the buffer.
+Returns a Promise that resolves when logs are flushed.
 
 #### `log(builder)`
-Adds a log to the buffer.
+Adds a log builder to the buffer.
 Returns the builder instance for chaining.
 
 #### `async logNow(builder)`
 Immediately flushes a single log builder.
 Returns a Promise that resolves when the log is flushed.
 
-### Internal Methods
+### Builder Management
 
 #### `makeBuilder()`
-Creates a new builder with default settings and current context.
-Automatically captures:
-- User ID
-- Transaction ID
-- Component stack trace
-- Runtime information
+Creates a new builder with default settings.
 Returns a new builder instance.
 
-## Constants
-
-### AREA
-Available log areas:
-- `ACCOUNTS`
-- `COMMUNITY`
-- `LEAD_CONVERSION`
-- `OPPORTUNITY_MANAGEMENT`
-- `REST_API`
-
-### CATEGORY
-Available log categories:
-- `LWC`
-- `AURA`
-- `WARNING`
-- `DEBUG`
-- `EVENT`
-
-### LEVEL
-Available log levels:
-- `ERROR`
-- `WARNING`
-- `INFO`
-- `DEBUG`
-- `FINE`
-- `FINER`
-- `FINEST`
-
-### TYPE
-Available log types:
-- `BACKEND`
-- `FRONTEND`
+#### `refreshBuilder(builder)`
+Updates a builder with the current context information.
+Returns the updated builder instance.
 
 ## Internal Classes
 
@@ -145,8 +108,8 @@ Manages transaction lifecycle and storage.
 
 #### Properties
 - `STORAGE_KEY` → `String` - Key for storing transaction ID in session storage
-- `AUTO_FLUSH_CHECK_INTERVAL` → `Number` - Interval for checking auto-flush (10 seconds)
-- `AUTO_FLUSH_DELAY` → `Number` - Delay before auto-flushing (1 minute)
+- `AUTO_FLUSH_CHECK_INTERVAL` → `Number` - Interval for checking auto-flush (5 seconds)
+- `AUTO_FLUSH_DELAY` → `Number` - Delay before auto-flushing (10 seconds)
 
 #### Methods
 - `initialize()` - Initializes transaction management
