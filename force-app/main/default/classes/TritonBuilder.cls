@@ -466,6 +466,17 @@ public with sharing class TritonBuilder {
 
         return this;
     }
+    
+    /**
+    * Calculate and set hashes for the log record
+    * @return this builder instance
+    */
+    public TritonBuilder calculateHashes() {
+        this.builder.calculateHashes();
+        //Need to enable tracing for any string
+        System.debug('Hash_1:'+ this.builder.build().Hash_1__c);
+        return this;
+    }
 
     /**
     * Build and return the log record
