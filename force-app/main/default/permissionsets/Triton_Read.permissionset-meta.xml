@@ -1,37 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
-    <description>Provides read-only access to Triton logging records and metadata</description>
-    <label>Triton Read</label>
-    
-    <!-- Custom Metadata Type access -->
     <customMetadataTypeAccesses>
         <enabled>true</enabled>
         <name>Log_Level__mdt</name>
     </customMetadataTypeAccesses>
-    
-    <!-- Log Level Custom Metadata fields -->
+    <description>Provides read-only access to Triton logging records and metadata</description>
     <fieldPermissions>
         <editable>false</editable>
-        <field>Log_Level__mdt.Area__c</field>
+        <field>pharos__Log__c.Batch_Jobs_Limit__c</field>
         <readable>true</readable>
     </fieldPermissions>
-    <fieldPermissions>
-        <editable>false</editable>
-        <field>Log_Level__mdt.Category__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <editable>false</editable>
-        <field>Log_Level__mdt.Level__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <editable>false</editable>
-        <field>Log_Level__mdt.Type__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    
-    <!-- Log Custom Object fields -->
     <fieldPermissions>
         <editable>false</editable>
         <field>pharos__Log__c.Batch_Jobs__c</field>
@@ -74,6 +52,11 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>false</editable>
+        <field>pharos__Log__c.Future_Calls_Limit__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
         <field>pharos__Log__c.Future_Calls__c</field>
         <readable>true</readable>
     </fieldPermissions>
@@ -94,7 +77,42 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>false</editable>
+        <field>pharos__Log__c.Pod__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>pharos__Log__c.Publish_Immediate_DML_Limit__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>pharos__Log__c.Publish_Immediate_DML__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>pharos__Log__c.Push_Notifications_Limit__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>pharos__Log__c.Push_Notifications__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>pharos__Log__c.Queueable_Jobs_Limit__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
         <field>pharos__Log__c.Queueable_Jobs__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>pharos__Log__c.SOQL_Aggregates_Limit__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
@@ -104,7 +122,17 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>false</editable>
+        <field>pharos__Log__c.SOQL_Queries_Limit__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
         <field>pharos__Log__c.SOQL_Queries__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>pharos__Log__c.SOQL_Rows_Limit__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
@@ -114,7 +142,14 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>false</editable>
+        <field>pharos__Log__c.SOSL_Queries_Limit__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
         <field>pharos__Log__c.SOSL_Queries__c</field>
         <readable>true</readable>
     </fieldPermissions>
-</PermissionSet> 
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>Triton Read</label>
+</PermissionSet>
