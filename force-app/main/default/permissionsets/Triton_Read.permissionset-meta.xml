@@ -77,11 +77,6 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>false</editable>
-        <field>pharos__Log__c.Pod__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <editable>false</editable>
         <field>pharos__Log__c.Publish_Immediate_DML_Limit__c</field>
         <readable>true</readable>
     </fieldPermissions>
