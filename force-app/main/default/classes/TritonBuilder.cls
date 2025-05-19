@@ -94,6 +94,8 @@ public with sharing class TritonBuilder {
 
     private static final Set<String> LOG_FIELDS = Schema.SObjectType.pharos__Log__c.fields.getMap().keySet();
 
+    private Boolean traceable = false;
+
     private pharos.LogBuilder builder;
 
     public TritonBuilder cloneBuilder() {
@@ -403,6 +405,38 @@ public with sharing class TritonBuilder {
         this.builder.attribute(name, value);
         return this;
     }
+
+    /**
+    * Set a trace point on the log
+    * @return this builder instance
+    */
+    public TritonBuilder tracePoint() {
+        this.builder.tracePoint();
+        System.debug('TRACEPOINT:'+ this.builder.getTraceId());
+        return this;
+    }
+
+    /**
+    * Set traceable flag
+    * @param traceable -- Boolean value to set the traceable flag
+    * @return this builder instance
+    */
+    public TritonBuilder traceable(Boolean traceable) {
+        this.traceable = traceable;
+        if(traceable) {
+            this.createIssue();
+        }
+        return this;
+    }
+
+    /**
+    * Get traceable flag
+    * @return Boolean value of the traceable flag
+    */
+    public Boolean isTraceable() {
+        return this.traceable;
+    }
+
 
     /**
     * Captures and sets all current transaction limits on the log record
