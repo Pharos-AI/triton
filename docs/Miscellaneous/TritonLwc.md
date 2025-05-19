@@ -53,7 +53,7 @@ const logs = [{
     type: 'Frontend',
     area: 'Accounts',
     summary: 'Record loaded',
-    component: {
+    componentInfo: {
         name: 'accountDetail',
         function: 'handleLoad'
     }
@@ -81,16 +81,11 @@ The component's name (e.g., 'accountDetail', 'opportunityList').
 ##### `@AuraEnabled public String function`
 The function or method where the log was created.
 
-##### `@AuraEnabled public String action`
-The action being performed (alternative to function for event handlers).
-
 **Example**
 ```javascript
-const component = {
-    category: 'LWC',
+const componentInfo = {
     name: 'accountDetail',
-    function: 'handleSave',
-    action: 'save'
+    function: 'handleSave'
 };
 ```
 
@@ -99,6 +94,9 @@ const component = {
 Wrapper class for log entry data from LWC.
 
 #### Properties
+
+##### `@AuraEnabled public String level`
+Log level from TritonTypes.Level.
 
 ##### `@AuraEnabled public String category`
 Log category from TritonTypes.Category.
@@ -115,41 +113,32 @@ Brief summary of the log entry.
 ##### `@AuraEnabled public String details`
 Detailed log message.
 
-##### `@AuraEnabled public Decimal totalTime`
-Total execution time in milliseconds.
-
-##### `@AuraEnabled public String userId`
-ID of the user associated with the log.
-
-##### `@AuraEnabled public String recordId`
-ID of the record being operated on.
-
-##### `@AuraEnabled public String objectApiName`
-API name of the object being operated on.
-
-##### `@AuraEnabled public String stack`
-Stack trace for error tracking.
-
-##### `@AuraEnabled public Error error`
-Error details if logging an exception.
-
-##### `@AuraEnabled public Component component`
-Component context information.
-
 ##### `@AuraEnabled public String transactionId`
 Transaction ID for grouping related logs.
 
-##### `@AuraEnabled public Decimal createdTimestamp`
-Log creation timestamp in milliseconds since epoch.
-
-##### `@AuraEnabled public String level`
-Log level from TritonTypes.Level.
+##### `@AuraEnabled public Component componentInfo`
+Component context information.
 
 ##### `@AuraEnabled public Decimal duration`
 Operation duration in milliseconds.
 
-##### `@AuraEnabled public RuntimeInfo runtime`
+##### `@AuraEnabled public Decimal createdTimestamp`
+Log creation timestamp in milliseconds since epoch.
+
+##### `@AuraEnabled public Error error`
+Error details if logging an exception.
+
+##### `@AuraEnabled public String stack`
+Stack trace for error tracking.
+
+##### `@AuraEnabled public String userId`
+ID of the user associated with the log.
+
+##### `@AuraEnabled public RuntimeInfo runtimeInfo`
 Runtime environment information.
+
+##### `@AuraEnabled public List<String> relatedObjectIds`
+IDs of records related to this log entry.
 
 **Example**
 ```javascript
@@ -159,12 +148,12 @@ const log = {
     area: 'Accounts',
     summary: 'Failed to save record',
     details: 'Validation error on Name field',
-    component: {
+    componentInfo: {
         name: 'accountDetail',
         function: 'handleSave'
     },
     level: 'ERROR',
-    recordId: '001xx000003DGb2AAG'
+    relatedObjectIds: ['001xx000003DGb2AAG']
 };
 ```
 

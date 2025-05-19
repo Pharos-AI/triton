@@ -29,7 +29,7 @@ Triton logging framework. It provides:
 
 ## Methods
 
-### `@InvocableMethod public static void log(List<FlowLog> flowLogs)`
+### `@InvocableMethod public static List<FlowLogOutput> log(List<FlowLog> flowLogs)`
 
 Creates log records from Flow Builder or Process Builder.
 
@@ -38,22 +38,21 @@ Primary entry point for Flow logging. Processes a batch of flow logs,
 validates their contents, and persists them to the database.
 
 **Category**: TritonLogging  
-**Label**: Add Log  
+**Label**: Log  
 **Description**: Creates a log for a flow or process builder
 
 **Parameters**  
 - `flowLogs` - `List<FlowLog>` - Collection of flow logs to process
 
-**Throws**  
-- `System.InvalidParameterValueException` - If required fields are missing
-- `System.LimitException` - If governor limits are exceeded
+**Returns**
+- `List<FlowLogOutput>` - The list of FlowLogOutput instances after processing
 
 **Example: Flow Builder Configuration**
 ```apex
 FlowLog log = new FlowLog();
-log.category = 'FLOW';
-log.type = 'BACKEND';
-log.area = 'ACCOUNTS';
+log.category = 'Flow';
+log.type = 'Backend';
+log.area = 'Accounts';
 log.summary = 'Account processed';
 log.interviewGUID = $Flow.InterviewGuid;
 log.flowApiName = $Flow.Definition.Name;
@@ -77,74 +76,77 @@ Wrapper class for passing log data from Flow Builder.
 #### Properties
 
 ##### `@InvocableVariable(Required=false Label='Category')`
-##### `public String category`
-Log category from TritonTypes.Category. Defaults to 'FLOW' if not specified.
+##### `global String category`
+Log category from TritonTypes.Category. Defaults to 'Flow' if not specified.
 
 ##### `@InvocableVariable(Required=false Label='Type')`
-##### `public String type`
+##### `global String type`
 Log type from TritonTypes.Type.
 
 ##### `@InvocableVariable(Required=true Label='Area')`
-##### `public String area`
+##### `global String area`
 Functional area from TritonTypes.Area.
 
+##### `@InvocableVariable(Required=false Label='Operation')`
+##### `global String operation`
+Name of the operation being performed.
+
 ##### `@InvocableVariable(Required=true Label='Summary')`
-##### `public String summary`
+##### `global String summary`
 Brief summary of the log entry.
 
 ##### `@InvocableVariable(Required=false Label='Details')`
-##### `public String details`
+##### `global String details`
 Detailed log message.
 
 ##### `@InvocableVariable(Required=true Label='Interview GUID')`
-##### `public String interviewGUID`
+##### `global String interviewGUID`
 Flow interview GUID for tracking flow execution.
 
 ##### `@InvocableVariable(Required=false Label='Flow API Name')`
-##### `public String flowApiName`
+##### `global String flowApiName`
 API name of the flow being executed.
 
 ##### `@InvocableVariable(Required=false Label='Level')`
-##### `public String level`
+##### `global String level`
 Log level from TritonTypes.Level. Defaults to 'INFO' if not specified.
 
-##### `@InvocableVariable(Required=false Label='Operation')`
-##### `public String operation`
-Name of the operation being performed.
+##### `@InvocableVariable(Required=false Label='Transaction ID')`
+##### `global String transactionId`
+Transaction ID for grouping related logs.
 
 ##### `@InvocableVariable(Required=false Label='Additional Fields')`
-##### `public String additionalFields`
+##### `global String additionalFields`
 JSON string mapping field API names to values for custom fields.
 
-**Example: Basic Flow Log**
-```apex
-FlowLog log = new FlowLog();
-log.category = 'FLOW';
-log.type = 'BACKEND';
-log.area = 'ACCOUNTS';
-log.summary = 'Account processed';
-log.interviewGUID = $Flow.InterviewGuid;
-log.flowApiName = $Flow.Definition.Name;
-log.level = 'INFO';
-log.operation = 'ProcessAccount';
-```
+##### `@InvocableVariable(Required=false Label='Stacktrace')`
+##### `global String stacktrace`
+Stack trace for error tracking.
 
-**Example: Flow Log with Additional Fields**
-```apex
-FlowLog log = new FlowLog();
-// ... basic fields ...
-log.additionalFields = '{' +
-    '"pharos__Related_Id__c": "001xx000003DGb2AAG",' +
-    '"pharos__Duration__c": 150,' +
-    '"pharos__Custom_Field__c": "Custom Value"' +
-    '}';
-```
+##### `@InvocableVariable(Required=false Label='Full Stacktrace')`
+##### `global String fullStacktrace`
+Complete stack trace for error tracking.
+
+### FlowLogOutput
+
+Wrapper class for returning log data from flow.
+
+#### Properties
+
+##### `@InvocableVariable(Required=false Label='Stacktrace')`
+##### `global String stacktrace`
+Stack trace returned after processing.
+
+##### `@InvocableVariable(Required=false Label='Full Stacktrace')`
+##### `global String fullStacktrace`
+Complete stack trace returned after processing.
 
 ## Usage Notes
 
 1. **Transaction Management**
    - Automatically starts a transaction if none exists
    - Uses existing transaction if one is in progress
+   - Resumes a transaction if transactionId is provided
    - Flushes logs after processing
 
 2. **Field Validation**

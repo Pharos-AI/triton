@@ -19,7 +19,11 @@ and runtime information capture.
 
 ### `TRITON_COMPONENTS`
 Array of internal Triton component names used for stack trace filtering.
-Values: `['triton', 'tritonBuilder', 'tritonHelper']`
+Values: `['triton', 'tritonBuilder', 'tritonHelper', 'tritonUtils']`
+
+### `TRITON_METHOD_NAMES`
+Array of internal Triton method names used for stack trace filtering.
+Values: `['makeBuilder', 'refreshBuilder', 'debug', 'info', 'warning', 'error', 'exception', 'log', 'logNow']`
 
 ## Functions
 
@@ -32,33 +36,12 @@ Returns `true` if the line is NOT from internal Triton files.
 Parameters:
 - `stackTraceLine` (string) - Line from stack trace to check
 
-#### `isLWCLine(stackTraceLine)`
-Determines if a stack trace line is from an LWC component.
-Returns `true` if the line is from an LWC component.
+#### `getFunctionName(stackTraceLine)`
+Extracts the function name from a stack trace line.
+Returns the function name as a string.
 
 Parameters:
-- `stackTraceLine` (string) - Line from stack trace to check
-
-#### `isComponentLine(stackTraceLine)`
-Checks if a stack trace line is from a component (LWC or Aura).
-Returns `true` if the line is from a component.
-
-Parameters:
-- `stackTraceLine` (string) - Line from stack trace to check
-
-#### `isAuraLine(stackTraceLine)`
-Determines if a stack trace line is from an Aura component.
-Returns `true` if the line is from an Aura component.
-
-Parameters:
-- `stackTraceLine` (string) - Line from stack trace to check
-
-#### `isAura(stack)`
-Determines if a stack trace is from an Aura component.
-Returns `true` if the stack trace contains Aura component references.
-
-Parameters:
-- `stack` (string) - Optional stack trace to analyze. If not provided, gets current stack trace
+- `stackTraceLine` (string) - Line from stack trace to extract function name from
 
 ### Transaction Management
 

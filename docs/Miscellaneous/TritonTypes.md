@@ -28,18 +28,18 @@ Represents the functional area from a business perspective. This value is writte
 the Functional Area field on log records.
 
 **Values**
-- `OPPORTUNITY_MANAGEMENT` - Opportunity-related operations and workflows
-- `LEAD_CONVERSION` - Lead conversion processes and triggers
-- `COMMUNITY` - Community/portal user interactions and operations
-- `REST_API` - REST API endpoints and integrations
-- `ACCOUNTS` - Account-related operations and triggers
+- `OpportunityManagement` - Opportunity-related operations and workflows
+- `LeadConversion` - Lead conversion processes and triggers
+- `Community` - Community/portal user interactions and operations
+- `RestAPI` - REST API endpoints and integrations
+- `Accounts` - Account-related operations and triggers
 - `LWC` - Lightning Web Component operations
-- `FLOW` - Flow and Process Builder operations
+- `Flow` - Flow and Process Builder operations
 
 **Example**
 ```apex
 TritonBuilder builder = new TritonBuilder()
-    .area(TritonTypes.Area.ACCOUNTS)
+    .area(TritonTypes.Area.Accounts)
     .summary('Account updated');
 ```
 
@@ -49,20 +49,20 @@ Provides high-level classification of log entries. This value is written to
 the Category field on log records.
 
 **Values**
-- `APEX` - Server-side Apex code execution
-- `FLOW` - Flow and Process Builder execution
+- `Apex` - Server-side Apex code execution
+- `Flow` - Flow and Process Builder execution
 - `LWC` - Lightning Web Component lifecycle
-- `AURA` - Aura Component lifecycle
-- `WARNING` - Warning messages across contexts
-- `EVENT` - Platform event operations
-- `DEBUG` - Debug information
-- `INTEGRATION` - External system integrations
+- `Aura` - Aura Component lifecycle
+- `Warning` - Warning messages across contexts
+- `Event` - Platform event operations
+- `Debug` - Debug information
+- `Integration` - External system integrations
 
 **Example**
 ```apex
 TritonBuilder builder = new TritonBuilder()
-    .category(TritonTypes.Category.APEX)
-    .type(TritonTypes.Type.BACKEND);
+    .category(TritonTypes.Category.Apex)
+    .type(TritonTypes.Type.Backend);
 ```
 
 ### `public enum Level`
@@ -97,18 +97,18 @@ Provides technical classification of log entries. This value is written to
 the Type field on log records.
 
 **Values**
-- `BACKEND` - Server-side operations in Apex
-- `FRONTEND` - Client-side operations in LWC/Aura
-- `DML_RESULT` - Database operation results
-- `LONG_RUNNING_REQUEST` - Performance monitoring for long operations
-- `CONCURRENT_REQUESTS_LIMIT` - Concurrency limit violations
-- `ACCOUNT_TRIGGER` - Account-specific trigger operations
+- `Backend` - Server-side operations in Apex
+- `Frontend` - Client-side operations in LWC/Aura
+- `DMLResult` - Database operation results
+- `LongRunningRequest` - Performance monitoring for long operations
+- `ConcurrentRequestsLimit` - Concurrency limit violations
+- `AccountTrigger` - Account-specific trigger operations
 
 **Example**
 ```apex
 TritonBuilder builder = new TritonBuilder()
-    .type(TritonTypes.Type.BACKEND)
-    .area(TritonTypes.Area.ACCOUNTS);
+    .type(TritonTypes.Type.Backend)
+    .area(TritonTypes.Area.Accounts);
 ```
 
 ## Usage
@@ -134,8 +134,8 @@ categorization and filtering capabilities. They enable:
 **Example: Complete Log Entry**
 ```apex
 Triton.instance
-    .error(TritonTypes.Type.BACKEND, TritonTypes.Area.ACCOUNTS)
-    .category(TritonTypes.Category.APEX)
+    .error(TritonTypes.Type.Backend, TritonTypes.Area.Accounts)
+    .category(TritonTypes.Category.Apex)
     .summary('Failed to update account')
     .build();
 ```
