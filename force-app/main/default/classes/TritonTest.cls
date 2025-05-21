@@ -775,6 +775,24 @@ private class TritonTest {
     }
 
     @IsTest
+    private static void test_triton_builder_traceable() {
+        TritonBuilder builder = new TritonBuilder();
+        builder
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .level(TritonTypes.Level.INFO)
+            .summary('some event')
+            .details('error details')
+            .stackTrace('Debug details')
+            .traceable(true)
+            .tracePoint();
+
+        System.assertEquals(true, builder.isTraceable(), 'Trace ID should be set');
+
+    }
+
+    @IsTest
     private static void test_template() {
         assertBefore();
         
@@ -1970,6 +1988,28 @@ private class TritonTest {
             
         System.assertNotEquals(2000, log.Heap_Size__c,
             'Template heap size should not be copied to logs created with fromTemplate()');
+    }
+
+    @isTest
+    private static void test_triton_addLog_method() {
+        TritonBuilder builder = new TritonBuilder();
+        builder
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .level(TritonTypes.Level.INFO)
+            .summary('some event')
+            .details('error details')
+            .stackTrace('Debug details')
+            .traceable(true)
+            .tracePoint();
+
+        Triton.instance.addLog(builder);
+        Triton.instance.flush();
+
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Stacktrace__c FROM pharos__Log__c];
+        System.assertNotEquals(null, logs, 'Log should be created');
+        System.assertEquals(true, builder.isTraceable(), 'Trace ID should be set');
     }
 
     /**
