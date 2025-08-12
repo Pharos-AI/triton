@@ -64,16 +64,21 @@ public with sharing class TritonHelper {
     public static void clearCachedTransactionId() {
         Cache.Session.remove(getUserCacheKey());
     }
-
+    
     /**
     * Creates a key for log level based on:
     * @param category -- log category field
-    * @param tye -- log type field
+    * @param type -- log type field
     * @param area -- log functional area field
-    * @return -- a string with values in the following format: Category:{0};Type:{1};Area:{2}
+    * @param userId -- log user Id field
+    * @param componentName -- log field
+    * @return -- a string with values in the following format: Category:{0};Type:{1};Area:{2};UserId:{3};ComponentName:{4}
     */
-    public static String buildLogLevelKey(String category, String type, String area) {
-        return String.format('Category:{0};Type:{1};Area:{2}', new String[]{category, type, area});
+    public static String buildLogLevelKey(String category, String type, String area, String userId, String componentName) {
+        return String.format(
+            'Category:{0};Type:{1};Area:{2};UserId:{3};ComponentName:{4}',
+            new String[]{ category, type, area, userId, componentName }
+        );
     }
 
     /**

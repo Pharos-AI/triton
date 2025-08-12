@@ -48,8 +48,8 @@ private class TritonTest {
         Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ll};
 
         System.assertEquals(1, Triton.LOG_LEVELS.size());
-        System.assertEquals('Category:null;Type:null;Area:null', new List<String>(Triton.LOG_LEVELS.keySet())[0]);
-        System.assertEquals(TritonTypes.Level.DEBUG, Triton.LOG_LEVELS.get('Category:null;Type:null;Area:null'));
+        System.assertEquals('Category:null;Type:null;Area:null;UserId:null;ComponentName:null', new List<String>(Triton.LOG_LEVELS.keySet())[0]);
+        System.assertEquals(TritonTypes.Level.DEBUG, Triton.LOG_LEVELS.get('Category:null;Type:null;Area:null;UserId:null;ComponentName:null'));
     }
 
     @IsTest
@@ -105,9 +105,9 @@ private class TritonTest {
         setupLogLevelsMap();
 
         System.assertEquals(3, Triton.LOG_LEVELS.size());
-        System.assertEquals(TritonTypes.Level.DEBUG, Triton.LOG_LEVELS.get('Category:null;Type:null;Area:null'));
-        System.assertEquals(TritonTypes.Level.FINE, Triton.LOG_LEVELS.get('Category:Event;Type:null;Area:null'));
-        System.assertEquals(TritonTypes.Level.FINEST, Triton.LOG_LEVELS.get('Category:Event;Type:null;Area:Community'));
+        System.assertEquals(TritonTypes.Level.DEBUG, Triton.LOG_LEVELS.get('Category:null;Type:null;Area:null;UserId:null;ComponentName:null'));
+        System.assertEquals(TritonTypes.Level.FINE, Triton.LOG_LEVELS.get('Category:Event;Type:null;Area:null;UserId:null;ComponentName:null'));
+        System.assertEquals(TritonTypes.Level.FINEST, Triton.LOG_LEVELS.get('Category:Event;Type:null;Area:Community;UserId:null;ComponentName:null'));
 
 
 
