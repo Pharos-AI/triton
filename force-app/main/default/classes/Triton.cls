@@ -47,9 +47,14 @@ global with sharing class Triton {
             if (LOG_LEVELS == null) {
                 LOG_LEVELS = new Map<String, TritonTypes.Level>();
                 for(Log_Level__mdt ll : LOG_LEVELS_MDT) {
+                    List<String> options = new List<String>{
+                        ll.Category__c, ll.Type__c, ll.Area__c, ll.User_Id__c, ll.Component_Name__c
+                    };
+
                     LOG_LEVELS.put(
-                        TritonHelper.buildLogLevelKey(ll.Category__c, ll.Type__c, ll.Area__c, ll.User_Id__c, ll.Component_Name__c),
-                        TritonTypes.Level.valueOf(ll.Level__c));
+                        TritonHelper.buildLogLevelKey(options),
+                        TritonTypes.Level.valueOf(ll.Level__c)
+                    );
                 }
             }
             return LOG_LEVELS;
@@ -792,7 +797,7 @@ global with sharing class Triton {
         flushTop();
     }
 
-    private static final Integer COUNT_OF_MAX_OPTIONS = 5;
+    private static Integer countOfMaxOptions;
 
     /**
     * Checks if a log should be persisted based on the current log level
@@ -802,11 +807,17 @@ global with sharing class Triton {
     public static Boolean isLogAllowedForLogLevel(pharos__Log__c log) {
         if (String.isBlank(log.Log_Level__c) || LOG_LEVELS.isEmpty()) return true;
 
-        String componentName = String.isNotBlank(log.pharos__Flow_API_Name__c) ? log.pharos__Flow_API_Name__c : getLogApexClass(log.pharos__Apex_Name__c);
+        List<String> values = new List<String>{
+            log.pharos__Category__c,
+            log.pharos__Type__c,
+            log.pharos__Area__c,
+            log.pharos__User_Id__c,
+            String.isNotBlank(log.pharos__Flow_API_Name__c) ? log.pharos__Flow_API_Name__c : getComponentNameFromLog(log.pharos__Apex_Name__c)
+        };
 
         //a set of possible mapping permutations
         //these will be checked in the same order as this list
-        List<String> permutations = getPermutations(log.pharos__Category__c, log.pharos__Type__c, log.pharos__Area__c, log.pharos__User_Id__c, componentName);
+        List<String> permutations = getPermutations(values);
 
         TritonTypes.Level currentLevel = TritonTypes.Level.valueOf(log.Log_Level__c);
         Boolean allPermutationsDontExistInMdt = true;
@@ -820,55 +831,49 @@ global with sharing class Triton {
         return allPermutationsDontExistInMdt;
     }
 
-    private static String getLogApexClass(String apexName) {
-        if (String.isBlank(apexName)) return apexName; 
+    private static String getComponentNameFromLog(String apexName) {
+        if (String.isBlank(apexName)) return apexName;
         Integer dotIndex = apexName.indexOf('.');
         return dotIndex != -1 ? apexName.substring(0, dotIndex) : apexName;
     }
     
-    private static List<String> getPermutations(String category, String type, String area, String userId, String componentName) {
-        List<String> options1 = new List<String>{ category, null };
-        List<String> options2 = new List<String>{ type, null };
-        List<String> options3 = new List<String>{ area, null} ;
-        List<String> options4 = new List<String>{ userId, null };
-        List<String> options5 = new List<String>{ componentName, null };
+    private static List<String> getPermutations(List<String> values) {
+        countOfMaxOptions = values.size();
+
+        List<List<String>> allOptions = new List<List<String>>();
+        for (String currentValue : values) {
+            allOptions.add(new List<String>{ currentValue, null });
+        }
         
         List<List<String>> allCombinations = new List<List<String>>();
-        generateCombinations(new List<String>(), options1, options2, options3, options4, options5, allCombinations);
+        generateCombinations(new List<String>(), allOptions, allCombinations);
         
         List<String> permutations = new List<String>();
         for (List<String> combo : allCombinations) {
-            String currentOption1 = combo.size() > 0 ? combo[0] : null;
-            String currentOption2 = combo.size() > 1 ? combo[1] : null;
-            String currentOption3 = combo.size() > 2 ? combo[2] : null;
-            String currentOption4 = combo.size() > 3 ? combo[3] : null;
-            String currentOption5 = combo.size() > 4 ? combo[4] : null;
+            List<String> options = new List<String>();
+            for (Integer i = 0; i < combo.size(); i++) {
+                options.add(combo[i]);
+            }
             
-            permutations.add(TritonHelper.buildLogLevelKey(currentOption1, currentOption2, currentOption3, currentOption4, currentOption5));
+            permutations.add(TritonHelper.buildLogLevelKey(options));
         }
         return permutations;
     }
 
-    private static void generateCombinations(List<String> current, List<String> options1, List<String> options2,
-                                            List<String> options3, List<String> options4, List<String> options5,
+    private static void generateCombinations(List<String> current, List<List<String>> allOptions,
                                             List<List<String>> allCombinations) {
 
-        if (current.size() == COUNT_OF_MAX_OPTIONS) {
+        if (current.size() == countOfMaxOptions) {
             allCombinations.add(new List<String>(current));
             return;
         }
         
         Integer index = current.size();
-        List<String> options;
-        if (index == 0) options = options1;
-        else if (index == 1) options = options2;
-        else if (index == 2) options = options3;
-        else if (index == 3) options = options4;
-        else options = options5;
+        List<String> options = allOptions[index];
         
         for (String value : options) {
             current.add(value);
-            generateCombinations(current, options1, options2, options3, options4, options5, allCombinations);
+            generateCombinations(current, allOptions, allCombinations);
             current.remove(current.size() - 1);
         }
     }

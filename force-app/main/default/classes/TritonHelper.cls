@@ -67,17 +67,13 @@ public with sharing class TritonHelper {
     
     /**
     * Creates a key for log level based on:
-    * @param category -- log category field
-    * @param type -- log type field
-    * @param area -- log functional area field
-    * @param userId -- log user Id field
-    * @param componentName -- log field
+    * @param options -- list of Log options
     * @return -- a string with values in the following format: Category:{0};Type:{1};Area:{2};UserId:{3};ComponentName:{4}
     */
-    public static String buildLogLevelKey(String category, String type, String area, String userId, String componentName) {
+    public static String buildLogLevelKey(List<String> options) {
         return String.format(
             'Category:{0};Type:{1};Area:{2};UserId:{3};ComponentName:{4}',
-            new String[]{ category, type, area, userId, componentName }
+            options
         );
     }
 
