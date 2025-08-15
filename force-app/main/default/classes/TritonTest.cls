@@ -95,7 +95,16 @@ private class TritonTest {
         categoryAndAreaLevel.Category__c = TritonTypes.Category.Event.name();
         categoryAndAreaLevel.Area__c = TritonTypes.Area.Community.name();
 
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{globalLevel, categoryLevel, categoryAndAreaLevel};
+        Log_Level__mdt allLevel = new Log_Level__mdt();
+        allLevel.Level__c = TritonTypes.Level.FINER.name();
+        allLevel.Category__c = TritonTypes.Category.Event.name();
+        allLevel.Type__c = TritonTypes.Type.DMLResult.name();
+        allLevel.Area__c = TritonTypes.Area.Community.name();
+        allLevel.User_Id__c = UserInfo.getUserId();
+        allLevel.Component_Name__c = 'TestComponentName';
+
+
+        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{globalLevel, categoryLevel, categoryAndAreaLevel, allLevel};
     }
 
     @IsTest
@@ -104,10 +113,11 @@ private class TritonTest {
 
         setupLogLevelsMap();
 
-        System.assertEquals(3, Triton.LOG_LEVELS.size());
+        System.assertEquals(4, Triton.LOG_LEVELS.size());
         System.assertEquals(TritonTypes.Level.DEBUG, Triton.LOG_LEVELS.get('Category:null;Type:null;Area:null;UserId:null;ComponentName:null'));
         System.assertEquals(TritonTypes.Level.FINE, Triton.LOG_LEVELS.get('Category:Event;Type:null;Area:null;UserId:null;ComponentName:null'));
         System.assertEquals(TritonTypes.Level.FINEST, Triton.LOG_LEVELS.get('Category:Event;Type:null;Area:Community;UserId:null;ComponentName:null'));
+        System.assertEquals(TritonTypes.Level.FINER, Triton.LOG_LEVELS.get('Category:Event;Type:DMLResult;Area:Community;UserId:'+ UserInfo.getUserId() +';ComponentName:TestComponentName'));
 
 
 
@@ -129,6 +139,36 @@ private class TritonTest {
         Test.stopTest();
 
         System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()]);
+    }
+
+    @IsTest
+    private static void test_log_levels_mapping_positive() {
+        assertBefore();
+
+        setupLogLevelsMap();
+
+        Test.startTest();
+            Triton.instance.log(Triton.makeBuilder()
+                .level(TritonTypes.Level.FINER)
+                .category(TritonTypes.Category.Event)
+                .type(TritonTypes.Type.DMLResult)
+                .area(TritonTypes.Area.Community)
+                .summary('some event')
+                .details('error details')
+                .stackTrace(TritonHelper.getCurrentStackTrace())
+                .userId(UserInfo.getUserId())
+                .operation('TestComponentName')
+            );
+        
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [SELECT pharos__Type__c, pharos__Area__c, pharos__User_Id__c, pharos__Apex_Name__c FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()];
+        
+        System.assertEquals(1, logs.size());
+        System.assertEquals('TestComponentName', logs.get(0).pharos__Apex_Name__c);
+        System.assertEquals(TritonTypes.Area.Community.name(), logs.get(0).pharos__Area__c);
+        System.assertEquals(TritonTypes.Type.DMLResult.name(), logs.get(0).pharos__Type__c);
+        System.assertEquals(UserInfo.getUserId(), logs.get(0).pharos__User_Id__c);
     }
 
     @IsTest
@@ -1190,6 +1230,7 @@ private class TritonTest {
                 .area(TritonTypes.Area.Community)
                 .summary('Testing limits via addLog')
                 .details('Limit info test via addLog')
+
                 .limitInfo()
         );
         Triton.instance.flush();
