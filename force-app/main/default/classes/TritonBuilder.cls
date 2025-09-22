@@ -125,21 +125,21 @@ public with sharing class TritonBuilder {
 
     /**
     * Set log category from Category enum.
-    * @param c -- TritonTypes.Category enum value
+    * @param c -- TritonEnumProvider.Category value
     * @return this builder instance
     */
-    public TritonBuilder category(TritonTypes.Category c) {
-        this.builder.category(c.name());
+    public TritonBuilder category(TritonEnumProvider.Category c) {
+        this.builder.category(c.v());
         return this;
     }
 
     /**
-    * Set log category from Category enum.
-    * @param t -- TritonTypes.Type enum value
+    * Set log category from Type enum.
+    * @param t -- TritonEnumProvider.Type value
     * @return this builder instance
     */
-    public TritonBuilder type(TritonTypes.Type t) {
-        this.builder.type(t.name());
+    public TritonBuilder type(TritonEnumProvider.Type t) {
+        this.builder.type(t.v());
         return this;
     }
 
@@ -155,11 +155,11 @@ public with sharing class TritonBuilder {
 
     /**
     * Set log functional are from Area enum.
-    * @param a -- TritonTypes.Area value
+    * @param a -- TritonEnumProvider.Area value
     * @return this builder instance
     */
-    public TritonBuilder area(TritonTypes.Area a) {
-        this.builder.area(a.name());
+    public TritonBuilder area(TritonEnumProvider.Area a) {
+        this.builder.area(a.v());
         return this;
     }
 
@@ -175,11 +175,11 @@ public with sharing class TritonBuilder {
 
     /**
     * Set log level from Level enum.
-    * @param l -- TritonTypes.Level enum value
+    * @param l -- TritonEnumProvider.Level value
     * @return this builder instance
     */
-    public TritonBuilder level(TritonTypes.Level l) {
-        this.builder.attribute(LOG_LEVEL, l.name());
+    public TritonBuilder level(TritonEnumProvider.Level l) {
+        this.builder.attribute(LOG_LEVEL, l.v());
         return this;
     }
 
@@ -488,11 +488,11 @@ public with sharing class TritonBuilder {
 
         // Use exception type, Backend if blank
         this.type(String.isBlank(e.getTypeName()) ? 
-            TritonTypes.Type.Backend.name() : 
+            TritonEnums.TYPE.BACKEND.name() : 
             e.getTypeName());
         
-        this.category(TritonTypes.Category.APEX)
-            .level(TritonTypes.Level.ERROR)
+        this.category(TritonEnums.CATEGORY.APEX)
+            .level(TritonEnums.LEVEL.ERROR)
             .summary(e.getMessage())
             .stackTrace(e.getStackTraceString())
             .details(String.valueOf(e) + Triton.SPACE_SEP + e.getStackTraceString())

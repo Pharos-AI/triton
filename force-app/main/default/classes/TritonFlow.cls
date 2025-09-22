@@ -52,20 +52,24 @@ global with sharing class TritonFlow {
                                     flowLog.fullStacktrace + flowLog?.stacktrace : 
                                     flowLog?.stacktrace;
                                     
-        TritonTypes.Level level = TritonTypes.Level.INFO;
         String flowDetails = flowLog.details;
-        
-        try {
-            level = TritonTypes.Level.valueOf(flowLog.level);
-        } catch (Exception e) {
+
+        TritonEnumProvider.Level level;
+        TritonEnumProvider.Level flowLogEnumLevel = TritonEnums.getLevelEnum(flowLog.level);
+        if (TritonEnums.LEVEL.LEVEL_BY_VALUE.containsKey(flowLogEnumLevel.v())) {
+            level = flowLogEnumLevel;
+        } else {
+            level = TritonEnums.LEVEL.INFO;
             flowDetails += Triton.SPACE_SEP + TritonHelper.formatMessage(INVALID_LOG_LEVEL, flowLog.level);
         }
         
-        TritonTypes.Category category = TritonTypes.Category.Flow;
-        try {
-            category = TritonTypes.Category.valueOf(flowLog.category);
-        } catch (Exception e) {
-            if(String.isNotBlank(flowLog.category)) {
+        TritonEnumProvider.Category category;
+        TritonEnumProvider.Category flowLogEnumCategory = TritonEnums.getCategoryEnum(flowLog.category);
+        if (TritonEnums.CATEGORY.CATEGORY_BY_VALUE.containsKey(flowLogEnumCategory.v())) {
+            category = flowLogEnumCategory;
+        } else {
+            category = TritonEnums.CATEGORY.FLOW;
+            if (String.isNotBlank(flowLog.category)) {
                 flowDetails += Triton.SPACE_SEP + TritonHelper.formatMessage(INVALID_CATEGORY, flowLog.category);
             }
         }
@@ -98,7 +102,7 @@ global with sharing class TritonFlow {
                 .level(level);
 
         // if the log level is ERROR, create an issue
-        if(level == TritonTypes.Level.ERROR) {
+        if (level.v().equals(TritonEnums.LEVEL.ERROR.v())) {
             builder.createIssue();
         }
 

@@ -27,12 +27,12 @@ private class LogLimitsControllerTest {
         
         // Create a log with Triton
         TritonBuilder builder = Triton.makeBuilder()
-            .category(TritonTypes.Category.Debug)
-            .type(TritonTypes.Type.Backend)
-            .area(TritonTypes.Area.OpportunityManagement)
+            .category(TritonEnums.CATEGORY.DEBUG)
+            .type(TritonEnums.TYPE.BACKEND)
+            .area(TritonEnums.AREA.OPPORTUNITY_MANAGEMENT)
             .summary('Test Log with Limits')
             .details('Test log created for limit usage testing')
-            .level(TritonTypes.Level.DEBUG)
+            .level(TritonEnums.LEVEL.DEBUG)
             // Set all the limit values manually
             .attribute(TritonBuilder.BATCH_JOBS, 2)
             .attribute(TritonBuilder.BATCH_JOBS_LIMIT, 5)
@@ -128,12 +128,12 @@ private class LogLimitsControllerTest {
         
         // Create a log with partial data using Triton
         TritonBuilder builder = Triton.makeBuilder()
-            .category(TritonTypes.Category.Debug)
-            .type(TritonTypes.Type.Backend)
-            .area(TritonTypes.Area.OpportunityManagement)
+            .category(TritonEnums.CATEGORY.DEBUG)
+            .type(TritonEnums.TYPE.BACKEND)
+            .area(TritonEnums.AREA.OPPORTUNITY_MANAGEMENT)
             .summary('Test Log with Partial Limits')
             .details('Test log created for partial limit usage testing')
-            .level(TritonTypes.Level.DEBUG)
+            .level(TritonEnums.LEVEL.DEBUG)
             // Set only some limit values
             .attribute(TritonBuilder.BATCH_JOBS, 2)
             .attribute(TritonBuilder.BATCH_JOBS_LIMIT, 5)

@@ -39,9 +39,6 @@ global with sharing class TritonLwc {
         for (ComponentLog componentLog : componentLogs) {
             Id userId = null;
             Id[] relatedIds = new Id[0];
-            TritonTypes.Category category = TritonTypes.Category.LWC;
-            TritonTypes.Area area = TritonTypes.Area.LWC;
-            TritonTypes.Level level = TritonTypes.Level.INFO;
             String details = componentLog.details == null ? '' : componentLog.details;
             
             //transaction was not resumed from cache
@@ -74,35 +71,38 @@ global with sharing class TritonLwc {
                 relatedIds = validIds;
             }
 
-            try {
-                category = TritonTypes.Category.valueOf(componentLog.category);
-            } catch(Exception e) {
-                //invalid category
+            TritonEnumProvider.Category category;
+            TritonEnumProvider.Category cmpLogEnumCategory = TritonEnums.getCategoryEnum(componentLog.category);
+            if (TritonEnums.CATEGORY.CATEGORY_BY_VALUE.containsKey(cmpLogEnumCategory.v())) {
+                category = cmpLogEnumCategory;
+            } else {
+                category = TritonEnums.CATEGORY.LWC;
                 details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Category: {0}. Default LWC category will be used.', componentLog.category);
             }
 
             String areaStr = String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.componentInfo.name;
-
-            try {
-                area = TritonTypes.Area.valueOf(areaStr);
-            } catch(Exception e) {
-                //invalid area
+            TritonEnumProvider.Area area;
+            TritonEnumProvider.Area cmpLogEnumArea = TritonEnums.getAreaEnum(areaStr);
+            if (TritonEnums.AREA.AREA_BY_VALUE.containsKey(cmpLogEnumArea.v())) {
+                area = cmpLogEnumArea;
+            } else {
+                area = TritonEnums.AREA.LWC;
                 details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Functional Area: {0}. Default LWC area will be used.', areaStr);
             }
 
-            String levelStr = componentLog.level;
-
-            try {   
-                level = TritonTypes.Level.valueOf(levelStr);
-            } catch(Exception e) {
-                //invalid log level
-                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Level: {0}. Default INFO level will be used.', levelStr);
+            TritonEnumProvider.Level level;
+            TritonEnumProvider.Level cmpLogEnumLevel = TritonEnums.getLevelEnum(componentLog.level);
+            if (TritonEnums.LEVEL.LEVEL_BY_VALUE.containsKey(cmpLogEnumLevel.v())) {
+                level = cmpLogEnumLevel;
+            } else {
+                level = TritonEnums.LEVEL.INFO;
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Level: {0}. Default INFO level will be used.', componentLog.level);
             }
 
             details += TritonHelper.formatLwcRuntimeInfo(componentLog.runtimeInfo);
             
             TritonBuilder builder = Triton.makeBuilder();
-            if(level == TritonTypes.Level.ERROR) {
+            if(level.v().equals(TritonEnums.LEVEL.ERROR.v())) {
                 builder.createIssue();
             }
             
@@ -111,7 +111,7 @@ global with sharing class TritonLwc {
                             .category(category)
                             //type will be fetched from the componentLog directly, of from the error. If neither are set, Frontend will be used
                             .type(String.isNotBlank(componentLog.type) ? componentLog.type :
-                                    componentLog.error != null ? componentLog.error.type : TritonTypes.Type.Frontend.name())
+                                    componentLog.error != null ? componentLog.error.type : TritonEnums.TYPE.FRONTEND.v())
                             //area will be fetched from the componentLog directly if set. Otherwise component name will be used
                             .area(area)
                             //summary will be fetched from the componentLog directly if set. Otherwise, error message will be used if provided.
