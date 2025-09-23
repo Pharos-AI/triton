@@ -175,11 +175,11 @@ public with sharing class TritonBuilder {
 
     /**
     * Set log level from Level enum.
-    * @param l -- TritonEnumProvider.Level value
+    * @param l -- TritonTypes.Level enum value
     * @return this builder instance
     */
-    public TritonBuilder level(TritonEnumProvider.Level l) {
-        this.builder.attribute(LOG_LEVEL, l.v());
+    public TritonBuilder level(TritonTypes.Level l) {
+        this.builder.attribute(LOG_LEVEL, l.name());
         return this;
     }
 

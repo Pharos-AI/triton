@@ -35,10 +35,4 @@ public abstract class TritonEnumProvider {
             super('CATEGORY', v);
         }
     }
-
-    public class Level extends BaseToken {
-        public Level(String v) {
-            super('LEVEL', v);
-        }
-    }
 }

@@ -39,6 +39,7 @@ global with sharing class TritonLwc {
         for (ComponentLog componentLog : componentLogs) {
             Id userId = null;
             Id[] relatedIds = new Id[0];
+            TritonTypes.Level level = TritonTypes.Level.INFO;
             String details = componentLog.details == null ? '' : componentLog.details;
             
             //transaction was not resumed from cache
@@ -90,19 +91,19 @@ global with sharing class TritonLwc {
                 details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Functional Area: {0}. Default LWC area will be used.', areaStr);
             }
 
-            TritonEnumProvider.Level level;
-            TritonEnumProvider.Level cmpLogEnumLevel = TritonEnums.getLevelEnum(componentLog.level);
-            if (TritonEnums.LEVEL.LEVEL_BY_VALUE.containsKey(cmpLogEnumLevel.v())) {
-                level = cmpLogEnumLevel;
-            } else {
-                level = TritonEnums.LEVEL.INFO;
-                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Level: {0}. Default INFO level will be used.', componentLog.level);
+            String levelStr = componentLog.level;
+
+            try {   
+                level = TritonTypes.Level.valueOf(levelStr);
+            } catch(Exception e) {
+                //invalid log level
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Level: {0}. Default INFO level will be used.', levelStr);
             }
 
             details += TritonHelper.formatLwcRuntimeInfo(componentLog.runtimeInfo);
             
             TritonBuilder builder = Triton.makeBuilder();
-            if(level.v().equals(TritonEnums.LEVEL.ERROR.v())) {
+            if(level == TritonTypes.Level.ERROR) {
                 builder.createIssue();
             }
             

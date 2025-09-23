@@ -10,11 +10,6 @@ public with sharing class TritonEnums extends TritonEnumProvider {
         private set;
     }
 
-    public static final LevelEnums LEVEL { 
-        get { return LEVEL == null ? (LEVEL = new LevelEnums()) : LEVEL; }
-        private set;
-    }
-
     public static final TypeEnums TYPE { 
         get { return TYPE == null ? (TYPE = new TypeEnums()) : TYPE; }
         private set;
@@ -26,10 +21,6 @@ public with sharing class TritonEnums extends TritonEnumProvider {
 
     public static Category getCategoryEnum(String value) {
         return new Category(value);
-    }
-
-    public static Level getLevelEnum(String value) {
-        return new Level(value);
     }
 
     public static Type getTypeEnum(String value) {
@@ -75,26 +66,6 @@ public with sharing class TritonEnums extends TritonEnumProvider {
             EVENT.v() => EVENT,
             DEBUG.v() => DEBUG,
             INTEGRATION.v() => INTEGRATION
-        };
-    }
-
-    public inherited sharing class LevelEnums {
-        public final Level ERROR = new Level('ERROR');
-        public final Level WARNING = new Level('WARNING');
-        public final Level INFO = new Level('INFO');
-        public final Level DEBUG = new Level('DEBUG');
-        public final Level FINE = new Level('FINE');
-        public final Level FINER = new Level('FINER');
-        public final Level FINEST = new Level('FINEST');
-
-        public final Map<String, Level> LEVEL_BY_VALUE = new Map<String, Level>{
-            ERROR.v() => ERROR,
-            WARNING.v() => WARNING,
-            INFO.v() => INFO,
-            DEBUG.v() => DEBUG,
-            FINE.v() => FINE,
-            FINER.v() => FINER,
-            FINEST.v() => FINEST
         };
     }
 

@@ -52,14 +52,12 @@ global with sharing class TritonFlow {
                                     flowLog.fullStacktrace + flowLog?.stacktrace : 
                                     flowLog?.stacktrace;
                                     
+        TritonTypes.Level level = TritonTypes.Level.INFO;
         String flowDetails = flowLog.details;
 
-        TritonEnumProvider.Level level;
-        TritonEnumProvider.Level flowLogEnumLevel = TritonEnums.getLevelEnum(flowLog.level);
-        if (TritonEnums.LEVEL.LEVEL_BY_VALUE.containsKey(flowLogEnumLevel.v())) {
-            level = flowLogEnumLevel;
-        } else {
-            level = TritonEnums.LEVEL.INFO;
+        try {
+            level = TritonTypes.Level.valueOf(flowLog.level);
+        } catch (Exception e) {
             flowDetails += Triton.SPACE_SEP + TritonHelper.formatMessage(INVALID_LOG_LEVEL, flowLog.level);
         }
         
@@ -102,7 +100,7 @@ global with sharing class TritonFlow {
                 .level(level);
 
         // if the log level is ERROR, create an issue
-        if (level.v().equals(TritonEnums.LEVEL.ERROR.v())) {
+        if(level == TritonTypes.Level.ERROR) {
             builder.createIssue();
         }
 

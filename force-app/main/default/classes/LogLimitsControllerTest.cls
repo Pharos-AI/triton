@@ -32,7 +32,7 @@ private class LogLimitsControllerTest {
             .area(TritonEnums.AREA.OPPORTUNITY_MANAGEMENT)
             .summary('Test Log with Limits')
             .details('Test log created for limit usage testing')
-            .level(TritonEnums.LEVEL.DEBUG)
+            .level(TritonTypes.Level.DEBUG)
             // Set all the limit values manually
             .attribute(TritonBuilder.BATCH_JOBS, 2)
             .attribute(TritonBuilder.BATCH_JOBS_LIMIT, 5)
@@ -133,7 +133,7 @@ private class LogLimitsControllerTest {
             .area(TritonEnums.AREA.OPPORTUNITY_MANAGEMENT)
             .summary('Test Log with Partial Limits')
             .details('Test log created for partial limit usage testing')
-            .level(TritonEnums.LEVEL.DEBUG)
+            .level(TritonTypes.Level.DEBUG)
             // Set only some limit values
             .attribute(TritonBuilder.BATCH_JOBS, 2)
             .attribute(TritonBuilder.BATCH_JOBS_LIMIT, 5)
