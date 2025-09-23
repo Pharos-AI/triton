@@ -27,9 +27,9 @@ private class LogLimitsControllerTest {
         
         // Create a log with Triton
         TritonBuilder builder = Triton.makeBuilder()
-            .category(TritonEnums.CATEGORY.DEBUG)
-            .type(TritonEnums.TYPE.BACKEND)
-            .area(TritonEnums.AREA.OPPORTUNITY_MANAGEMENT)
+            .category(TritonEnums.CATEGORY_ENUMS.DEBUG)
+            .type(TritonEnums.TYPE_ENUMS.BACKEND)
+            .area(TritonEnums.AREA_ENUMS.OPPORTUNITY_MANAGEMENT)
             .summary('Test Log with Limits')
             .details('Test log created for limit usage testing')
             .level(TritonTypes.Level.DEBUG)
@@ -128,9 +128,9 @@ private class LogLimitsControllerTest {
         
         // Create a log with partial data using Triton
         TritonBuilder builder = Triton.makeBuilder()
-            .category(TritonEnums.CATEGORY.DEBUG)
-            .type(TritonEnums.TYPE.BACKEND)
-            .area(TritonEnums.AREA.OPPORTUNITY_MANAGEMENT)
+            .category(TritonEnums.CATEGORY_ENUMS.DEBUG)
+            .type(TritonEnums.TYPE_ENUMS.BACKEND)
+            .area(TritonEnums.AREA_ENUMS.OPPORTUNITY_MANAGEMENT)
             .summary('Test Log with Partial Limits')
             .details('Test log created for partial limit usage testing')
             .level(TritonTypes.Level.DEBUG)

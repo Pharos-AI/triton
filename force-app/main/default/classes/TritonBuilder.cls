@@ -123,12 +123,29 @@ public with sharing class TritonBuilder {
         this.builder.attribute(REQUEST_ID, System.Request.getCurrent().getRequestId());
     }
 
+    // TODO: REMOVE
+    public TritonBuilder category(TritonTypes.Category c) {
+        this.builder.category(c.name());
+        return this;
+    }
+
+    public TritonBuilder type(TritonTypes.Type t) {
+        this.builder.type(t.name());
+        return this;
+    }
+
+    public TritonBuilder area(TritonTypes.Area a) {
+        this.builder.area(a.name());
+        return this;
+    }
+    //
+
     /**
     * Set log category from Category enum.
     * @param c -- TritonEnumProvider.Category value
     * @return this builder instance
     */
-    public TritonBuilder category(TritonEnumProvider.Category c) {
+    public TritonBuilder category(TritonEnumProvider.CategoryEnum c) {
         this.builder.category(c.v());
         return this;
     }
@@ -138,7 +155,7 @@ public with sharing class TritonBuilder {
     * @param t -- TritonEnumProvider.Type value
     * @return this builder instance
     */
-    public TritonBuilder type(TritonEnumProvider.Type t) {
+    public TritonBuilder type(TritonEnumProvider.TypeEnum t) {
         this.builder.type(t.v());
         return this;
     }
@@ -158,7 +175,7 @@ public with sharing class TritonBuilder {
     * @param a -- TritonEnumProvider.Area value
     * @return this builder instance
     */
-    public TritonBuilder area(TritonEnumProvider.Area a) {
+    public TritonBuilder area(TritonEnumProvider.AreaEnum a) {
         this.builder.area(a.v());
         return this;
     }
@@ -488,10 +505,10 @@ public with sharing class TritonBuilder {
 
         // Use exception type, Backend if blank
         this.type(String.isBlank(e.getTypeName()) ? 
-            TritonEnums.TYPE.BACKEND.name() : 
+            TritonEnums.TYPE_ENUMS.BACKEND.v() : 
             e.getTypeName());
         
-        this.category(TritonEnums.CATEGORY.APEX)
+        this.category(TritonEnums.CATEGORY_ENUMS.APEX)
             .level(TritonTypes.Level.ERROR)
             .summary(e.getMessage())
             .stackTrace(e.getStackTraceString())

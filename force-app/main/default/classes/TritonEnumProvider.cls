@@ -18,20 +18,20 @@ public abstract class TritonEnumProvider {
         }
     }
 
-    public class Area extends BaseToken {
-        public Area(String v) {
+    public class AreaEnum extends BaseToken {
+        public AreaEnum(String v) {
             super('AREA', v);
         }
     }
 
-    public class Type extends BaseToken {
-        public Type(String v) {
+    public class TypeEnum extends BaseToken {
+        public TypeEnum(String v) {
             super('TYPE', v);
         }
     }
 
-    public class Category extends BaseToken {
-        public Category(String v) {
+    public class CategoryEnum extends BaseToken {
+        public CategoryEnum(String v) {
             super('CATEGORY', v);
         }
     }

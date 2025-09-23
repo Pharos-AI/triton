@@ -61,12 +61,12 @@ global with sharing class TritonFlow {
             flowDetails += Triton.SPACE_SEP + TritonHelper.formatMessage(INVALID_LOG_LEVEL, flowLog.level);
         }
         
-        TritonEnumProvider.Category category;
-        TritonEnumProvider.Category flowLogEnumCategory = TritonEnums.getCategoryEnum(flowLog.category);
-        if (TritonEnums.CATEGORY.CATEGORY_BY_VALUE.containsKey(flowLogEnumCategory.v())) {
+        TritonEnumProvider.CategoryEnum category;
+        TritonEnumProvider.CategoryEnum flowLogEnumCategory = TritonEnums.getCategoryEnum(flowLog.category);
+        if (TritonEnums.CATEGORY_ENUM_BY_VALUE.containsKey(flowLogEnumCategory.v())) {
             category = flowLogEnumCategory;
         } else {
-            category = TritonEnums.CATEGORY.FLOW;
+            category = TritonEnums.CATEGORY_ENUMS.FLOW;
             if (String.isNotBlank(flowLog.category)) {
                 flowDetails += Triton.SPACE_SEP + TritonHelper.formatMessage(INVALID_CATEGORY, flowLog.category);
             }

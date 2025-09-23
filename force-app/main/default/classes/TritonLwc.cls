@@ -72,22 +72,22 @@ global with sharing class TritonLwc {
                 relatedIds = validIds;
             }
 
-            TritonEnumProvider.Category category;
-            TritonEnumProvider.Category cmpLogEnumCategory = TritonEnums.getCategoryEnum(componentLog.category);
-            if (TritonEnums.CATEGORY.CATEGORY_BY_VALUE.containsKey(cmpLogEnumCategory.v())) {
+            TritonEnumProvider.CategoryEnum category;
+            TritonEnumProvider.CategoryEnum cmpLogEnumCategory = TritonEnums.getCategoryEnum(componentLog.category);
+            if (TritonEnums.CATEGORY_ENUM_BY_VALUE.containsKey(cmpLogEnumCategory.v())) {
                 category = cmpLogEnumCategory;
             } else {
-                category = TritonEnums.CATEGORY.LWC;
+                category = TritonEnums.CATEGORY_ENUMS.LWC;
                 details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Category: {0}. Default LWC category will be used.', componentLog.category);
             }
 
             String areaStr = String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.componentInfo.name;
-            TritonEnumProvider.Area area;
-            TritonEnumProvider.Area cmpLogEnumArea = TritonEnums.getAreaEnum(areaStr);
-            if (TritonEnums.AREA.AREA_BY_VALUE.containsKey(cmpLogEnumArea.v())) {
+            TritonEnumProvider.AreaEnum area;
+            TritonEnumProvider.AreaEnum cmpLogEnumArea = TritonEnums.getAreaEnum(areaStr);
+            if (TritonEnums.AREA_ENUM_BY_VALUE.containsKey(cmpLogEnumArea.v())) {
                 area = cmpLogEnumArea;
             } else {
-                area = TritonEnums.AREA.LWC;
+                area = TritonEnums.AREA_ENUMS.LWC;
                 details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Functional Area: {0}. Default LWC area will be used.', areaStr);
             }
 
@@ -112,7 +112,7 @@ global with sharing class TritonLwc {
                             .category(category)
                             //type will be fetched from the componentLog directly, of from the error. If neither are set, Frontend will be used
                             .type(String.isNotBlank(componentLog.type) ? componentLog.type :
-                                    componentLog.error != null ? componentLog.error.type : TritonEnums.TYPE.FRONTEND.v())
+                                    componentLog.error != null ? componentLog.error.type : TritonEnums.TYPE_ENUMS.FRONTEND.v())
                             //area will be fetched from the componentLog directly if set. Otherwise component name will be used
                             .area(area)
                             //summary will be fetched from the componentLog directly if set. Otherwise, error message will be used if provided.
