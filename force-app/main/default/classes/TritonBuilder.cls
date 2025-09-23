@@ -123,23 +123,6 @@ public with sharing class TritonBuilder {
         this.builder.attribute(REQUEST_ID, System.Request.getCurrent().getRequestId());
     }
 
-    // TODO: REMOVE
-    public TritonBuilder category(TritonTypes.Category c) {
-        this.builder.category(c.name());
-        return this;
-    }
-
-    public TritonBuilder type(TritonTypes.Type t) {
-        this.builder.type(t.name());
-        return this;
-    }
-
-    public TritonBuilder area(TritonTypes.Area a) {
-        this.builder.area(a.name());
-        return this;
-    }
-    //
-
     /**
     * Set log category from Category enum.
     * @param c -- TritonEnumProvider.Category value
