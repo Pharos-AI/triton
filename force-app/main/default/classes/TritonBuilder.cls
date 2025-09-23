@@ -492,7 +492,7 @@ public with sharing class TritonBuilder {
             e.getTypeName());
         
         this.category(TritonEnums.CATEGORY.APEX)
-            .level(TritonEnums.LEVEL.ERROR)
+            .level(TritonTypes.Level.ERROR)
             .summary(e.getMessage())
             .stackTrace(e.getStackTraceString())
             .details(String.valueOf(e) + Triton.SPACE_SEP + e.getStackTraceString())
