@@ -54,7 +54,7 @@ global with sharing class TritonFlow {
                                     
         TritonTypes.Level level = TritonTypes.Level.INFO;
         String flowDetails = flowLog.details;
-
+        
         try {
             level = TritonTypes.Level.valueOf(flowLog.level);
         } catch (Exception e) {
