@@ -205,7 +205,11 @@ export default class TritonBuilder {
             if (this[key] !== undefined && typeof this[key] !== 'function') {
                 // Handle objects that need deep cloning
                 if (this[key] && typeof this[key] === 'object') {
-                    newBuilder[key] = { ...this[key] };
+                    if (Array.isArray(this[key])) {
+                        newBuilder[key] = [...this[key]];
+                    } else {
+                        newBuilder[key] = { ...this[key] };
+                    }
                 } else {
                     newBuilder[key] = this[key];
                 }
