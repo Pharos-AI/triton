@@ -1209,6 +1209,7 @@ private class TritonTest {
                    Publish_Immediate_DML__c,
                    Publish_Immediate_DML_Limit__c
             FROM pharos__Log__c 
+            WHERE pharos__Area__c = :TritonTypes.Area.Community.name()
             ORDER BY CreatedDate
         ];
         
@@ -1482,6 +1483,7 @@ private class TritonTest {
                    pharos__Duration__c,
                    pharos__Summary__c
             FROM pharos__Log__c 
+            WHERE pharos__Area__c = :TritonTypes.Area.Community.name()
             ORDER BY CreatedDate
         ];
         
