@@ -1,0 +1,113 @@
+<template>
+    <lightning-card title="Triton Enum System Example" icon-name="utility:list">
+        <div class="slds-p-around_medium">
+            
+            <!-- Subscribers Info -->
+            <div class="slds-m-bottom_large">
+                <h3 class="slds-text-heading_small slds-m-bottom_small">Registered Subscribers</h3>
+                <template if:true={subscribers}>
+                    <template for:each={subscribers} for:item="subscriber">
+                        <div key={subscriber.name} class="slds-pill slds-m-right_x-small slds-m-bottom_x-small">
+                            <span class="slds-pill__label">{subscriber.name} v{subscriber.version}</span>
+                        </div>
+                    </template>
+                </template>
+            </div>
+
+            <!-- Default Enums -->
+            <div class="slds-grid slds-wrap">
+                <div class="slds-col slds-size_1-of-2 slds-p-right_small">
+                    <h3 class="slds-text-heading_small slds-m-bottom_small">Default Areas</h3>
+                    <template if:true={defaultAreas}>
+                        <template for:each={defaultAreas} for:item="area">
+                            <div key={area.key} class="slds-pill slds-m-right_x-small slds-m-bottom_x-small">
+                                <span class="slds-pill__label">{area.value}</span>
+                            </div>
+                        </template>
+                    </template>
+                </div>
+
+                <div class="slds-col slds-size_1-of-2 slds-p-left_small">
+                    <h3 class="slds-text-heading_small slds-m-bottom_small">Default Types</h3>
+                    <template if:true={defaultTypes}>
+                        <template for:each={defaultTypes} for:item="type">
+                            <div key={type.key} class="slds-pill slds-m-right_x-small slds-m-bottom_x-small">
+                                <span class="slds-pill__label">{type.value}</span>
+                            </div>
+                        </template>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Extended Enums -->
+            <div class="slds-m-top_large">
+                <h3 class="slds-text-heading_small slds-m-bottom_small">Extended Areas (Default + Custom)</h3>
+                <template if:true={extendedAreas}>
+                    <template for:each={extendedAreas} for:item="area">
+                        <div key={area.key} class="slds-pill slds-m-right_x-small slds-m-bottom_x-small">
+                            <span class="slds-pill__label">{area.value}</span>
+                        </div>
+                    </template>
+                </template>
+            </div>
+
+            <div class="slds-m-top_medium">
+                <h3 class="slds-text-heading_small slds-m-bottom_small">Extended Types (Default + Custom)</h3>
+                <template if:true={extendedTypes}>
+                    <template for:each={extendedTypes} for:item="type">
+                        <div key={type.key} class="slds-pill slds-m-right_x-small slds-m-bottom_x-small">
+                            <span class="slds-pill__label">{type.value}</span>
+                        </div>
+                    </template>
+                </template>
+            </div>
+
+            <div class="slds-m-top_medium">
+                <h3 class="slds-text-heading_small slds-m-bottom_small">Extended Categories (Default + Custom)</h3>
+                <template if:true={extendedCategories}>
+                    <template for:each={extendedCategories} for:item="category">
+                        <div key={category.key} class="slds-pill slds-m-right_x-small slds-m-bottom_x-small">
+                            <span class="slds-pill__label">{category.value}</span>
+                        </div>
+                    </template>
+                </template>
+            </div>
+
+            <!-- Interactive Examples -->
+            <div class="slds-m-top_large">
+                <h3 class="slds-text-heading_small slds-m-bottom_small">Interactive Examples</h3>
+                
+                <div class="slds-grid slds-wrap slds-gutters">
+                    <div class="slds-col slds-size_1-of-2">
+                        <lightning-button-group>
+                            <lightning-button 
+                                label="Create Area" 
+                                variant="brand-outline"
+                                data-type="area"
+                                onclick={handleCreateEnum}>
+                            </lightning-button>
+                            <lightning-button 
+                                label="Create Type" 
+                                variant="brand-outline"
+                                data-type="type"
+                                onclick={handleCreateEnum}>
+                            </lightning-button>
+                        </lightning-button-group>
+                    </div>
+                    
+                    <div class="slds-col slds-size_1-of-2">
+                        <lightning-button-group>
+                            <lightning-button 
+                                label="Create Category" 
+                                variant="brand-outline"
+                                data-type="category"
+                                onclick={handleCreateEnum}>
+                            </lightning-button>
+                        </lightning-button-group>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </lightning-card>
+</template>
