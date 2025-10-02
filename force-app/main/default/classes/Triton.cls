@@ -302,17 +302,7 @@ global with sharing class Triton {
     * @param details -- details of the issue. Saves to log record Details field
     */
     public void addError(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
-        addLog(
-            fromTemplate()
-                .category(TritonTypes.Category.Apex)
-                .type(type)
-                .area(area)
-                .summary(summary)
-                .details(details)
-                .stackTrace(TritonHelper.getCurrentStackTrace())
-                .level(TritonTypes.Level.ERROR)
-                .createIssue()
-        );
+        addLog(this.getErrorBuilder(type, area, summary, details));
     }
 
     /**
@@ -321,6 +311,19 @@ global with sharing class Triton {
     public void error(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
         addError(type, area, summary, details);
         flushTop();
+    }
+
+    public TritonBuilder getErrorBuilder(TritonTypes.Type type, TritonTypes.Area area, String summary, String details) {
+        return
+            fromTemplate()
+                .category(TritonTypes.Category.Apex)
+                .type(type)
+                .area(area)
+                .summary(summary)
+                .details(details)
+                .stackTrace(TritonHelper.getCurrentStackTrace())
+                .level(TritonTypes.Level.ERROR)
+                .createIssue();
     }
 
 
@@ -667,18 +670,7 @@ global with sharing class Triton {
         RestRequest request,
         RestResponse response
     ) {
-        addLog(
-            fromTemplate()
-                .category(TritonTypes.Category.Integration)
-                .type(type)
-                .area(area)
-                .summary(summary)
-                .details(details)
-                .stackTrace(TritonHelper.getCurrentStackTrace())
-                .createIssue()
-                .integrationPayload(request, response)
-                .level(TritonTypes.Level.ERROR)
-        );
+        addLog(this.getIntegrationErrorBuilder(type, area, summary, details, request, response));
     }
 
     /**
@@ -694,6 +686,27 @@ global with sharing class Triton {
     ) {
         addIntegrationError(type, area, summary, details, request, response);
         flush();
+    }
+
+    public TritonBuilder getIntegrationErrorBuilder(
+        TritonTypes.Type type,
+        TritonTypes.Area area,
+        String summary,
+        String details,
+        RestRequest request,
+        RestResponse response
+    ) {
+        return
+            fromTemplate()
+                .category(TritonTypes.Category.Integration)
+                .type(type)
+                .area(area)
+                .summary(summary)
+                .details(details)
+                .stackTrace(TritonHelper.getCurrentStackTrace())
+                .createIssue()
+                .integrationPayload(request, response)
+                .level(TritonTypes.Level.ERROR);
     }
 
     /**

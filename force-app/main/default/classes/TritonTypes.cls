@@ -34,7 +34,8 @@ public with sharing class TritonTypes {
         RestAPI,
         Accounts,
         LWC,
-        Flow
+        Flow,
+        OpportunityData
     }
 
     /**
@@ -80,6 +81,7 @@ public with sharing class TritonTypes {
         DMLResult,
         LongRunningRequest,
         ConcurrentRequestsLimit,
-        AccountTrigger
+        AccountTrigger,
+        ERPMessageHandler
     }
 }
