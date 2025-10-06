@@ -18,6 +18,7 @@ public with sharing class TritonBuilder {
 
     /** key field names for setting attributes on log records */
     public static final String APEX_NAME = 'pharos__Apex_Name__c';
+    public static final String ACTION = 'Action__c';
     public static final String CREATED_TIMESTAMP = 'pharos__Created_Timestamp__c';
     public static final String DURATION = 'pharos__Duration__c';
     public static final String INTERVIEW_GUID = 'pharos__Interview_GUID_External__c';
@@ -94,6 +95,7 @@ public with sharing class TritonBuilder {
 
     private static final Set<String> LOG_FIELDS = Schema.SObjectType.pharos__Log__c.fields.getMap().keySet();
 
+    private Boolean includeLimitInfo = true;
     private Boolean traceable = false;
 
     private pharos.LogBuilder builder;
@@ -108,6 +110,7 @@ public with sharing class TritonBuilder {
                 cloned.builder.attribute(field, value);
             }
         }
+        cloned.includeLimitInfo = this.includeLimitInfo;
         cloned.initBuilder();
         return cloned;
     }
@@ -297,6 +300,16 @@ public with sharing class TritonBuilder {
 
     /**
     * Add multiple related object Id strings to the log
+    * @param relatedObjectIds -- List of Id strings to relate to the log
+    * @return this builder instance
+    */
+    public TritonBuilder relatedObjects(List<String> relatedObjectIds) {       
+        return relatedObjects(new Set<String>(relatedObjectIds));
+    }
+
+
+    /**
+    * Add multiple related object Id strings to the log
     * @param relatedObjectIds -- Set of Id strings to relate to the log
     * @return this builder instance
     */
@@ -354,6 +367,16 @@ public with sharing class TritonBuilder {
     }
 
     /**
+    * Set action name for the log
+    * @param action -- String value representing the action name (e.g., performance mark, backend call, user interaction name)
+    * @return this builder instance
+    */
+    public TritonBuilder action(String action) {
+        this.builder.attribute(TritonBuilder.ACTION, action);
+        return this;
+    }
+
+    /**
     * Set integration payload from HTTP request/response
     * @param request -- HttpRequest instance
     * @param response -- HttpResponse instance
@@ -392,6 +415,15 @@ public with sharing class TritonBuilder {
     */
     public TritonBuilder flowApiName(String apiName) {
         this.builder.attribute(FLOW_API_NAME, apiName);
+        return this;
+    }
+
+    /**
+    * Set to not include limit info in the log record
+    * @return this builder instance
+    */
+    public TritonBuilder withoutLimitInfo() {
+        this.includeLimitInfo = false;
         return this;
     }
 
@@ -443,37 +475,38 @@ public with sharing class TritonBuilder {
     * @return this builder instance
     */
     public TritonBuilder limitInfo() {
-        return this
-            .attribute(SOQL_QUERIES, System.Limits.getQueries())
-            .attribute(SOQL_QUERIES_LIMIT, System.Limits.getLimitQueries())
-            .attribute(SOQL_ROWS, System.Limits.getQueryRows())
-            .attribute(SOQL_ROWS_LIMIT, System.Limits.getLimitQueryRows())
-            .attribute(SOQL_AGGREGATES, System.Limits.getAggregateQueries())
-            .attribute(SOQL_AGGREGATES_LIMIT, System.Limits.getLimitAggregateQueries())
-            .attribute(DML_STATEMENTS, System.Limits.getDMLStatements())
-            .attribute(DML_STATEMENTS_LIMIT, System.Limits.getLimitDMLStatements())
-            .attribute(DML_ROWS, System.Limits.getDMLRows())
-            .attribute(DML_ROWS_LIMIT, System.Limits.getLimitDMLRows())
-            .attribute(CPU_TIME, System.Limits.getCpuTime())
-            .attribute(CPU_TIME_LIMIT, System.Limits.getLimitCpuTime())
-            .attribute(HEAP_SIZE, System.Limits.getHeapSize())
-            .attribute(HEAP_SIZE_LIMIT, System.Limits.getLimitHeapSize())
-            .attribute(CALLOUTS, System.Limits.getCallouts())
-            .attribute(CALLOUTS_LIMIT, System.Limits.getLimitCallouts())
-            .attribute(SOSL_QUERIES, System.Limits.getSoslQueries())
-            .attribute(SOSL_QUERIES_LIMIT, System.Limits.getLimitSoslQueries())
-            .attribute(FUTURE_CALLS, System.Limits.getFutureCalls())
-            .attribute(FUTURE_CALLS_LIMIT, System.Limits.getLimitFutureCalls())
-            .attribute(QUEUEABLE_JOBS, System.Limits.getQueueableJobs())
-            .attribute(QUEUEABLE_JOBS_LIMIT, System.Limits.getLimitQueueableJobs())
-            .attribute(EMAIL_INVOCATIONS, System.Limits.getEmailInvocations())
-            .attribute(EMAIL_INVOCATIONS_LIMIT, System.Limits.getLimitEmailInvocations())
-            .attribute(PUSH_NOTIFICATIONS, System.Limits.getMobilePushApexCalls())
-            .attribute(PUSH_NOTIFICATIONS_LIMIT, System.Limits.getLimitMobilePushApexCalls())
-            .attribute(BATCH_JOBS, System.Limits.getAsyncCalls())
-            .attribute(BATCH_JOBS_LIMIT, System.Limits.getLimitAsyncCalls())
-            .attribute(PUBLISH_IMMEDIATE_DML, System.Limits.getPublishImmediateDML())
-            .attribute(PUBLISH_IMMEDIATE_DML_LIMIT, System.Limits.getLimitPublishImmediateDML());
+        return this.includeLimitInfo ? 
+            this.attribute(SOQL_QUERIES, System.Limits.getQueries())
+                .attribute(SOQL_QUERIES_LIMIT, System.Limits.getLimitQueries())
+                .attribute(SOQL_ROWS, System.Limits.getQueryRows())
+                .attribute(SOQL_ROWS_LIMIT, System.Limits.getLimitQueryRows())
+                .attribute(SOQL_AGGREGATES, System.Limits.getAggregateQueries())
+                .attribute(SOQL_AGGREGATES_LIMIT, System.Limits.getLimitAggregateQueries())
+                .attribute(DML_STATEMENTS, System.Limits.getDMLStatements())
+                .attribute(DML_STATEMENTS_LIMIT, System.Limits.getLimitDMLStatements())
+                .attribute(DML_ROWS, System.Limits.getDMLRows())
+                .attribute(DML_ROWS_LIMIT, System.Limits.getLimitDMLRows())
+                .attribute(CPU_TIME, System.Limits.getCpuTime())
+                .attribute(CPU_TIME_LIMIT, System.Limits.getLimitCpuTime())
+                .attribute(HEAP_SIZE, System.Limits.getHeapSize())
+                .attribute(HEAP_SIZE_LIMIT, System.Limits.getLimitHeapSize())
+                .attribute(CALLOUTS, System.Limits.getCallouts())
+                .attribute(CALLOUTS_LIMIT, System.Limits.getLimitCallouts())
+                .attribute(SOSL_QUERIES, System.Limits.getSoslQueries())
+                .attribute(SOSL_QUERIES_LIMIT, System.Limits.getLimitSoslQueries())
+                .attribute(FUTURE_CALLS, System.Limits.getFutureCalls())
+                .attribute(FUTURE_CALLS_LIMIT, System.Limits.getLimitFutureCalls())
+                .attribute(QUEUEABLE_JOBS, System.Limits.getQueueableJobs())
+                .attribute(QUEUEABLE_JOBS_LIMIT, System.Limits.getLimitQueueableJobs())
+                .attribute(EMAIL_INVOCATIONS, System.Limits.getEmailInvocations())
+                .attribute(EMAIL_INVOCATIONS_LIMIT, System.Limits.getLimitEmailInvocations())
+                .attribute(PUSH_NOTIFICATIONS, System.Limits.getMobilePushApexCalls())
+                .attribute(PUSH_NOTIFICATIONS_LIMIT, System.Limits.getLimitMobilePushApexCalls())
+                .attribute(BATCH_JOBS, System.Limits.getAsyncCalls())
+                .attribute(BATCH_JOBS_LIMIT, System.Limits.getLimitAsyncCalls())
+                .attribute(PUBLISH_IMMEDIATE_DML, System.Limits.getPublishImmediateDML())
+                .attribute(PUBLISH_IMMEDIATE_DML_LIMIT, System.Limits.getLimitPublishImmediateDML()) 
+            : this;
     }
 
     /**
