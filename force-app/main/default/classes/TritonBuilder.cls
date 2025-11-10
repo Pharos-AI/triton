@@ -93,24 +93,24 @@ public with sharing class TritonBuilder {
     @TestVisible
     private static final String PUBLISH_IMMEDIATE_DML_LIMIT = 'Publish_Immediate_DML_Limit__c';
 
-    private static final Set<String> LOG_FIELDS = Schema.SObjectType.pharos__Log__c.fields.getMap().keySet();
-
     private Boolean includeLimitInfo = true;
     private Boolean traceable = false;
 
     private pharos.LogBuilder builder;
+    private Boolean fullLimitInfoRequested = false;
 
     public TritonBuilder cloneBuilder() {
+        pharos__Log__c clonedLog = this.builder.build().clone(false, true, false, false);
         TritonBuilder cloned = new TritonBuilder();
-        // Copy all attributes from the original log to the new one
-        pharos__Log__c originalLog = this.builder.build();
-        for (String field : LOG_FIELDS) {
-            Object value = originalLog.get(field);
-            if (value != null) {
-                cloned.builder.attribute(field, value);
-            }
+        
+        // Only iterate POPULATED fields (10-20, not all 50-100)
+        for (String field : clonedLog.getPopulatedFieldsAsMap().keySet()) {
+            cloned.builder.attribute(field, clonedLog.get(field));
         }
+        
         cloned.includeLimitInfo = this.includeLimitInfo;
+        cloned.fullLimitInfoRequested = this.fullLimitInfoRequested;
+        cloned.traceable = this.traceable;
         cloned.initBuilder();
         return cloned;
     }
@@ -124,6 +124,10 @@ public with sharing class TritonBuilder {
         createdTimestamp();
         this.builder.attribute(DO_NOT_CREATE_ISSUE, true);
         this.builder.attribute(REQUEST_ID, System.Request.getCurrent().getRequestId());
+    }
+
+    public Boolean hasFullLimitInfo() {
+        return this.fullLimitInfoRequested;
     }
 
     /**
@@ -507,6 +511,28 @@ public with sharing class TritonBuilder {
                 .attribute(PUBLISH_IMMEDIATE_DML, System.Limits.getPublishImmediateDML())
                 .attribute(PUBLISH_IMMEDIATE_DML_LIMIT, System.Limits.getLimitPublishImmediateDML()) 
             : this;
+    }
+
+    /**
+    * Captures and sets the essential transaction limits (CPU Time, Heap Size, DML Statements) on the log record
+    * @return this builder instance
+    */
+    public TritonBuilder limitInfoLite() {
+        return this
+            .attribute(SOQL_QUERIES, System.Limits.getQueries())
+            .attribute(SOQL_QUERIES_LIMIT, System.Limits.getLimitQueries())
+            .attribute(SOQL_ROWS, System.Limits.getQueryRows())
+            .attribute(SOQL_ROWS_LIMIT, System.Limits.getLimitQueryRows())
+            .attribute(DML_STATEMENTS, System.Limits.getDMLStatements())
+            .attribute(DML_STATEMENTS_LIMIT, System.Limits.getLimitDMLStatements())
+            .attribute(DML_ROWS, System.Limits.getDMLRows())
+            .attribute(DML_ROWS_LIMIT, System.Limits.getLimitDMLRows())
+            .attribute(CPU_TIME, System.Limits.getCpuTime())
+            .attribute(CPU_TIME_LIMIT, System.Limits.getLimitCpuTime())
+            .attribute(HEAP_SIZE, System.Limits.getHeapSize())
+            .attribute(HEAP_SIZE_LIMIT, System.Limits.getLimitHeapSize())
+            .attribute(CALLOUTS, System.Limits.getCallouts())
+            .attribute(CALLOUTS_LIMIT, System.Limits.getLimitCallouts());
     }
 
     /**
