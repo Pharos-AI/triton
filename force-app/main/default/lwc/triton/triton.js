@@ -40,12 +40,19 @@ export default class Triton {
      */
     transactionId = null;
 
+    /**
+     * Performance tracking instance
+     * @private
+     */
+    performance = null;
+
     constructor() {
         if (instance) {
             return instance;
         }
         this.transactionManager = new TransactionManager(this);        
         this.transactionId = this.transactionManager.initialize();
+        this.performance = new PerformanceTracker(this);
         
         instance = this;
         return instance;
@@ -58,9 +65,15 @@ export default class Triton {
      */
     bindToComponent(componentId) {
         const self = this;
+        // Generate a unique instance ID for this component binding
+        const componentInstanceId = generateTransactionId();
+        const componentKey = `${componentId}-${componentInstanceId}`;
+        
         return new Proxy(this, {
             get(target, prop, receiver) {
                 if (prop === '_componentId') return componentId;
+                if (prop === '_componentInstanceId') return componentInstanceId;
+                if (prop === '_componentKey') return componentKey;
 
                 if (prop === 'setTemplate') {
                     return (builder) => self.templates.set(componentId, builder);
@@ -70,13 +83,19 @@ export default class Triton {
                         const template = self.templates.get(componentId);
                         if (template) {
                             const builder = template.clone();
-                            return self.refreshBuilder(builder);
+                            return receiver.refreshBuilder(builder);
                         }
-                        return self.makeBuilder();
+                        return receiver.makeBuilder();
                     };
                 }
-                // default behavior for all other methods
-                return Reflect.get(target, prop, receiver);
+                
+                // For methods, bind them to the receiver (proxy) so 'this' refers to the proxy
+                const value = Reflect.get(target, prop, receiver);
+                if (typeof value === 'function') {
+                    return value.bind(receiver);
+                }
+                
+                return value;
             }
         });
     }
@@ -250,6 +269,79 @@ export default class Triton {
             .transactionId(this.transactionId)
             .timestamp(Date.now());
     }
+
+    /**
+     * Checks if component binding is available for performance tracking
+     * @private
+     * @returns {boolean} True if component is bound, false otherwise
+     */
+    _checkComponentBinding() {
+        if (!this._componentId) {
+            console.warn('Triton performance tracking requires bindToComponent() to be called first');
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Start a performance mark for timing operations
+     * @param {string} markName - Name of the performance mark
+     * @returns {string} Mark name for later reference
+     */
+    startPerformanceMark(markName) {
+        if (!this._checkComponentBinding()) return null;
+        // Pass the bound proxy (this) to the performance tracker
+        return this.performance.startMark(markName, this);
+    }
+
+    /**
+     * End a performance mark and log the timing
+     * @param {string} markName - Mark name used in startPerformanceMark
+     */
+    endPerformanceMark(markName) {
+        if (!this._checkComponentBinding()) return;
+        // Pass the bound proxy (this) to the performance tracker
+        this.performance.endMark(markName, this);
+    }
+
+    /**
+     * Time a backend call and automatically log performance metrics
+     * @param {string} methodName - Name of the method/action being performed
+     * @param {Function} apexCall - Function that returns the Apex call promise
+     * @returns {PerformanceCallBuilder} Builder for configuring error handling
+     */
+    timeBackendCall(methodName, apexCall) {
+        return new PerformanceCallBuilder(this, 'backend', apexCall, methodName);
+    }
+
+    /**
+     * Track component lifecycle events
+     * @param {string} lifecycleEvent - Lifecycle event (connected, disconnected, rendered)
+     */
+    trackComponentLifecycle(lifecycleEvent) {
+        if (!this._checkComponentBinding()) return;
+        // Pass the bound proxy (this) to the performance tracker
+        this.performance.trackLifecycle(lifecycleEvent, this);
+    }
+
+    /**
+     * Track component render performance
+     */
+    trackComponentRender() {
+        if (!this._checkComponentBinding()) return;
+        // Pass the bound proxy (this) to the performance tracker
+        this.performance.trackRender(this);
+    }
+
+    /**
+     * Track user interaction performance
+     * @param {string} interactionName - Name of the interaction
+     * @param {Function} interaction - Function to execute and time
+     * @returns {PerformanceCallBuilder} Builder for configuring error handling
+     */
+    timeUserInteraction(interactionName, interaction) {
+        return new PerformanceCallBuilder(this, 'interaction', interaction, interactionName);
+    }
 }
 
 /**
@@ -296,8 +388,280 @@ export const LEVEL = {
  */
 export const TYPE = {
     BACKEND: 'Backend',
-    FRONTEND: 'Frontend'
+    FRONTEND: 'Frontend',
+    BACKEND_CALL: 'BackendCall',
+    COMPONENT_LIFECYCLE: 'ComponentLifecycle',
+    COMPONENT_RENDER: 'ComponentRender',
+    USER_INTERACTION: 'UserInteraction',
+    PERFORMANCE: 'Performance'
 };
+
+/**
+ * Unified builder for configuring performance call error handling and execution
+ * @private
+ */
+class PerformanceCallBuilder {
+    constructor(triton, callType, callFunction, methodName) {
+        this.triton = triton;
+        this.callType = callType; // 'backend' or 'interaction'
+        this.callFunction = callFunction;
+        this.methodName = methodName; // Explicit method/interaction name
+        this.shouldRethrow = true; // Default to rethrow
+        this.customErrorHandler = null;
+    }
+
+    /**
+     * Configure to not rethrow errors after handling
+     * @returns {PerformanceCallBuilder} Builder instance for chaining
+     */
+    withoutRethrow() {
+        this.shouldRethrow = false;
+        return this;
+    }
+
+    /**
+     * Configure custom error handler (automatically disables built-in handler)
+     * @param {Function} errorHandler - Custom error handling function
+     * @returns {PerformanceCallBuilder} Builder instance for chaining
+     */
+    withCustomErrorHandler(errorHandler) {
+        this.customErrorHandler = errorHandler;
+        return this;
+    }
+
+    /**
+     * Execute the call with configured error handling
+     * @returns {Promise} Result of the call
+     */
+    async execute() {
+        const startTime = this.triton.performance.getCurrentTime();
+        
+        // Use explicit method name and determine log type based on call type
+        const methodName = this.methodName;
+        let logType, operationName;
+        if (this.callType === 'backend') {
+            logType = TYPE.BACKEND_CALL;
+            operationName = 'Backend call';
+        } else {
+            logType = TYPE.USER_INTERACTION;
+            operationName = 'User interaction';
+        }
+
+        try {
+            // Log operation start (only if component is bound)
+            if (this.triton._componentId) {
+                this.triton.log(
+                    this.triton.makeBuilder()
+                        .type(logType)
+                        .summary(`${operationName} started: ${methodName}`)
+                        .details(`Initiating ${operationName.toLowerCase()}: ${methodName}`)
+                        .action(methodName)
+                );
+            }
+            
+            const result = await this.callFunction();
+            const endTime = this.triton.performance.getCurrentTime();
+            const duration = endTime - startTime;
+            
+            // Log successful operation (only if component is bound)
+            if (this.triton._componentId) {
+                this.triton.log(
+                    this.triton.makeBuilder()
+                        .type(logType)
+                        .summary(`${operationName} completed: ${methodName}`)
+                        .details(`Duration: ${duration}ms`)
+                        .duration(duration)
+                        .action(methodName)
+                );
+            }
+            
+            return result;
+            
+        } catch (error) {
+            const endTime = this.triton.performance.getCurrentTime();
+            const duration = endTime - startTime;
+            
+            // Use custom error handler if provided, otherwise use built-in
+            if (this.customErrorHandler) {
+                const context = this.callType === 'backend' 
+                    ? { methodName, duration }
+                    : { interactionName: methodName, duration };
+                this.customErrorHandler(error, context);
+            } else if (this.triton._componentId) {
+                // Built-in error logging (only if component is bound)
+                this.triton.log(
+                    this.triton.makeBuilder()
+                        .type(logType)
+                        .summary(`${operationName} failed: ${methodName}`)
+                        .details(`Duration: ${duration}ms, Error: ${error.message}`)
+                        .duration(duration)
+                        .action(methodName)
+                        .exception(error)
+                );
+            }
+            
+            // Rethrow if configured
+            if (this.shouldRethrow) {
+                throw error;
+            }
+            
+            return null;
+        }
+    }
+}
+
+/**
+ * Performance tracking functionality integrated into Triton
+ * Locker Service compatible implementation with component instance mapping
+ * @private
+ */
+class PerformanceTracker {
+    constructor(triton) {
+        this.triton = triton;
+        // Map of component instances to their performance data
+        // Structure: componentKey (name-instanceId) -> { marks: Map, renderCounts: number, lifecycleEvents: Map }
+        this.componentInstances = new Map();
+        this.startTime = this.getCurrentTime();
+    }
+
+    /**
+     * Get or create component performance data
+     * @private
+     * @param {string} componentKey - Component key (name + instance ID)
+     * @returns {Object} Component performance data
+     */
+    getComponentData(componentKey) {
+        if (!componentKey) {
+            componentKey = 'unknown';
+        }
+        
+        if (!this.componentInstances.has(componentKey)) {
+            this.componentInstances.set(componentKey, {
+                marks: new Map(),
+                renderCounts: 0,
+                lifecycleEvents: new Map()
+            });
+        }
+        
+        return this.componentInstances.get(componentKey);
+    }
+
+    /**
+     * Safe method to get current time
+     * Falls back to Date.now() if performance.now() is not available
+     * @private
+     * @returns {number} Current time in milliseconds
+     */
+    getCurrentTime() {
+        try {
+            if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+                return performance.now();
+            }
+        } catch (error) {
+            console.warn('performance.now() not available, falling back to Date.now()');
+        }
+        return Date.now();
+    }
+
+
+
+    /**
+     * Start a performance mark
+     * @param {string} markName - Name of the mark
+     * @param {Object} boundTriton - The bound Triton proxy instance (optional)
+     * @returns {string} Mark name
+     */
+    startMark(markName, boundTriton = null) {
+        const tritonInstance = boundTriton || this.triton;
+        const componentKey = tritonInstance._componentKey || 'unknown';
+        const componentData = this.getComponentData(componentKey);
+        const startTime = this.getCurrentTime();
+        
+        componentData.marks.set(markName, {
+            name: markName,
+            startTime: startTime,
+            componentKey: componentKey
+        });
+        
+        return markName;
+    }
+
+    /**
+     * End a performance mark and log the timing
+     * @param {string} markName - Mark name
+     * @param {Object} boundTriton - The bound Triton proxy instance (optional)
+     */
+    endMark(markName, boundTriton = null) {
+        const tritonInstance = boundTriton || this.triton;
+        const endTime = this.getCurrentTime();
+        const componentKey = tritonInstance._componentKey || 'unknown';
+        const componentData = this.getComponentData(componentKey);
+        
+        const markData = componentData.marks.get(markName);
+        
+        if (!markData) {
+            console.warn(`Performance mark '${markName}' not found for component ${tritonInstance._componentId || 'unknown'}`);
+            return;
+        }
+        
+        const duration = endTime - markData.startTime;
+        
+        // Clean up the mark
+        componentData.marks.delete(markName);
+        
+        // Log the performance data using the appropriate context
+        tritonInstance.log(
+            tritonInstance.makeBuilder()
+                .type(TYPE.PERFORMANCE)
+                .summary(`Performance: ${tritonInstance._componentId || 'unknown'} - ${markData.name}`)
+                .details(`Duration: ${duration}ms`)
+                .duration(duration)
+                .action(markData.name)
+        );
+    }
+
+    /**
+     * Track component lifecycle events
+     * @param {string} lifecycleEvent - Lifecycle event
+     * @param {Object} boundTriton - The bound Triton proxy instance (optional)
+     */
+    trackLifecycle(lifecycleEvent, boundTriton = null) {
+        const tritonInstance = boundTriton || this.triton;
+        const componentKey = tritonInstance._componentKey || 'unknown';
+        const componentData = this.getComponentData(componentKey);
+        const eventKey = `${lifecycleEvent}`;
+        componentData.lifecycleEvents.set(eventKey, Date.now());
+        
+        // Use the appropriate context for logging
+        tritonInstance.log(
+            tritonInstance.makeBuilder()
+                .type(TYPE.COMPONENT_LIFECYCLE)
+                .summary(`Component lifecycle: ${tritonInstance._componentId || 'unknown'} - ${lifecycleEvent}`)
+                .details(`Component ${lifecycleEvent} event triggered`)
+                .action(`lifecycle-${lifecycleEvent}`)
+        );
+    }
+
+    /**
+     * Track component render performance
+     * @param {Object} boundTriton - The bound Triton proxy instance (optional)
+     */
+    trackRender(boundTriton = null) {
+        const tritonInstance = boundTriton || this.triton;
+        const componentKey = tritonInstance._componentKey || 'unknown';
+        const componentData = this.getComponentData(componentKey);
+        componentData.renderCounts += 1;
+        
+        // Use the appropriate context for logging
+        tritonInstance.log(
+            tritonInstance.makeBuilder()
+                .type(TYPE.COMPONENT_RENDER)
+                .summary(`Component render: ${tritonInstance._componentId || 'unknown'}`)
+                .details(`Render count: ${componentData.renderCounts}`)
+                .action('component-render')
+        );
+    }
+}
 
 /**
  * Manages transaction lifecycle and storage

@@ -130,7 +130,10 @@ global with sharing class TritonLwc {
                             .createdTimestamp(componentLog.createdTimestamp != null ? Double.valueOf(componentLog.createdTimestamp) : Double.valueOf(System.now().getTime()))
                             //log level will be taken from the componentLog if provided, otherwise INFO will be used
                             .level(level)
-                            .duration(componentLog.duration));
+                            .duration(componentLog.duration)
+                            .action(componentLog.action)
+                            .withoutLimitInfo()
+                            );
         }               
         
         logInstance.flush();
@@ -170,6 +173,8 @@ global with sharing class TritonLwc {
         public Component componentInfo { get; set; }
         @AuraEnabled
         public Decimal duration { get; set; }
+        @AuraEnabled
+        public String action { get; set; }
         @AuraEnabled
         public Decimal createdTimestamp { get; set; }
         @AuraEnabled

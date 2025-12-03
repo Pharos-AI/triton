@@ -4,4 +4,4 @@
     <isExposed>false</isExposed>
     <description>Utility functions for Triton framework components</description>
     <masterLabel>Triton Utils</masterLabel>
-</LightningComponentBundle> 
+</LightningComponentBundle>
