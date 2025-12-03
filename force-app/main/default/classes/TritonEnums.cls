@@ -80,7 +80,12 @@ public with sharing class TritonEnums extends TritonEnumProvider {
                     TYPE_ENUMS.DML_RESULT.v() => TYPE_ENUMS.DML_RESULT,
                     TYPE_ENUMS.LONG_RUNNING_REQUEST.v() => TYPE_ENUMS.LONG_RUNNING_REQUEST,
                     TYPE_ENUMS.CONCURRENT_REQUEST_LIMIT.v() => TYPE_ENUMS.CONCURRENT_REQUEST_LIMIT,
-                    TYPE_ENUMS.ACCOUNT_TRIGGER.v() => TYPE_ENUMS.ACCOUNT_TRIGGER
+                    TYPE_ENUMS.ACCOUNT_TRIGGER.v() => TYPE_ENUMS.ACCOUNT_TRIGGER,
+                    TYPE_ENUMS.BACKEND_CALL.v() => TYPE_ENUMS.BACKEND_CALL,
+                    TYPE_ENUMS.COMPONENT_LIFECYCLE.v() => TYPE_ENUMS.COMPONENT_LIFECYCLE,
+                    TYPE_ENUMS.COMPONENT_RENDER.v() => TYPE_ENUMS.COMPONENT_RENDER,
+                    TYPE_ENUMS.USER_INTERACTION.v() => TYPE_ENUMS.USER_INTERACTION,
+                    TYPE_ENUMS.PERFORMANCE.v() => TYPE_ENUMS.PERFORMANCE
                 };
 
                 if (IS_SUBSCRIBER_CLASS_EXIST) {
@@ -149,5 +154,10 @@ public with sharing class TritonEnums extends TritonEnumProvider {
         public final TypeEnum LONG_RUNNING_REQUEST = new TypeEnum('LongRunningRequest');
         public final TypeEnum CONCURRENT_REQUEST_LIMIT = new TypeEnum('ConcurrentRequestsLimit');
         public final TypeEnum ACCOUNT_TRIGGER = new TypeEnum('AccountTrigger');
+        public final TypeEnum BACKEND_CALL = new TypeEnum('BackendCall');
+        public final TypeEnum COMPONENT_LIFECYCLE = new TypeEnum('ComponentLifecycle');
+        public final TypeEnum COMPONENT_RENDER = new TypeEnum('ComponentRender');
+        public final TypeEnum USER_INTERACTION = new TypeEnum('UserInteraction');
+        public final TypeEnum PERFORMANCE = new TypeEnum('Performance');
     }
 }
