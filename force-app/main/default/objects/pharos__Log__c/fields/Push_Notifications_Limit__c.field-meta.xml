@@ -5,6 +5,10 @@
     <externalId>false</externalId>
     <label>Push Notifications Limit</label>
     <precision>10</precision>
+    <required>false</required>
     <scale>0</scale>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
     <type>Number</type>
-</CustomField> 
+    <unique>false</unique>
+</CustomField>

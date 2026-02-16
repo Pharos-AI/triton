@@ -1,5 +1,9 @@
 # Pharos Triton
 
+**[📖 Documentation & Setup Guide](https://triton.pharos.ai)** — Full documentation, installation instructions, API reference, and setup guides.
+
+---
+
 Pharos Triton is a powerful, open-source logging framework for Salesforce, designed to integrate seamlessly with the Pharos.ai observability platform. It provides comprehensive logging capabilities across all Salesforce contexts including Apex, Flows, Lightning Web Components, and integrations.
 
 ## What is Pharos Triton?
