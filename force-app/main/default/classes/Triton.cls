@@ -275,13 +275,8 @@ global with sharing class Triton {
             builder.operation(TritonHelper.getOperation(stackTrace));
         }
 
-        if (builder.isTraceable()) {
-            builder.tracePoint();
-        }
-
-        if (!builder.hasFullLimitInfo()) {
-            builder.limitInfoLite();
-        }
+        builder.tracePoint()
+               .limitInfo();
 
         logs.add(builder.build());
     }
