@@ -6,11 +6,9 @@
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "apexdocs": "apexdocs-generate -p public private -s ./force-app/main/default/classes -t ./docs"
+    "test:coverage": "jest --coverage"
   },
   "devDependencies": {
-    "@cparra/apexdocs": "2.25.0",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "@babel/core": "^7.23.0",
@@ -21,9 +19,7 @@
     "type": "git",
     "url": "git+https://github.com/Pharos-AI/triton.git"
   },
-  "keywords": [
-    "salesforce"
-  ],
+  "keywords": ["salesforce"],
   "author": "Pharos.ai",
   "license": "MIT",
   "bugs": {

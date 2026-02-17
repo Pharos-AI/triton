@@ -93,24 +93,28 @@ public with sharing class TritonBuilder {
     @TestVisible
     private static final String PUBLISH_IMMEDIATE_DML_LIMIT = 'Publish_Immediate_DML_Limit__c';
 
-    private static final Set<String> LOG_FIELDS = Schema.SObjectType.pharos__Log__c.fields.getMap().keySet();
-
+    @TestVisible
     private Boolean includeLimitInfo = true;
+    @TestVisible
     private Boolean traceable = false;
 
     private pharos.LogBuilder builder;
+    
+    @TestVisible
+    private Boolean fullLimitInfoRequested = false;
 
     public TritonBuilder cloneBuilder() {
+        pharos__Log__c clonedLog = this.builder.build().clone(false, true, false, false);
         TritonBuilder cloned = new TritonBuilder();
-        // Copy all attributes from the original log to the new one
-        pharos__Log__c originalLog = this.builder.build();
-        for (String field : LOG_FIELDS) {
-            Object value = originalLog.get(field);
-            if (value != null) {
-                cloned.builder.attribute(field, value);
-            }
+        
+        // Only iterate POPULATED fields (10-20, not all 50-100)
+        for (String field : clonedLog.getPopulatedFieldsAsMap().keySet()) {
+            cloned.builder.attribute(field, clonedLog.get(field));
         }
+        
         cloned.includeLimitInfo = this.includeLimitInfo;
+        cloned.fullLimitInfoRequested = this.fullLimitInfoRequested;
+        cloned.traceable = this.traceable;
         cloned.initBuilder();
         return cloned;
     }
@@ -428,6 +432,15 @@ public with sharing class TritonBuilder {
     }
 
     /**
+    * Request full limit info (extended limits) in addition to essential limits when limitInfo() is called
+    * @return this builder instance
+    */
+    public TritonBuilder withFullLimitInfo() {
+        this.fullLimitInfoRequested = true;
+        return this;
+    }
+
+    /**
     * Set a custom attribute on the log
     * @param name -- String name of the attribute
     * @param value -- Object value of the attribute
@@ -443,8 +456,10 @@ public with sharing class TritonBuilder {
     * @return this builder instance
     */
     public TritonBuilder tracePoint() {
-        this.builder.tracePoint();
-        System.debug('TRACEPOINT:'+ this.builder.getTraceId());
+        if (this.traceable) {
+            this.builder.tracePoint();
+            System.debug('TRACEPOINT:'+ this.builder.getTraceId());
+        }
         return this;
     }
 
@@ -462,51 +477,58 @@ public with sharing class TritonBuilder {
     }
 
     /**
-    * Get traceable flag
-    * @return Boolean value of the traceable flag
-    */
-    public Boolean isTraceable() {
-        return this.traceable;
-    }
-
-
-    /**
-    * Captures and sets all current transaction limits on the log record
+    * Captures current transaction usage and limits from System.Limits and adds them as attributes on the log record.
+    * When includeLimitInfo is true, captures essential limits (SOQL, DML, CPU, heap, callouts).
+    * When fullLimitInfoRequested is also true, additionally captures extended limits (aggregates, SOSL, future calls, queueable jobs, email invocations, push notifications, batch jobs, publish immediate DML).
+    * No-op when includeLimitInfo is false.
     * @return this builder instance
     */
     public TritonBuilder limitInfo() {
-        return this.includeLimitInfo ? 
-            this.attribute(SOQL_QUERIES, System.Limits.getQueries())
-                .attribute(SOQL_QUERIES_LIMIT, System.Limits.getLimitQueries())
-                .attribute(SOQL_ROWS, System.Limits.getQueryRows())
-                .attribute(SOQL_ROWS_LIMIT, System.Limits.getLimitQueryRows())
-                .attribute(SOQL_AGGREGATES, System.Limits.getAggregateQueries())
-                .attribute(SOQL_AGGREGATES_LIMIT, System.Limits.getLimitAggregateQueries())
-                .attribute(DML_STATEMENTS, System.Limits.getDMLStatements())
-                .attribute(DML_STATEMENTS_LIMIT, System.Limits.getLimitDMLStatements())
-                .attribute(DML_ROWS, System.Limits.getDMLRows())
-                .attribute(DML_ROWS_LIMIT, System.Limits.getLimitDMLRows())
-                .attribute(CPU_TIME, System.Limits.getCpuTime())
-                .attribute(CPU_TIME_LIMIT, System.Limits.getLimitCpuTime())
-                .attribute(HEAP_SIZE, System.Limits.getHeapSize())
-                .attribute(HEAP_SIZE_LIMIT, System.Limits.getLimitHeapSize())
-                .attribute(CALLOUTS, System.Limits.getCallouts())
-                .attribute(CALLOUTS_LIMIT, System.Limits.getLimitCallouts())
-                .attribute(SOSL_QUERIES, System.Limits.getSoslQueries())
-                .attribute(SOSL_QUERIES_LIMIT, System.Limits.getLimitSoslQueries())
-                .attribute(FUTURE_CALLS, System.Limits.getFutureCalls())
-                .attribute(FUTURE_CALLS_LIMIT, System.Limits.getLimitFutureCalls())
-                .attribute(QUEUEABLE_JOBS, System.Limits.getQueueableJobs())
-                .attribute(QUEUEABLE_JOBS_LIMIT, System.Limits.getLimitQueueableJobs())
-                .attribute(EMAIL_INVOCATIONS, System.Limits.getEmailInvocations())
-                .attribute(EMAIL_INVOCATIONS_LIMIT, System.Limits.getLimitEmailInvocations())
-                .attribute(PUSH_NOTIFICATIONS, System.Limits.getMobilePushApexCalls())
-                .attribute(PUSH_NOTIFICATIONS_LIMIT, System.Limits.getLimitMobilePushApexCalls())
-                .attribute(BATCH_JOBS, System.Limits.getAsyncCalls())
-                .attribute(BATCH_JOBS_LIMIT, System.Limits.getLimitAsyncCalls())
-                .attribute(PUBLISH_IMMEDIATE_DML, System.Limits.getPublishImmediateDML())
-                .attribute(PUBLISH_IMMEDIATE_DML_LIMIT, System.Limits.getLimitPublishImmediateDML()) 
-            : this;
+        if (this.includeLimitInfo) {
+            TritonBuilder builder = this.limitInfoLite();
+            if(this.fullLimitInfoRequested) {
+                builder.attribute(SOQL_AGGREGATES, System.Limits.getAggregateQueries())
+                        .attribute(SOQL_AGGREGATES_LIMIT, System.Limits.getLimitAggregateQueries())
+                        .attribute(SOSL_QUERIES, System.Limits.getSoslQueries())
+                        .attribute(SOSL_QUERIES_LIMIT, System.Limits.getLimitSoslQueries())
+                        .attribute(FUTURE_CALLS, System.Limits.getFutureCalls())
+                        .attribute(FUTURE_CALLS_LIMIT, System.Limits.getLimitFutureCalls())
+                        .attribute(QUEUEABLE_JOBS, System.Limits.getQueueableJobs())
+                        .attribute(QUEUEABLE_JOBS_LIMIT, System.Limits.getLimitQueueableJobs())
+                        .attribute(EMAIL_INVOCATIONS, System.Limits.getEmailInvocations())
+                        .attribute(EMAIL_INVOCATIONS_LIMIT, System.Limits.getLimitEmailInvocations())
+                        .attribute(PUSH_NOTIFICATIONS, System.Limits.getMobilePushApexCalls())
+                        .attribute(PUSH_NOTIFICATIONS_LIMIT, System.Limits.getLimitMobilePushApexCalls())
+                        .attribute(BATCH_JOBS, System.Limits.getAsyncCalls())
+                        .attribute(BATCH_JOBS_LIMIT, System.Limits.getLimitAsyncCalls())
+                        .attribute(PUBLISH_IMMEDIATE_DML, System.Limits.getPublishImmediateDML())
+                        .attribute(PUBLISH_IMMEDIATE_DML_LIMIT, System.Limits.getLimitPublishImmediateDML());
+            }
+            return builder;
+        }
+        return this;
+    }
+
+    /**
+    * Captures and sets the essential transaction limits (CPU Time, Heap Size, DML Statements) on the log record
+    * @return this builder instance
+    */
+    public TritonBuilder limitInfoLite() {
+        return this
+            .attribute(SOQL_QUERIES, System.Limits.getQueries())
+            .attribute(SOQL_QUERIES_LIMIT, System.Limits.getLimitQueries())
+            .attribute(SOQL_ROWS, System.Limits.getQueryRows())
+            .attribute(SOQL_ROWS_LIMIT, System.Limits.getLimitQueryRows())
+            .attribute(DML_STATEMENTS, System.Limits.getDMLStatements())
+            .attribute(DML_STATEMENTS_LIMIT, System.Limits.getLimitDMLStatements())
+            .attribute(DML_ROWS, System.Limits.getDMLRows())
+            .attribute(DML_ROWS_LIMIT, System.Limits.getLimitDMLRows())
+            .attribute(CPU_TIME, System.Limits.getCpuTime())
+            .attribute(CPU_TIME_LIMIT, System.Limits.getLimitCpuTime())
+            .attribute(HEAP_SIZE, System.Limits.getHeapSize())
+            .attribute(HEAP_SIZE_LIMIT, System.Limits.getLimitHeapSize())
+            .attribute(CALLOUTS, System.Limits.getCallouts())
+            .attribute(CALLOUTS_LIMIT, System.Limits.getLimitCallouts());
     }
 
     /**
