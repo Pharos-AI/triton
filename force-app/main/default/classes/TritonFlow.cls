@@ -40,7 +40,7 @@ global with sharing class TritonFlow {
             FlowLogOutput result = processFlowLog(flowLog);
             flowLogOutputs.add(result);
         }
-        Triton.instance.flush();
+        Triton.flush();
         return flowLogOutputs;
     }
     
@@ -72,9 +72,9 @@ global with sharing class TritonFlow {
         
         //resume or start transaction if one isn't already in progress
         if(String.isNotBlank(flowLog.transactionId)) {
-            Triton.instance.resumeTransaction(flowLog.transactionId);
+            Triton.resumeTransaction(flowLog.transactionId);
         } else if(Triton.instance.TRANSACTION_ID == null) {
-            Triton.instance.startTransaction();
+            Triton.startTransaction();
         }
                 
         TritonBuilder builder = Triton.makeBuilder();
@@ -115,7 +115,7 @@ global with sharing class TritonFlow {
                         flowLog.additionalFields));
             }
         }
-        Triton.instance.addLog(builder);
+        Triton.log(builder);
         return result;
     }
 

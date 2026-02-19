@@ -191,6 +191,37 @@ public with sharing class TritonBuilder {
     }
 
     /**
+     * Convenience methods for setting common levels
+     */
+    public TritonBuilder error() {
+        return this.level(TritonTypes.Level.ERROR).createIssue();
+    }
+
+    public TritonBuilder warning() {
+        return this.level(TritonTypes.Level.WARNING);
+    }
+
+    public TritonBuilder info() {
+        return this.level(TritonTypes.Level.INFO);
+    }
+
+    public TritonBuilder debug() {
+        return this.level(TritonTypes.Level.DEBUG);
+    }
+
+    public TritonBuilder fine() {
+        return this.level(TritonTypes.Level.FINE);
+    }
+
+    public TritonBuilder finer() {
+        return this.level(TritonTypes.Level.FINER);
+    }
+
+    public TritonBuilder finest() {
+        return this.level(TritonTypes.Level.FINEST);
+    }
+
+    /**
     * Set operation from a String value
     * @param operation -- operation String value
     * @return this builder instance
@@ -552,6 +583,101 @@ public with sharing class TritonBuilder {
             .stackTrace(e.getStackTraceString())
             .details(String.valueOf(e) + Triton.SPACE_SEP + e.getStackTraceString())
             .createIssue();
+
+        return this;
+    }
+
+    /**
+     * Formats DML operation results and adds them to the log
+     * Area should be set via template or explicitly before calling this method
+     * @param dmlResults List of Database.SaveResult, DeleteResult, UpsertResult, UndeleteResult, or MergeResult
+     * @return TritonBuilder for chaining
+     */
+    public TritonBuilder dmlResults(List<Object> dmlResults) {
+        Set<String> failedIds = new Set<String>();
+        List<String> errorMessages = new List<String>();
+        String operation;
+        Integer failCount = 0;
+        Integer totalCount = dmlResults.size();
+
+        for(Object result : dmlResults) {
+            if(result instanceof Database.SaveResult) {
+                operation = 'Save';
+                Database.SaveResult sr = (Database.SaveResult)result;
+                if(!sr.isSuccess()) {
+                    failCount++;
+                    if (sr.getId() != null) {
+                        failedIds.add(sr.getId());
+                    }
+                    for(Database.Error err : sr.getErrors()) {
+                        errorMessages.add(TritonHelper.formatDMLError(err, sr.getId()));
+                    }
+                }
+            } else if(result instanceof Database.DeleteResult) {
+                operation = 'Delete';
+                Database.DeleteResult dr = (Database.DeleteResult)result;
+                if(!dr.isSuccess()) {
+                    failCount++;
+                    if (dr.getId() != null) {
+                        failedIds.add(dr.getId());
+                    }
+                    for(Database.Error err : dr.getErrors()) {
+                        errorMessages.add(TritonHelper.formatDMLError(err, dr.getId()));
+                    }
+                }
+            } else if(result instanceof Database.UndeleteResult) {
+                operation = 'Undelete';
+                Database.UndeleteResult ur = (Database.UndeleteResult)result;
+                if(!ur.isSuccess()) {
+                    failCount++;
+                    if (ur.getId() != null) {
+                        failedIds.add(ur.getId());
+                    }
+                    for(Database.Error err : ur.getErrors()) {
+                        errorMessages.add(TritonHelper.formatDMLError(err, ur.getId()));
+                    }
+                }
+            } else if(result instanceof Database.UpsertResult) {
+                operation = 'Upsert';
+                Database.UpsertResult ur = (Database.UpsertResult)result;
+                if(!ur.isSuccess()) {
+                    failCount++;
+                    if (ur.getId() != null) {
+                        failedIds.add(ur.getId());
+                    }
+                    for(Database.Error err : ur.getErrors()) {
+                        errorMessages.add(TritonHelper.formatDMLError(err, ur.getId()));
+                    }
+                }
+            } else if(result instanceof Database.MergeResult) {
+                operation = 'Merge';
+                Database.MergeResult mr = (Database.MergeResult)result;
+                if(!mr.isSuccess()) {
+                    failCount++;
+                    if (mr.getId() != null) {
+                        failedIds.add(mr.getId());
+                    }
+                    for(Database.Error err : mr.getErrors()) {
+                        errorMessages.add(TritonHelper.formatDMLError(err, mr.getId()));
+                    }
+                }
+            }
+        }
+
+        // Only log if there are errors
+        if(!errorMessages.isEmpty()) {
+            return this.category(TritonTypes.Category.Apex)
+                .type(TritonTypes.Type.DMLResult)
+                .operation(operation)
+                .summary(TritonHelper.formatMessage('DML Operation ({0}) Failed: {1} of {2} records failed.',
+                                                    new String[]{operation,
+                                                                String.valueOf(failCount),
+                                                                String.valueOf(totalCount)}))
+                .details(String.join(errorMessages, '\n\n'))
+                .stackTrace(TritonHelper.getCurrentStackTrace())
+                .relatedObjects(failedIds)
+                .error();
+        }
 
         return this;
     }

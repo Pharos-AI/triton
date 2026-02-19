@@ -61,7 +61,7 @@ private class TritonTest {
         Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ll};
 
         Test.startTest();
-        Triton.instance.event(TritonTypes.Level.DEBUG, TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some event', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.DEBUG));
         Test.stopTest();
 
         assertCreatedLog(TritonTypes.Category.Event);
@@ -76,7 +76,7 @@ private class TritonTest {
         Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ll};
 
         Test.startTest();
-        Triton.instance.event(TritonTypes.Level.FINE, TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some event', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.FINE));
         Test.stopTest();
 
         System.assertEquals(0, [SELECT count() FROM pharos__Log__c where pharos__Category__c=:TritonTypes.Category.Event.name()]);
@@ -112,7 +112,7 @@ private class TritonTest {
 
 
         Test.startTest();
-        Triton.instance.event(TritonTypes.Level.FINEST, TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some event', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.FINEST));
         Test.stopTest();
 
         assertCreatedLog(TritonTypes.Category.Event);
@@ -125,7 +125,7 @@ private class TritonTest {
         setupLogLevelsMap();
 
         Test.startTest();
-        Triton.instance.event(TritonTypes.Level.FINEST, TritonTypes.Type.Backend, TritonTypes.Area.OpportunityManagement, 'some event', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.OpportunityManagement).summary('some event').details('error details').level(TritonTypes.Level.FINEST));
         Test.stopTest();
 
         System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()]);
@@ -136,7 +136,7 @@ private class TritonTest {
         assertBefore();
 
         Test.startTest();
-        Triton.instance.event(TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some event', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').info());
         Test.stopTest();
 
         assertCreatedLog(TritonTypes.Category.Event);
@@ -147,7 +147,7 @@ private class TritonTest {
         assertBefore();
 
         Test.startTest();
-        Triton.instance.debug(TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some debug', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Debug).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some debug').details('error details').debug());
         Test.stopTest();
 
         assertCreatedLog(TritonTypes.Category.Debug);
@@ -158,7 +158,7 @@ private class TritonTest {
         assertBefore();
 
         Test.startTest();
-        Triton.instance.warning(TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some warning', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Warning).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some warning').details('error details').warning());
         Test.stopTest();
 
         assertCreatedLog(TritonTypes.Category.Warning);
@@ -169,7 +169,7 @@ private class TritonTest {
         assertBefore();
 
         Test.startTest();
-        Triton.instance.error(TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some error', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Apex).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some error').details('error details').error());
         Test.stopTest();
 
         assertCreatedLog(TritonTypes.Category.Apex);
@@ -184,7 +184,7 @@ private class TritonTest {
             Integer i = 2/0;
         }
         catch(Exception e) {
-            Triton.instance.error(TritonTypes.Area.Community, e);
+            Triton.logNow(Triton.t.area(TritonTypes.Area.Community).exception(e));
         }
         Test.stopTest();
 
@@ -219,7 +219,7 @@ private class TritonTest {
         req.httpMethod = 'GET';
         RestContext.request = req;
         RestContext.response = res;
-        Triton.instance.integrationError(TritonTypes.Type.Backend, TritonTypes.Area.Community, 'test summary', 'test details', req, res);
+        Triton.logNow(Triton.makeBuilder().category(TritonTypes.Category.Integration).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('test summary').details('test details').integrationPayload(req, res).error());
         Test.stopTest();
 
         List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
@@ -681,7 +681,7 @@ private class TritonTest {
         assertBefore();
 
         Test.startTest();
-        Triton.instance.event(TritonTypes.Level.INFO, TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some event', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.INFO));
         Test.stopTest();
 
         pharos__Log__c log = [select Id from pharos__Log__c limit 1];
@@ -813,7 +813,7 @@ private class TritonTest {
         assertBefore();
 
         Test.startTest();
-        Triton.instance.addLog(
+        Triton.log(
             Triton.makeBuilder()
                 .category(TritonTypes.Category.Apex)
                 .type(TritonTypes.Type.Backend)
@@ -824,7 +824,7 @@ private class TritonTest {
                 .traceable(true)
                 .tracePoint()
         );
-        Triton.instance.flush();
+        Triton.flush();
         Test.stopTest();
 
         List<pharos__Log__c> logs = [SELECT Id, pharos__Do_Not_Create_Issue__c FROM pharos__Log__c];
@@ -841,9 +841,9 @@ private class TritonTest {
         template.type(TritonTypes.Type.Backend);
         template.area(TritonTypes.Area.Community);
         template.level(TritonTypes.Level.INFO);
-        Triton.instance.setTemplate(template);
+        Triton.setTemplate(template);
         Test.startTest();
-        Triton.instance.log(Triton.instance.fromTemplate()
+        Triton.logNow(Triton.t
                                 .summary('some event')
                                 .details('error details'));
         Test.stopTest();
@@ -897,10 +897,10 @@ private class TritonTest {
         try {
             res = h.send(req);
             if (res.getStatusCode() != 200 || res.getStatusCode() != 201) {
-                Triton.instance.integrationError(TritonTypes.Type.Backend, TritonTypes.Area.Community, 'test integration', 'test error details', req, res);
+                Triton.logNow(Triton.makeBuilder().category(TritonTypes.Category.Integration).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('test integration').details('test error details').integrationPayload(req, res).error());
             }
         } catch (Exception e) {
-            Triton.instance.integrationError(TritonTypes.Area.Community, e, req, res);
+            Triton.logNow(Triton.makeBuilder().category(TritonTypes.Category.Integration).area(TritonTypes.Area.Community).exception(e).integrationPayload(req, res));
         }
     }
 
@@ -964,8 +964,8 @@ private class TritonTest {
         Account invalidAcc = new Account();
         Database.SaveResult[] srList = Database.insert(new List<Account>{invalidAcc}, false);
         System.assert(!srList[0].isSuccess(), 'Insert should fail');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, srList);
-        
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(srList));
+
         // 2. Create a Contact with missing required field (LastName) to test field-specific errors
         Contact invalidContact = new Contact();
         // FirstName is optional, but LastName is required
@@ -973,31 +973,31 @@ private class TritonTest {
         // Deliberately omit LastName to cause a field-specific error
         Database.SaveResult[] contactSrList = Database.insert(new List<Contact>{invalidContact}, false);
         System.assert(!contactSrList[0].isSuccess(), 'Contact insert should fail due to missing LastName');
-        Triton.instance.dmlResult(TritonTypes.Area.Community, contactSrList);
-        
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Community).dmlResults(contactSrList));
+
         // 3. Test DeleteResult - Try to delete non-existent record
         Id fakeId = '001000000000000AAA';
         Database.DeleteResult[] drList = Database.delete(new List<Id>{fakeId}, false);
         System.assert(!drList[0].isSuccess(), 'Delete should fail');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, drList);
-        
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(drList));
+
         // 4. Test UndeleteResult - Try to undelete non-existent record
         Database.UndeleteResult[] urList = Database.undelete(new List<Id>{fakeId}, false);
         System.assert(!urList[0].isSuccess(), 'Undelete should fail');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, urList);
-        
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(urList));
+
         // 5. Test UpsertResult - Try to update non-existent record
         Account invalidUpsertAcc = new Account(Id = fakeId);
         Database.UpsertResult[] urList2 = Database.upsert(new List<Account>{invalidUpsertAcc}, false);
         System.assert(!urList2[0].isSuccess(), 'Upsert should fail');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, urList2);
-        
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(urList2));
+
         // 6. Test MergeResult - Try to merge with invalid record
         Account masterAcc = new Account(Name = 'Master');
         insert masterAcc;
         Database.MergeResult[] mergeList = Database.merge(masterAcc, new List<Id>{fakeId}, false);
         System.assert(!mergeList[0].isSuccess(), 'Merge should fail');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, mergeList);
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(mergeList));
         
         Test.stopTest();
         
@@ -1057,23 +1057,23 @@ private class TritonTest {
         Account newAcc = new Account(Name = 'Valid Account');
         Database.SaveResult[] srList = Database.insert(new List<Account>{newAcc}, false);
         System.assert(srList[0].isSuccess(), 'Insert should succeed');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, srList);
-        
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(srList));
+
         // 2. Test UpsertResult with valid data
         newAcc.Name = 'Updated Name';
         Database.UpsertResult[] upsertList = Database.upsert(new List<Account>{newAcc}, false);
         System.assert(upsertList[0].isSuccess(), 'Upsert should succeed');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, upsertList);
-        
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(upsertList));
+
         // 3. Test DeleteResult with valid data
         Database.DeleteResult[] drList = Database.delete(new List<Id>{newAcc.Id}, false);
         System.assert(drList[0].isSuccess(), 'Delete should succeed');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, drList);
-        
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(drList));
+
         // 4. Test UndeleteResult with valid data
         Database.UndeleteResult[] urList = Database.undelete(new List<Id>{newAcc.Id}, false);
         System.assert(urList[0].isSuccess(), 'Undelete should succeed');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, urList);
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(urList));
         
         Test.stopTest();
         
@@ -1121,27 +1121,18 @@ private class TritonTest {
         Test.startTest();
         
         // Add multiple logs to buffer without flushing
-        Triton.instance.addError(
-            TritonTypes.Type.Backend, 
-            TritonTypes.Area.Community, 
-            'first error', 
-            'first details'
+        Triton.log(
+            Triton.t.category(TritonTypes.Category.Apex).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('first error').details('first details').error()
         );
-        Triton.instance.addError(
-            TritonTypes.Type.Backend, 
-            TritonTypes.Area.Community, 
-            'second error', 
-            'second details'
+        Triton.log(
+            Triton.t.category(TritonTypes.Category.Apex).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('second error').details('second details').error()
         );
-        Triton.instance.addError(
-            TritonTypes.Type.Backend, 
-            TritonTypes.Area.Community, 
-            'third error', 
-            'third details'
+        Triton.log(
+            Triton.t.category(TritonTypes.Category.Apex).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('third error').details('third details').error()
         );
         
         // Test flushTop with populated buffer
-        Triton.instance.flushTop();
+        Triton.flushTop();
         Test.stopTest();
         
         // Verify only last log was persisted
@@ -1160,19 +1151,13 @@ private class TritonTest {
         assertBefore();
         
         Test.startTest();
-        Triton.instance.addError(
-            TritonTypes.Type.Backend, 
-            TritonTypes.Area.Community, 
-            'first error', 
-            'first details'
+        Triton.log(
+            Triton.t.category(TritonTypes.Category.Apex).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('first error').details('first details').error()
         );
 
         // Test immediate error method - should only flush that error
-        Triton.instance.error(
-            TritonTypes.Type.Backend, 
-            TritonTypes.Area.Community, 
-            'immediate error', 
-            'immediate details'
+        Triton.logNow(
+            Triton.t.category(TritonTypes.Category.Apex).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('immediate error').details('immediate details').error()
         );
         Test.stopTest();
         
@@ -1191,7 +1176,7 @@ private class TritonTest {
         assertBefore();
         
         Test.startTest();
-        Triton.instance.flushTop();
+        Triton.flushTop();
         Test.stopTest();
         
         List<pharos__Log__c> logs = [SELECT Id FROM pharos__Log__c];
@@ -1220,10 +1205,10 @@ private class TritonTest {
             .details('Limit info test')
             .limitInfo();
         
-        Triton.instance.log(builder);
-        
-        // Test via addLog
-        Triton.instance.addLog(
+        Triton.logNow(builder);
+
+        // Test via log
+        Triton.log(
             Triton.makeBuilder()
                 .category(TritonTypes.Category.Debug)
                 .type(TritonTypes.Type.Backend)
@@ -1232,7 +1217,7 @@ private class TritonTest {
                 .details('Limit info test via addLog')
                 .limitInfo()
         );
-        Triton.instance.flush();
+        Triton.flush();
         
         Test.stopTest();
         
@@ -1285,7 +1270,7 @@ private class TritonTest {
         assertBefore();
 
         Test.startTest();
-        Triton.instance.addLog(
+        Triton.log(
             Triton.makeBuilder()
                 .category(TritonTypes.Category.Debug)
                 .type(TritonTypes.Type.Backend)
@@ -1295,7 +1280,7 @@ private class TritonTest {
                 .withoutLimitInfo()
                 .limitInfo()
         );
-        Triton.instance.flush();
+        Triton.flush();
         Test.stopTest();
 
         List<pharos__Log__c> logs = [
@@ -1314,7 +1299,7 @@ private class TritonTest {
         assertBefore();
 
         Test.startTest();
-        Triton.instance.addLog(
+        Triton.log(
             Triton.makeBuilder()
                 .category(TritonTypes.Category.Debug)
                 .type(TritonTypes.Type.Backend)
@@ -1324,7 +1309,7 @@ private class TritonTest {
                 .withFullLimitInfo()
                 .limitInfo()
         );
-        Triton.instance.flush();
+        Triton.flush();
         Test.stopTest();
 
         List<pharos__Log__c> logs = [
@@ -1369,7 +1354,7 @@ private class TritonTest {
         
         // Test withCache when cache is available
         Cache.Org.put('test', 'test'); // This will make CACHE_AVAILABLE true
-        Triton instance = Triton.instance.withCache();
+        Triton instance = Triton.withCache();
         System.assert(instance.withCache, 'Cache should be enabled');
         
         // Start a transaction and verify it's cached
@@ -1433,7 +1418,7 @@ private class TritonTest {
         
         // Add multiple logs to buffer using direct builder
         for(Integer i = 0; i < 3; i++) {
-            Triton.instance.addLog(
+            Triton.log(
                 Triton.makeBuilder()
                     .category(TritonTypes.Category.Apex)
                     .type(TritonTypes.Type.Backend)
@@ -1449,7 +1434,7 @@ private class TritonTest {
         System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c], 'No logs should be persisted yet');
         
         // Test flush - should persist all logs
-        Triton.instance.flush();
+        Triton.flush();
         
         // Wait for async operations to complete
         Test.stopTest();
@@ -1479,12 +1464,12 @@ private class TritonTest {
             .category(TritonTypes.Category.Debug)
             .type(TritonTypes.Type.Backend)
             .area(TritonTypes.Area.Community);
-        Triton.instance.setTemplate(template);
+        Triton.setTemplate(template);
         
         // Add logs using template
         for(Integer i = 0; i < 3; i++) {
-            Triton.instance.addLog(
-                Triton.instance.fromTemplate()
+            Triton.log(
+                Triton.t
                     .summary('Log ' + i)
                     .details('Template test ' + i)
             );
@@ -1510,7 +1495,7 @@ private class TritonTest {
         Triton.CACHE_AVAILABLE = false;
         
         // Test withCache() when cache is unavailable
-        Triton.instance.withCache();
+        Triton.withCache();
         System.assertEquals(false, Triton.CACHE_AVAILABLE, 'Cache should remain disabled');
         System.assertNotEquals(null, Triton.instance.TRANSACTION_ID, 'Transaction ID should be generated');
         
@@ -1526,29 +1511,38 @@ private class TritonTest {
         Test.startTest();
         
         // Test warning with related objects
-        Triton.instance.warning(
-            TritonTypes.Type.Backend,
-            TritonTypes.Area.Community,
-            'Test Warning',
-            'Warning details'
+        Triton.logNow(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Warning)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('Test Warning')
+                .details('Warning details')
+                .warning()
         );
-        
+
         // Test debug with duration and related objects
-        Triton.instance.debug(
-            TritonTypes.Type.Backend,
-            TritonTypes.Area.Community,
-            'Test Debug',
-            'Debug details',
-            100 // duration in ms
+        Triton.logNow(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Debug)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('Test Debug')
+                .details('Debug details')
+                .duration(100)
+                .debug()
         );
-        
+
         // Add debug with related objects
-        Triton.instance.addDebug(
-            TritonTypes.Type.Backend,
-            TritonTypes.Area.Community,
-            'Test Debug with Related',
-            'Debug details with related records',
-            200 // duration
+        Triton.log(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Debug)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('Test Debug with Related')
+                .details('Debug details with related records')
+                .duration(200)
+                .debug()
         );
         
         Test.stopTest();
@@ -1580,32 +1574,36 @@ private class TritonTest {
         Test.startTest();
         
         // Test event with related objects
-        Triton.instance.event(
-            TritonTypes.Level.INFO,
-            TritonTypes.Type.Backend,
-            TritonTypes.Area.Community,
-            'Test Event',
-            'Event details'
+        Triton.logNow(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Event)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('Test Event')
+                .details('Event details')
+                .level(TritonTypes.Level.INFO)
         );
-        
+
         // Test integration error with different request/response combinations
         RestRequest restReq = new RestRequest();
         RestResponse restRes = new RestResponse();
         restReq.requestURI = '/services/apexrest/Account';
         restReq.httpMethod = 'GET';
-        
+
         // Test with RestRequest/Response
         try {
             throw new CalloutException('Test exception');
         } catch(Exception e) {
-            Triton.instance.integrationError(
-                TritonTypes.Area.Community,
-                e,
-                restReq,
-                restRes
+            Triton.logNow(
+                Triton.makeBuilder()
+                    .category(TritonTypes.Category.Integration)
+                    .area(TritonTypes.Area.Community)
+                    .exception(e)
+                    .integrationPayload(restReq, restRes)
+                    .error()
             );
         }
-        
+
         // Test with HttpRequest/Response
         HttpRequest httpReq = new HttpRequest();
         httpReq.setEndpoint('https://example.com');
@@ -1613,14 +1611,16 @@ private class TritonTest {
         HttpResponse httpRes = new HttpResponse();
         httpRes.setStatusCode(500);
         httpRes.setStatus('Internal Server Error');
-        
-        Triton.instance.integrationError(
-            TritonTypes.Type.Backend,
-            TritonTypes.Area.Community,
-            'HTTP Error',
-            'Error details',
-            httpReq,
-            httpRes
+
+        Triton.logNow(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Integration)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('HTTP Error')
+                .details('Error details')
+                .integrationPayload(httpReq, httpRes)
+                .error()
         );
         
         Test.stopTest();
@@ -1657,7 +1657,13 @@ private class TritonTest {
             Integer i = 1/0;
         } catch(Exception e) {
             msg = e.getMessage();
-            Triton.instance.addError(TritonTypes.Area.Community, e);
+            Triton.log(
+                Triton.makeBuilder()
+                    .category(TritonTypes.Category.Apex)
+                    .area(TritonTypes.Area.Community)
+                    .exception(e)
+                    .error()
+            );
         }
         
         // Verify log is in buffer but not persisted yet
@@ -1665,7 +1671,7 @@ private class TritonTest {
         System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c], 'No logs should be persisted yet');
         
         // Flush and verify log
-        Triton.instance.flush();
+        Triton.flush();
         
         Test.stopTest();
         
@@ -1698,12 +1704,15 @@ private class TritonTest {
         
         Test.startTest();
         
-        // Test addEvent with default INFO level
-        Triton.instance.addEvent(
-            TritonTypes.Type.Backend,
-            TritonTypes.Area.Community,
-            'Test Event Summary',
-            'Test Event Details'
+        // Test buffered event with default INFO level
+        Triton.log(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Event)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('Test Event Summary')
+                .details('Test Event Details')
+                .info()
         );
         
         // Verify log is in buffer but not persisted yet
@@ -1711,7 +1720,7 @@ private class TritonTest {
         System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c], 'No logs should be persisted yet');
         
         // Flush and verify log
-        Triton.instance.flush();
+        Triton.flush();
         
         Test.stopTest();
         
@@ -1808,7 +1817,15 @@ private class TritonTest {
         
         // Add a debug log
         Test.startTest();
-        triton.addDebug(TritonTypes.Type.Backend, TritonTypes.Area.Accounts, 'Test Summary', 'Test Details');
+        triton.log(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Debug)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Accounts)
+                .summary('Test Summary')
+                .details('Test Details')
+                .debug()
+        );
         Test.stopTest();
         
         // Verify log was added to the buffer
@@ -1924,7 +1941,11 @@ private class TritonTest {
         System.assert(err.getFields().contains('LastName'), 'Error should reference LastName field');
         
         // Log the error - captures error via formatDMLError method
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, srList);
+        Triton.logNow(
+            Triton.makeBuilder()
+                .area(TritonTypes.Area.Accounts)
+                .dmlResults(srList)
+        );
         Test.stopTest();
         // Retrieve the log to verify error formatting
         pharos__Log__c log = [
@@ -1972,13 +1993,23 @@ private class TritonTest {
             update acc;
         } catch (Exception e) {
             // Create a log from the exception
-            Triton.instance.error(TritonTypes.Area.Accounts, e);
+            Triton.logNow(
+                Triton.makeBuilder()
+                    .category(TritonTypes.Category.Apex)
+                    .area(TritonTypes.Area.Accounts)
+                    .exception(e)
+                    .error()
+            );
         }
-        
+
         // 2. Record not found error
         Id fakeId = '001000000000000AAA';
         Database.DeleteResult[] drList = Database.delete(new List<Id>{fakeId}, false);
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, drList);
+        Triton.logNow(
+            Triton.makeBuilder()
+                .area(TritonTypes.Area.Accounts)
+                .dmlResults(drList)
+        );
         Test.stopTest();
         
         // Verify logs capture different error types appropriately
@@ -2019,14 +2050,14 @@ private class TritonTest {
             .attribute(TritonBuilder.CPU_TIME, 1000)
             .attribute(TritonBuilder.HEAP_SIZE, 2000);
             
-        Triton.instance.setTemplate(template);
+        Triton.setTemplate(template);
         
         // Start a transaction
-        String transactionId = Triton.instance.startTransaction();
+        String transactionId = Triton.startTransaction();
         
         // Create a log from the template
-        Triton.instance.log(
-            Triton.instance.fromTemplate()
+        Triton.log(
+            Triton.t
                 .summary('Runtime properties test')
                 .details('Testing runtime properties are reset')
         );
@@ -2065,8 +2096,8 @@ private class TritonTest {
             .traceable(true)
             .tracePoint();
 
-        Triton.instance.addLog(builder);
-        Triton.instance.flush();
+        Triton.log(builder);
+        Triton.flush();
 
         List<pharos__Log__c> logs = [SELECT Id, pharos__Stacktrace__c FROM pharos__Log__c];
         System.assertNotEquals(null, logs, 'Log should be created');

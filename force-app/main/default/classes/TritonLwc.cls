@@ -31,8 +31,8 @@ global with sharing class TritonLwc {
     */
     @AuraEnabled
     public static void saveComponentLogs(List<ComponentLog> componentLogs) {
-        String transactionId = Triton.instance.startTransaction();
-        Triton logInstance = Triton.instance.withCache();
+        String transactionId = Triton.startTransaction();
+        Triton.withCache();
         Boolean transactionIdFromCache = Triton.instance.TRANSACTION_ID != transactionId;
         transactionId = Triton.instance.TRANSACTION_ID;
 
@@ -43,12 +43,12 @@ global with sharing class TritonLwc {
             TritonTypes.Area area = TritonTypes.Area.LWC;
             TritonTypes.Level level = TritonTypes.Level.INFO;
             String details = componentLog.details == null ? '' : componentLog.details;
-            
+
             //transaction was not resumed from cache
             //transaction id was provided by the component
             if(!transactionIdFromCache && String.isNotBlank(componentLog.transactionId)) {
                 transactionId = componentLog.transactionId;
-                logInstance.resumeTransaction(transactionId);
+                Triton.resumeTransaction(transactionId);
                 transactionIdFromCache = true;
             }
             try {
@@ -106,7 +106,7 @@ global with sharing class TritonLwc {
                 builder.createIssue();
             }
             
-            logInstance.addLog(builder
+            Triton.log(builder
                             //category will be fetched from the componentLog
                             .category(category)
                             //type will be fetched from the componentLog directly, of from the error. If neither are set, Frontend will be used
@@ -135,7 +135,7 @@ global with sharing class TritonLwc {
                             );
         }               
         
-        logInstance.flush();
+        Triton.flush();
     }
 
     /**
