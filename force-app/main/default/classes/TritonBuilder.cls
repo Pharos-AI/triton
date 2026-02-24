@@ -103,6 +103,10 @@ public with sharing class TritonBuilder {
     @TestVisible
     private Boolean fullLimitInfoRequested = false;
 
+    private String fullSummary;
+    private String executionContextDetails;
+    private String categoryValue;
+
     public TritonBuilder cloneBuilder() {
         pharos__Log__c clonedLog = this.builder.build().clone(false, true, false, false);
         TritonBuilder cloned = new TritonBuilder();
@@ -115,6 +119,8 @@ public with sharing class TritonBuilder {
         cloned.includeLimitInfo = this.includeLimitInfo;
         cloned.fullLimitInfoRequested = this.fullLimitInfoRequested;
         cloned.traceable = this.traceable;
+        cloned.categoryValue = this.categoryValue;
+        // fullSummary and executionContextDetails are intentionally NOT cloned — per-log values
         cloned.initBuilder();
         return cloned;
     }
@@ -136,6 +142,7 @@ public with sharing class TritonBuilder {
     * @return this builder instance
     */
     public TritonBuilder category(TritonTypes.Category c) {
+        this.categoryValue = c.name();
         this.builder.category(c.name());
         return this;
     }
@@ -196,29 +203,47 @@ public with sharing class TritonBuilder {
     public TritonBuilder error() {
         return this.level(TritonTypes.Level.ERROR).createIssue();
     }
+    public TritonBuilder error(String summary) { return this.summary(summary).error(); }
 
     public TritonBuilder warning() {
         return this.level(TritonTypes.Level.WARNING);
     }
+    public TritonBuilder warning(String summary) { return this.summary(summary).warning(); }
 
     public TritonBuilder info() {
         return this.level(TritonTypes.Level.INFO);
     }
+    public TritonBuilder info(String summary) { return this.summary(summary).info(); }
 
     public TritonBuilder debug() {
         return this.level(TritonTypes.Level.DEBUG);
     }
+    public TritonBuilder debug(String summary) { return this.summary(summary).debug(); }
 
     public TritonBuilder fine() {
         return this.level(TritonTypes.Level.FINE);
     }
+    public TritonBuilder fine(String summary) { return this.summary(summary).fine(); }
 
     public TritonBuilder finer() {
         return this.level(TritonTypes.Level.FINER);
     }
+    public TritonBuilder finer(String summary) { return this.summary(summary).finer(); }
 
     public TritonBuilder finest() {
         return this.level(TritonTypes.Level.FINEST);
+    }
+    public TritonBuilder finest(String summary) { return this.summary(summary).finest(); }
+
+    /**
+     * Captures the current Salesforce execution context.
+     * For triggers: operation type, sObject, batch size.
+     * For async contexts (batch, queueable, scheduled, future): labels the context type.
+     * Appended to details at build time.
+     */
+    public TritonBuilder executionContext() {
+        this.executionContextDetails = TritonHelper.formatExecutionContext();
+        return this;
     }
 
     /**
@@ -237,9 +262,10 @@ public with sharing class TritonBuilder {
     * @return this builder instance
     */
     public TritonBuilder summary(String value) {
-		this.builder.summary(value);
+        this.fullSummary = value;
+        this.builder.summary(value != null && value.length() > 255 ? value.left(255) : value);
         return this;
-	}
+    }
 
     /**
     * Set log details from a String value
@@ -573,12 +599,11 @@ public with sharing class TritonBuilder {
         if (e == null) return this;
 
         // Use exception type, Backend if blank
-        this.type(String.isBlank(e.getTypeName()) ? 
-            TritonTypes.Type.Backend.name() : 
+        this.type(String.isBlank(e.getTypeName()) ?
+            TritonTypes.Type.Backend.name() :
             e.getTypeName());
-        
-        this.category(TritonTypes.Category.APEX)
-            .level(TritonTypes.Level.ERROR)
+
+        this.level(TritonTypes.Level.ERROR)
             .summary(e.getMessage())
             .stackTrace(e.getStackTraceString())
             .details(String.valueOf(e) + Triton.SPACE_SEP + e.getStackTraceString())
@@ -666,8 +691,7 @@ public with sharing class TritonBuilder {
 
         // Only log if there are errors
         if(!errorMessages.isEmpty()) {
-            return this.category(TritonTypes.Category.Apex)
-                .type(TritonTypes.Type.DMLResult)
+            return this.type(TritonTypes.Type.DMLResult)
                 .operation(operation)
                 .summary(TritonHelper.formatMessage('DML Operation ({0}) Failed: {1} of {2} records failed.',
                                                     new String[]{operation,
@@ -683,10 +707,59 @@ public with sharing class TritonBuilder {
     }
 
     /**
+    * Prepares the builder for logging by auto-enriching with runtime context.
+    * Called by Triton.log() to add stacktrace, operation, tracepoint, and limits.
+    * @param transactionId -- Transaction ID to associate with this log
+    * @return this builder instance
+    */
+    public TritonBuilder prepareForLogging(String transactionId) {
+        // Set transaction ID
+        this.transactionId(transactionId);
+
+        // Auto-capture stacktrace if not provided
+        pharos__Log__c tempLog = this.builder.build();
+        if(String.isBlank(tempLog.pharos__Stacktrace__c)) {
+            String stackTrace = TritonHelper.getCurrentStackTrace();
+            this.stackTrace(stackTrace);
+
+            // Set operation from stacktrace if not provided
+            if(String.isBlank(tempLog.pharos__Apex_Name__c)) {
+                this.operation(TritonHelper.getOperation(stackTrace));
+            }
+        }
+
+        // Add tracepoint and limits
+        this.tracePoint().limitInfo();
+
+        return this;
+    }
+
+    /**
     * Build and return the log record
     * @return pharos__Log__c instance
     */
     public pharos__Log__c build() {
-		return this.builder.build();
-	}
+        pharos__Log__c log = this.builder.build();
+
+        // Default category to Apex when not explicitly set
+        if(String.isNotBlank(categoryValue)) {
+            log.pharos__Category__c = categoryValue;
+        } else if(String.isBlank(log.pharos__Category__c)) {
+            log.pharos__Category__c = TritonTypes.Category.Apex.name();
+        }
+
+        // Auto-carryover: if summary was truncated, append full text to details
+        if(String.isNotBlank(fullSummary) && fullSummary.length() > 255) {
+            log.pharos__Details__c = (String.isNotBlank(log.pharos__Details__c) ?
+                log.pharos__Details__c + Triton.SPACE_SEP : '') + fullSummary;
+        }
+
+        // Append execution context if captured
+        if(String.isNotBlank(executionContextDetails)) {
+            log.pharos__Details__c = (String.isNotBlank(log.pharos__Details__c) ?
+                log.pharos__Details__c + Triton.SPACE_SEP : '') + executionContextDetails;
+        }
+
+        return log;
+    }
 }

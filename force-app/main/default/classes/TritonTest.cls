@@ -18,10 +18,12 @@ private class TritonTest {
     }
 
     private static void assertCreatedIntegrationLog() {
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Hash__c FROM pharos__Log__c];
-        System.assertNotEquals(1, logs.size());
-        System.assertEquals(TritonTypes.Category.Integration.name(), logs.get(0).pharos__Category__c);
-        System.assertEquals(TritonTypes.Category.Integration.name(), logs.get(1).pharos__Category__c);
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Hash__c, pharos__Summary__c FROM pharos__Log__c ORDER BY CreatedDate];
+        System.assertEquals(2, logs.size(), 'Expected exactly 2 logs, found: ' + logs.size());
+        for(Integer i = 0; i < logs.size(); i++) {
+            System.assertEquals(TritonTypes.Category.Integration.name(), logs.get(i).pharos__Category__c,
+                'Log ' + i + ' (' + logs.get(i).pharos__Summary__c + ') should be Integration category, but was: ' + logs.get(i).pharos__Category__c);
+        }
         System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
         System.assertNotEquals(null, logs.get(1).pharos__Hash__c);
     }
@@ -642,8 +644,8 @@ private class TritonTest {
         flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
         TritonFlow.processFlowLog(flowLog);
         Test.stopTest();
-        System.assertEquals(1, Triton.instance.logs.size());
-        System.assertEquals(false, Triton.instance.logs.get(0).pharos__Do_Not_Create_Issue__c);
+        System.assertEquals(1, Triton.logs.size());
+        System.assertEquals(false, Triton.logs.get(0).pharos__Do_Not_Create_Issue__c);
     }    
 
     @IsTest
@@ -1143,7 +1145,7 @@ private class TritonTest {
         ];
         System.assertEquals(1, logs.size(), 'Only one log should be persisted');
         System.assertEquals('third error', logs[0].pharos__Summary__c, 'Last added log should be persisted');
-        System.assertEquals(2, Triton.instance.logs.size(), 'Should have two logs remaining in buffer');
+        System.assertEquals(2, Triton.logs.size(), 'Should have two logs remaining in buffer');
     }
 
     @IsTest
@@ -1168,7 +1170,7 @@ private class TritonTest {
         ];
         System.assertEquals(1, logs.size(), 'Should have one log persisted');
         System.assertEquals('immediate error', logs[0].pharos__Summary__c, 'Immediate error should be persisted');
-        System.assertEquals(1, Triton.instance.logs.size(), 'Should have one log remaining in buffer');
+        System.assertEquals(1, Triton.logs.size(), 'Should have one log remaining in buffer');
     }
 
     @IsTest
@@ -1351,45 +1353,44 @@ private class TritonTest {
     @IsTest
     private static void test_cache_functionality() {
         Test.startTest();
-        
+
         // Test withCache when cache is available
         Cache.Org.put('test', 'test'); // This will make CACHE_AVAILABLE true
-        Triton instance = Triton.withCache();
-        System.assert(instance.withCache, 'Cache should be enabled');
-        
+        Triton.withCache();
+        System.assert(Triton.cacheEnabled, 'Cache should be enabled');
+
         // Start a transaction and verify it's cached
-        String transactionId = instance.startTransaction();
+        String transactionId = Triton.startTransaction();
         System.assertNotEquals(null, transactionId, 'Transaction ID should be generated');
         System.assertEquals(transactionId, TritonHelper.getCachedTransactionId(), 'Transaction ID should be cached');
-        
+
         // Resume transaction and verify cache is updated
         String newTransactionId = 'test-transaction-id';
-        instance.resumeTransaction(newTransactionId);
+        Triton.resumeTransaction(newTransactionId);
         System.assertEquals(newTransactionId, TritonHelper.getCachedTransactionId(), 'New transaction ID should be cached');
-        
+
         // Stop transaction and verify cache is cleared
-        instance.stopTransaction();
+        Triton.stopTransaction();
         System.assertEquals(null, TritonHelper.getCachedTransactionId(), 'Cache should be cleared after stopping transaction');
-        
+
         Test.stopTest();
     }
 
     @IsTest
     private static void test_cache_functionality_negative() {
         Test.startTest();
-        
-        // Force cache to be unavailable by simulating a Platform Cache exception
+
+        // Force cache to be unavailable
         Cache.Org.remove('test'); // Clear any existing cache entries
-        
-        // Create instance with cache disabled
-        Triton instance = Triton.instance;
-        instance.withCache = false; // Explicitly disable cache
-        
+
+        // Explicitly disable cache
+        Triton.cacheEnabled = false;
+
         // Verify transaction management still works without cache
-        String transactionId = instance.startTransaction();
+        String transactionId = Triton.startTransaction();
         System.assertNotEquals(null, transactionId, 'Transaction ID should be generated even without cache');
         System.assertEquals(null, TritonHelper.getCachedTransactionId(), 'Transaction should not be cached when cache is disabled');
-        
+
         Test.stopTest();
     }
 
@@ -1430,7 +1431,7 @@ private class TritonTest {
         }
         
         // Verify logs are in buffer but not persisted
-        System.assertEquals(3, Triton.instance.logs.size(), 'Should have 3 logs in buffer');
+        System.assertEquals(3, Triton.logs.size(), 'Should have 3 logs in buffer');
         System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c], 'No logs should be persisted yet');
         
         // Test flush - should persist all logs
@@ -1476,7 +1477,7 @@ private class TritonTest {
         }
         
         // Verify template properties are applied
-        for(pharos__Log__c log : Triton.instance.logs) {
+        for(pharos__Log__c log : Triton.logs) {
             System.assertEquals(TritonTypes.Category.Debug.name(), log.pharos__Category__c, 
                 'Template category should be applied');
             System.assertEquals(TritonTypes.Type.Backend.name(), log.pharos__Type__c, 
@@ -1497,7 +1498,7 @@ private class TritonTest {
         // Test withCache() when cache is unavailable
         Triton.withCache();
         System.assertEquals(false, Triton.CACHE_AVAILABLE, 'Cache should remain disabled');
-        System.assertNotEquals(null, Triton.instance.TRANSACTION_ID, 'Transaction ID should be generated');
+        System.assertNotEquals(null, Triton.TRANSACTION_ID, 'Transaction ID should be generated');
         
         Test.stopTest();
     }
@@ -1667,7 +1668,7 @@ private class TritonTest {
         }
         
         // Verify log is in buffer but not persisted yet
-        System.assertEquals(1, Triton.instance.logs.size(), 'Should have one log in buffer');
+        System.assertEquals(1, Triton.logs.size(), 'Should have one log in buffer');
         System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c], 'No logs should be persisted yet');
         
         // Flush and verify log
@@ -1716,7 +1717,7 @@ private class TritonTest {
         );
         
         // Verify log is in buffer but not persisted yet
-        System.assertEquals(1, Triton.instance.logs.size(), 'Should have one log in buffer');
+        System.assertEquals(1, Triton.logs.size(), 'Should have one log in buffer');
         System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c], 'No logs should be persisted yet');
         
         // Flush and verify log
@@ -1812,12 +1813,9 @@ private class TritonTest {
      */
     @IsTest
     static void testAddDebug() {
-        // Set up test data
-        Triton triton = Triton.instance;
-        
         // Add a debug log
         Test.startTest();
-        triton.log(
+        Triton.log(
             Triton.makeBuilder()
                 .category(TritonTypes.Category.Debug)
                 .type(TritonTypes.Type.Backend)
@@ -1827,12 +1825,12 @@ private class TritonTest {
                 .debug()
         );
         Test.stopTest();
-        
+
         // Verify log was added to the buffer
-        System.assertEquals(1, triton.logs.size(), 'One log should be in the buffer');
-        
+        System.assertEquals(1, Triton.logs.size(), 'One log should be in the buffer');
+
         // Verify log properties
-        pharos__Log__c log = triton.logs[0];
+        pharos__Log__c log = Triton.logs[0];
         System.assertEquals('Test Summary', log.pharos__Summary__c, 'Summary should match');
         System.assertEquals('Test Details', log.pharos__Details__c, 'Details should match');
         System.assertEquals('Backend', log.pharos__Type__c, 'Type should match');
@@ -1846,9 +1844,6 @@ private class TritonTest {
     @IsTest
     private static void test_formatDMLError() {
         Test.startTest();
-        
-        // Create a mock Database.Error using TestVisible method
-        Triton testInstance = Triton.instance;
         
         // 1. Test with field errors and record ID
         Id testId = UserInfo.getUserId();
@@ -2061,7 +2056,8 @@ private class TritonTest {
                 .summary('Runtime properties test')
                 .details('Testing runtime properties are reset')
         );
-        
+        Triton.flush();
+
         Test.stopTest();
         
         // Get the log and verify its runtime properties
@@ -2111,11 +2107,71 @@ private class TritonTest {
      */
     private static void assertBatchJobs(Integer expectedCount, String assertMessage) {
         System.assertEquals(expectedCount, [
-            SELECT COUNT() 
-            FROM AsyncApexJob 
+            SELECT COUNT()
+            FROM AsyncApexJob
             WHERE ApexClass.Name = 'TritonDelayedPublishBatch'
             AND Status IN ('Queued', 'Processing', 'Completed')
         ], assertMessage);
+    }
+
+    @IsTest
+    static void test_summary_auto_carryover() {
+        String longSummary = 'A'.repeat(300);
+        pharos__Log__c log = Triton.makeBuilder()
+            .summary(longSummary)
+            .error()
+            .build();
+        System.assertEquals(255, log.pharos__Summary__c.length(), 'Summary should be truncated to 255');
+        System.assertEquals(longSummary, log.pharos__Details__c, 'Full summary should be in details');
+    }
+
+    @IsTest
+    static void test_summary_appended_to_details() {
+        String longSummary = 'A'.repeat(300);
+        String explicitDetails = 'explicit details';
+        pharos__Log__c log = Triton.makeBuilder()
+            .summary(longSummary)
+            .details(explicitDetails)
+            .error()
+            .build();
+        System.assertEquals(explicitDetails + Triton.SPACE_SEP + longSummary, log.pharos__Details__c,
+            'Full summary should be appended to explicit details');
+    }
+
+    @IsTest
+    static void test_level_shorthand_with_summary() {
+        pharos__Log__c log = Triton.makeBuilder()
+            .error('Account sync failed')
+            .build();
+        System.assertEquals('Account sync failed', log.pharos__Summary__c, 'Summary should be set');
+        System.assertEquals('ERROR', log.Log_Level__c, 'Level should be ERROR');
+    }
+
+    @IsTest
+    static void test_default_category_apex() {
+        pharos__Log__c log = Triton.makeBuilder()
+            .summary('test')
+            .error()
+            .build();
+        System.assertEquals(TritonTypes.Category.Apex.name(), log.pharos__Category__c, 'Category should default to Apex');
+    }
+
+    @IsTest
+    static void test_default_category_not_overridden() {
+        pharos__Log__c log = Triton.makeBuilder()
+            .category(TritonTypes.Category.Integration)
+            .summary('test')
+            .error()
+            .build();
+        System.assertEquals(TritonTypes.Category.Integration.name(), log.pharos__Category__c, 'Explicit category should not be overridden');
+    }
+
+    @IsTest
+    static void test_execution_context_sync() {
+        Test.startTest();
+        String context = TritonHelper.formatExecutionContext();
+        Test.stopTest();
+        System.assertEquals('', context, 'Sync context should return empty string');
     }
 
 }

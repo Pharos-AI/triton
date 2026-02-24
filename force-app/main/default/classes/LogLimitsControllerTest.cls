@@ -66,8 +66,8 @@ private class LogLimitsControllerTest {
             .attribute(TritonBuilder.SOSL_QUERIES_LIMIT, 20);
         
         // Log the entry
-        Triton.instance.logs.add(builder.build());
-        Triton.instance.flushTop();
+        Triton.logs.add(builder.build());
+        Triton.flushTop();
         
         // Stop test to process platform events
         Test.stopTest();
@@ -145,8 +145,8 @@ private class LogLimitsControllerTest {
             .attribute(TritonBuilder.DML_ROWS_LIMIT, 10000);
         
         // Log the entry
-        Triton.instance.logs.add(builder.build());
-        Triton.instance.flushTop();
+        Triton.logs.add(builder.build());
+        Triton.flushTop();
         // Stop test to process platform events
         Test.stopTest();
         

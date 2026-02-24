@@ -73,7 +73,7 @@ global with sharing class TritonFlow {
         //resume or start transaction if one isn't already in progress
         if(String.isNotBlank(flowLog.transactionId)) {
             Triton.resumeTransaction(flowLog.transactionId);
-        } else if(Triton.instance.TRANSACTION_ID == null) {
+        } else if(Triton.TRANSACTION_ID == null) {
             Triton.startTransaction();
         }
                 

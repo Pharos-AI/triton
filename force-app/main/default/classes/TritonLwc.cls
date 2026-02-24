@@ -33,8 +33,8 @@ global with sharing class TritonLwc {
     public static void saveComponentLogs(List<ComponentLog> componentLogs) {
         String transactionId = Triton.startTransaction();
         Triton.withCache();
-        Boolean transactionIdFromCache = Triton.instance.TRANSACTION_ID != transactionId;
-        transactionId = Triton.instance.TRANSACTION_ID;
+        Boolean transactionIdFromCache = Triton.TRANSACTION_ID != transactionId;
+        transactionId = Triton.TRANSACTION_ID;
 
         for (ComponentLog componentLog : componentLogs) {
             Id userId = null;

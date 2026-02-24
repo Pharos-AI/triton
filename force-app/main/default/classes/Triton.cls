@@ -38,19 +38,20 @@
 global with sharing class Triton {
 
     public static final String SPACE_SEP = '\n\n';
-    
-    public static Triton instance {
+
+    /**
+     * Underlying pharos Logger instance — lazy-initialized.
+     */
+    @TestVisible
+    private static pharos.Logger logger {
         get {
-            if (instance == null) {
-                instance = new Triton(pharos.Logger.getInstance());
+            if (logger == null) {
+                logger = pharos.Logger.getInstance();
             }
-            return instance;
+            return logger;
         }
         private set;
     }
-
-    //singleton instance
-    private final pharos.Logger logger;
 
     /**
     * Helper map for storing current log levels
@@ -74,11 +75,19 @@ global with sharing class Triton {
     @TestVisible
     private static Log_Level__mdt[] LOG_LEVELS_MDT = Log_Level__mdt.getAll().values();
 
-    private TritonBuilder template;
+    private static TritonBuilder template {
+        get {
+            if (template == null) {
+                template = new TritonBuilder();
+            }
+            return template;
+        }
+        set;
+    }
 
     // Logs buffer (queue) property
     @TestVisible
-    private List<pharos__Log__c> logs {
+    private static List<pharos__Log__c> logs {
         get {
             if (logs == null) {
                 logs = new List<pharos__Log__c>();
@@ -110,54 +119,52 @@ global with sharing class Triton {
     }
 
     /**
-     * Indicates whether this instance should use platform cache for transaction management
+     * Indicates whether platform cache should be used for transaction management
      */
     @TestVisible
-    private Boolean withCache = false;
+    private static Boolean cacheEnabled = false;
 
-    // Constructor
-    private Triton(pharos.Logger logger) {
-        this.logger = logger;
-        this.template = makeBuilder();
-    }
+    /**
+     * This value can be passed around to trace a complex process spanning multiple Salesforce transactions
+     * Can be used between LWC/Apex/Flow transitions when complex tracing is required.
+     */
+    public static String TRANSACTION_ID;
 
     /**
      * Enables platform cache for transaction management
-     * @return Triton instance for chaining
      */
-    public Triton withCache() {
+    public static void withCache() {
         if (!CACHE_AVAILABLE) {
-            this.withCache = false;
+            cacheEnabled = false;
             if (TRANSACTION_ID == null) {
                 startTransaction();
             }
-            return this;
+            return;
         }
 
-        this.withCache = true;
-        String transactionId = TritonHelper.getCachedTransactionId();       
+        cacheEnabled = true;
+        String transactionId = TritonHelper.getCachedTransactionId();
         if (String.isNotBlank(transactionId)) {
             resumeTransaction(transactionId);
         } else if(TRANSACTION_ID == null) {
             startTransaction();
-        }        
-        return this;
+        }
     }
 
     /**
     * Sets a builder template that can be re-used
     * @param builder -- Pharos builder to be used as a template
     */
-    public void setTemplate(TritonBuilder builder) {
-        this.template = builder;
+    public static void setTemplate(TritonBuilder builder) {
+        template = builder;
     }
 
     /**
     * Retrieves a copy of a previously saved template
     * @return builder -- Pharos builder previously saved as a template
     */
-    public TritonBuilder fromTemplate() {
-        return (TritonBuilder)this.template.cloneBuilder()
+    public static TritonBuilder fromTemplate() {
+        return (TritonBuilder)template.cloneBuilder()
                 .transactionId(TRANSACTION_ID);
     }
 
@@ -167,17 +174,17 @@ global with sharing class Triton {
     * If platform event allocation is near capacity (95%), logs will be scheduled
     * for delayed publishing with exponential backoff using a singleton batch.
     */
-    public void flush() {
+    public static void flush() {
         // Check if we have any logs to flush
         if (logs.isEmpty()) {
             return;
         }
-        
+
         for(pharos__Log__c log : logs) {
-            this.logger.add(log);
+            logger.add(log);
         }
-        this.logger.flush();
-        this.logs.clear();
+        logger.flush();
+        logs.clear();
     }
 
     /**
@@ -186,21 +193,21 @@ global with sharing class Triton {
     * If platform event allocation is near capacity (95%), the log will be scheduled
     * for delayed publishing with exponential backoff using a singleton batch.
     */
-    public void flushTop() {
+    public static void flushTop() {
         if (logs.size() == 0) {
             return;
         }
-        
-        this.logger.add(logs.get(logs.size() - 1));
-        this.logger.flush();
-        this.logs.remove(logs.size() - 1);
+
+        logger.add(logs.get(logs.size() - 1));
+        logger.flush();
+        logs.remove(logs.size() - 1);
     }
 
     /**
-    * Shorthand method for creating a new builder
+    * Shorthand method for creating a new builder with default category set to Apex
     */
     public static TritonBuilder makeBuilder() {
-        return new TritonBuilder();
+        return new TritonBuilder().category(TritonTypes.Category.Apex);
     }
 
     /**
@@ -209,7 +216,7 @@ global with sharing class Triton {
      */
     public static TritonBuilder t {
         get {
-            return instance.fromTemplate();
+            return fromTemplate();
         }
     }
 
@@ -220,61 +227,14 @@ global with sharing class Triton {
         return new TritonHelper.PostProcessingControlsBuilder();
     }
 
-    // -------------------------------------------------------
-    // Static API — delegates to singleton instance
-    // These wrappers eliminate the need for Triton.instance.*
-    // -------------------------------------------------------
-
-    public static void log(TritonBuilder builder) {
-        instance.log(builder);
-    }
-
-    public static void logNow(TritonBuilder builder) {
-        instance.logNow(builder);
-    }
-
-    public static void flush() {
-        instance.flush();
-    }
-
-    public static void flushTop() {
-        instance.flushTop();
-    }
-
-    public static String startTransaction() {
-        return instance.startTransaction();
-    }
-
-    public static void resumeTransaction(String transactionId) {
-        instance.resumeTransaction(transactionId);
-    }
-
-    public static void stopTransaction() {
-        instance.stopTransaction();
-    }
-
-    public static void setTemplate(TritonBuilder builder) {
-        instance.setTemplate(builder);
-    }
-
-    public static void withCache() {
-        instance.withCache();
-    }
-
-    /**
-     * This value can be passed around to trace a complex process spanning multiple Salesforce transactions
-     * Can be used between LWC/Apex/Flow transitions when complex tracing is required.
-     */
-    public String TRANSACTION_ID;
-
     /**
      * Start new transaction
      * Autogenrated Transaction UUID
      * This method will obtain a new autogenrated transaction id or use the current one
      */
-    public String startTransaction() {
+    public static String startTransaction() {
         TRANSACTION_ID = TritonHelper.generateUUID4();
-        if (withCache) {
+        if (cacheEnabled) {
             TritonHelper.cacheTransactionId(TRANSACTION_ID);
         }
         return TRANSACTION_ID;
@@ -285,8 +245,8 @@ global with sharing class Triton {
      * Assumes an existing transaction id
      * Use this method to tie together different Salesforce transactions.
      */
-    public void resumeTransaction(String transactionId) {
-        if (withCache) {
+    public static void resumeTransaction(String transactionId) {
+        if (cacheEnabled) {
             //cache the transaction id, even if it's the same as the current one to extend the TTL
             TritonHelper.cacheTransactionId(transactionId);
         }
@@ -298,9 +258,9 @@ global with sharing class Triton {
      * Resets the current transaction Id
      * Use this method to marking tracking logs with the current transaction Id
      */
-    public void stopTransaction() {
+    public static void stopTransaction() {
         TRANSACTION_ID = null;
-        if (withCache) {
+        if (cacheEnabled) {
             TritonHelper.clearCachedTransactionId();
         }
     }
@@ -324,29 +284,14 @@ global with sharing class Triton {
     * Adds a log to the buffer
     * @param builder TritonBuilder instance containing log details
     */
-    public void log(TritonBuilder builder) {
+    public static void log(TritonBuilder builder) {
         pharos__Log__c log = builder.build();
 
         if (!isLogAllowedForLogLevel(log)) {
             return;
         }
-        builder.transactionId(TRANSACTION_ID);
 
-        //get the stacktrace if one isn't provided
-        String stackTrace = log.pharos__Stacktrace__c;
-        if(String.isBlank(log.pharos__Stacktrace__c)) {
-            stackTrace = TritonHelper.getCurrentStackTrace();
-            builder.stackTrace(stackTrace);
-        }
-
-        //set the operation based on the class name and method name
-        if(String.isBlank(builder.build().pharos__Apex_Name__c)) {
-            builder.operation(TritonHelper.getOperation(stackTrace));
-        }
-
-        builder.tracePoint()
-               .limitInfo();
-
+        builder.prepareForLogging(TRANSACTION_ID);
         logs.add(builder.build());
     }
 
@@ -354,15 +299,14 @@ global with sharing class Triton {
     * Adds a log to the buffer and immediately flushes it
     * @param builder TritonBuilder instance containing log details
     */
-    public void logNow(TritonBuilder builder) {
+    public static void logNow(TritonBuilder builder) {
         log(builder);
         flushTop();
-    }    
+    }
 
     /**
     * Checks if a log should be persisted based on the current log level
     * @param log -- Pharos log record to be saved
-    * @param builder TritonBuilder instance containing log details
     */
     public static Boolean isLogAllowedForLogLevel(pharos__Log__c log) {
         if (String.isBlank(log.Log_Level__c) || LOG_LEVELS.isEmpty()) return true;

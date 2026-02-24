@@ -455,7 +455,40 @@ public with sharing class TritonHelper {
         if (fields != null && !fields.isEmpty()) {
             errorMsg += ' | Fields: ' + String.join(fields, ', ');
         }
-        
+
         return errorMsg;
+    }
+
+    /**
+     * Detects and formats the current Salesforce execution context.
+     * For triggers: captures operation type, sObject name, and record count.
+     * For async contexts: labels the execution type.
+     * Returns empty string for standard synchronous execution.
+     */
+    public static String formatExecutionContext() {
+        List<String> parts = new List<String>();
+
+        if(Trigger.isExecuting) {
+            parts.add('Execution Context: Trigger');
+            parts.add('Operation: ' + Trigger.operationType);
+            String sObjectName = Trigger.new != null && !Trigger.new.isEmpty()
+                ? Trigger.new[0].getSObjectType().getDescribe().getName()
+                : Trigger.old != null && !Trigger.old.isEmpty()
+                    ? Trigger.old[0].getSObjectType().getDescribe().getName()
+                    : 'Unknown';
+            parts.add('Object: ' + sObjectName);
+            Integer batchSize = Trigger.new != null ? Trigger.new.size() : Trigger.old.size();
+            parts.add('Batch Size: ' + batchSize);
+        } else if(System.isBatch()) {
+            parts.add('Execution Context: Batch');
+        } else if(System.isQueueable()) {
+            parts.add('Execution Context: Queueable');
+        } else if(System.isScheduled()) {
+            parts.add('Execution Context: Scheduled');
+        } else if(System.isFuture()) {
+            parts.add('Execution Context: Future');
+        }
+
+        return parts.isEmpty() ? '' : String.join(parts, '\n');
     }
 }
