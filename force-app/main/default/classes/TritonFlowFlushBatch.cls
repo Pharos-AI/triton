@@ -24,8 +24,10 @@
  */
 global class TritonFlowFlushBatch implements Database.Batchable<SObject> {
 
+    @TestVisible
     private static final String BATCH_CLASS_NAME = 'TritonFlowFlushBatch';
     private static final String BATCH_JOB_PREFIX = 'TritonFlowFlush-';
+    @TestVisible
     private static final Set<String> ACTIVE_BATCH_STATUSES = new Set<String>{
         'Queued', 'Preparing', 'Processing', 'Holding'
     };

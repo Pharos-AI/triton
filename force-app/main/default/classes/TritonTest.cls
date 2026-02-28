@@ -11,12 +11,6 @@
 @IsTest
 private class TritonTest {
 
-    private static void assertCreatedLog(TritonTypes.Category logCategory) {
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Hash__c FROM pharos__Log__c];
-        System.assertEquals(1, logs.size());
-        System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
-    }
-
     private static void assertCreatedIntegrationLog() {
         List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Hash__c, pharos__Summary__c FROM pharos__Log__c ORDER BY CreatedDate];
         System.assertEquals(2, logs.size(), 'Expected exactly 2 logs, found: ' + logs.size());
@@ -28,22 +22,14 @@ private class TritonTest {
         System.assertNotEquals(null, logs.get(1).pharos__Hash__c);
     }
 
-    private static void assertBefore() {
-        Integer countBefore = [SELECT COUNT() FROM pharos__Log__c];
-        System.assertEquals(0, countBefore);
-    }
-
     @TestSetup
     private static void testSetup() {
-        pharos.Test_Logger.initSettings();
-        // Clear out any existing log level metadata to ensure clean test environment
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{};
-        Triton.LOG_LEVELS = null;
+        TritonTestFactory.initTestSetup();
     }
 
     @IsTest
     private static void test_log_levels() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Log_Level__mdt ll = new Log_Level__mdt();
         ll.Level__c = TritonTypes.Level.DEBUG.name();
@@ -56,7 +42,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_log_levels_positive() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Log_Level__mdt ll = new Log_Level__mdt();
         ll.Level__c = TritonTypes.Level.DEBUG.name();
@@ -66,12 +52,12 @@ private class TritonTest {
         Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.DEBUG));
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
     }
 
     @IsTest
     private static void test_log_levels_negative() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Log_Level__mdt ll = new Log_Level__mdt();
         ll.Level__c = TritonTypes.Level.DEBUG.name();
@@ -102,7 +88,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_log_levels_mapping() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         setupLogLevelsMap();
 
@@ -117,12 +103,12 @@ private class TritonTest {
         Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.FINEST));
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
     }
 
     @IsTest
     private static void test_log_levels_mapping_negative() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         setupLogLevelsMap();
 
@@ -135,51 +121,51 @@ private class TritonTest {
 
     @IsTest
     private static void test_sync_event() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').info());
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
     }
 
     @IsTest
     private static void test_sync_debug() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         Triton.logNow(Triton.t.category(TritonTypes.Category.Debug).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some debug').details('error details').debug());
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Debug);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Debug);
     }
 
     @IsTest
     private static void test_sync_warning() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         Triton.logNow(Triton.t.category(TritonTypes.Category.Warning).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some warning').details('error details').warning());
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Warning);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Warning);
     }
 
     @IsTest
     private static void test_sync_error() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         Triton.logNow(Triton.t.category(TritonTypes.Category.Apex).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some error').details('error details').error());
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Apex);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Apex);
     }
 
     @IsTest
     private static void test_sync_error_from_exception() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         try {
@@ -190,12 +176,12 @@ private class TritonTest {
         }
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Apex);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Apex);
     }
 
     @IsTest
     private static void test_sync_integration_from_exception() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         HttpCalloutMock multiCalloutMock = new MultiRequestMock(createEndpoint2TestResp());
@@ -212,7 +198,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_integration_error_sync() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         RestRequest req = new RestRequest();
@@ -232,7 +218,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_save_component_log() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         List<TritonLwc.ComponentLog> componentLogs = new List<TritonLwc.ComponentLog>();
@@ -265,7 +251,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_lwc_runtime_info() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
         
@@ -383,7 +369,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_save_component_log_negative() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         List<TritonLwc.ComponentLog> componentLogs = new List<TritonLwc.ComponentLog>();
@@ -461,7 +447,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_triton_builder() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.INFO));
@@ -593,7 +579,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_traceable_creates_issue() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         Triton.log(
@@ -617,7 +603,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_template() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         TritonBuilder template = Triton.makeBuilder();
         template.category(TritonTypes.Category.Apex);
@@ -899,7 +885,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_flush_top_buffer() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
         
@@ -931,7 +917,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_flush_top_immediate() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
         Triton.log(
@@ -956,7 +942,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_flush_top_empty_buffer() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
         Triton.flushTop();
@@ -968,7 +954,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_limit_info() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
         
@@ -1050,7 +1036,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_limit_info_without_limit_info() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         Triton.log(
@@ -1079,7 +1065,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_limit_info_full() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         Triton.log(
@@ -1431,7 +1417,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_add_error_with_exception() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
         String msg;
@@ -1484,7 +1470,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_add_event() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
         
@@ -1995,7 +1981,7 @@ private class TritonTest {
 
     @IsTest
     static void test_builder_post_processing() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         TritonHelper.PostProcessingControlsBuilder ppBuilder =

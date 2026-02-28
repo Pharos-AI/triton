@@ -11,11 +11,12 @@
 /**
  * Comprehensive tests for Flow logging: TritonFlow invocable and TritonFlowFlushBatch pipeline.
  *
- * Organized into four groups:
+ * Organized into five groups:
  *   1. TritonFlow invocable — category handling, stacktraces, additional fields, validation
  *   2. Flow → Batch pipeline — real-life scenarios calling TritonFlow.log()
  *   3. Batch + Cache integration — cache round-trip, constructor, accumulation
  *   4. Edge cases — size limits, drain, static state reset
+ *   5. TritonCacheManager — production path coverage
  *
  * Cache operations use TritonCacheManager which provides a mock cache
  * in test context, so all cache-dependent code paths are fully exercised.
@@ -25,48 +26,7 @@ private class TritonFlowTest {
 
     @TestSetup
     private static void testSetup() {
-        pharos.Test_Logger.initSettings();
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{};
-        Triton.LOG_LEVELS = null;
-    }
-
-    // ─── Helpers ───────────────────────────────────────────────────────
-
-    private static void assertBefore() {
-        Integer countBefore = [SELECT COUNT() FROM pharos__Log__c];
-        System.assertEquals(0, countBefore);
-    }
-
-    /**
-     * Manually drains any cached flow logs by constructing a batch
-     * (which reads all cache keys) and flushing them directly.
-     * This is needed because System.scheduleBatch with a delay
-     * does not execute during Test.stopTest().
-     */
-    private static void flushCachedFlowLogs() {
-        TritonFlowFlushBatch batch = new TritonFlowFlushBatch();
-        if (!batch.logsToFlush.isEmpty()) {
-            batch.execute(null, batch.logsToFlush);
-        }
-    }
-
-    private static TritonFlow.FlowLog makeFlowLog(String summary) {
-        TritonFlow.FlowLog fl = new TritonFlow.FlowLog();
-        fl.category = TritonTypes.Category.Flow.name();
-        fl.type = 'type';
-        fl.area = 'area';
-        fl.summary = summary;
-        fl.details = 'details for ' + summary;
-        return fl;
-    }
-
-    private static pharos__Log__c makeLogRecord(String summary) {
-        return new pharos__Log__c(
-            pharos__Summary__c = summary,
-            pharos__Category__c = TritonTypes.Category.Flow.name(),
-            pharos__Type__c = 'type',
-            pharos__Area__c = 'area'
-        );
+        TritonTestFactory.initTestSetup();
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -79,64 +39,41 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_flow() {
-        assertBefore();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
 
         Test.startTest();
         List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
 
         // Valid category
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = TritonTypes.Category.Flow.name();
-        flowLog.type = 'type';
-        flowLog.area = 'area';
-        flowLog.summary = 'test';
+        TritonFlow.FlowLog flowLog = TritonTestFactory.makeFlowLog('test');
         flowLog.details = 'test';
         flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
         flowLogs.add(flowLog);
 
         // Invalid category
-        TritonFlow.FlowLog invalidCategoryLog = new TritonFlow.FlowLog();
+        TritonFlow.FlowLog invalidCategoryLog = TritonTestFactory.makeFlowLog('test invalid');
         invalidCategoryLog.category = 'InvalidCategory';
-        invalidCategoryLog.type = 'type';
-        invalidCategoryLog.area = 'area';
-        invalidCategoryLog.summary = 'test invalid';
         invalidCategoryLog.details = 'test invalid';
         flowLogs.add(invalidCategoryLog);
 
         // With transaction ID
-        TritonFlow.FlowLog transactionLog = new TritonFlow.FlowLog();
-        transactionLog.category = TritonTypes.Category.Flow.name();
-        transactionLog.type = 'type';
-        transactionLog.area = 'area';
-        transactionLog.summary = 'test transaction';
+        TritonFlow.FlowLog transactionLog = TritonTestFactory.makeFlowLog('test transaction');
         transactionLog.details = 'test transaction';
         transactionLog.transactionId = 'test-transaction-id';
         flowLogs.add(transactionLog);
 
         // Empty category
-        TritonFlow.FlowLog emptyCategoryLog = new TritonFlow.FlowLog();
+        TritonFlow.FlowLog emptyCategoryLog = TritonTestFactory.makeFlowLog('test empty');
         emptyCategoryLog.category = '';
-        emptyCategoryLog.type = 'type';
-        emptyCategoryLog.area = 'area';
-        emptyCategoryLog.summary = 'test empty';
         emptyCategoryLog.details = 'test empty';
         flowLogs.add(emptyCategoryLog);
 
         TritonFlow.log(flowLogs);
-        flushCachedFlowLogs();
+        TritonTestFactory.flushCachedFlowLogs();
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [
-            SELECT Id,
-                   pharos__Category__c,
-                   pharos__Summary__c,
-                   pharos__Details__c,
-                   pharos__Transaction_Id_External__c,
-                   pharos__Hash__c
-            FROM pharos__Log__c
-            ORDER BY CreatedDate
-        ];
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
 
         System.assertEquals(4, logs.size(), 'Should have created 4 logs');
         System.assertEquals(TritonTypes.Category.Flow.name(), logs[0].pharos__Category__c);
@@ -153,28 +90,22 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_flow_with_stacktrace() {
-        assertBefore();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
 
         Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = TritonTypes.Category.Flow.name();
-        flowLog.type = 'type';
-        flowLog.area = 'area';
-        flowLog.summary = 'test';
+        TritonFlow.FlowLog flowLog = TritonTestFactory.makeFlowLog('test');
         flowLog.details = 'test';
         flowLog.stacktrace = 'test stacktrace';
         flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
-        flowLogs.add(flowLog);
-        List<TritonFlow.FlowLogOutput> results = TritonFlow.log(flowLogs);
-        flushCachedFlowLogs();
+        List<TritonFlow.FlowLogOutput> results = TritonFlow.log(new List<TritonFlow.FlowLog>{ flowLog });
+        TritonTestFactory.flushCachedFlowLogs();
         Test.stopTest();
 
         System.assertEquals(1, results.size());
         System.assertEquals('test stacktrace', results.get(0).fullStacktrace);
 
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
         System.assertEquals(1, logs.size());
         System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
         System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
@@ -185,39 +116,32 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_flow_with_stacktrace_multiple_logs() {
-        assertBefore();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
 
         Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        TritonFlow.FlowLog flowLog1 = new TritonFlow.FlowLog();
-        flowLog1.category = TritonTypes.Category.Flow.name();
-        flowLog1.type = 'type';
-        flowLog1.area = 'area';
-        flowLog1.summary = 'test';
+        TritonFlow.FlowLog flowLog1 = TritonTestFactory.makeFlowLog('test');
         flowLog1.details = 'test';
         flowLog1.stacktrace = 'teststacktrace1';
         flowLog1.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
-        flowLogs.add(flowLog1);
-        TritonFlow.FlowLog flowLog2 = new TritonFlow.FlowLog();
-        flowLog2.category = TritonTypes.Category.Flow.name();
-        flowLog2.type = 'type';
-        flowLog2.area = 'area';
-        flowLog2.summary = 'test';
+
+        TritonFlow.FlowLog flowLog2 = TritonTestFactory.makeFlowLog('test');
         flowLog2.details = 'test';
         flowLog2.fullStacktrace = flowLog1.stacktrace;
         flowLog2.stacktrace = 'teststacktrace2';
         flowLog2.additionalFields = '{"pharos__Summary__c":"test summary 2","pharos__Details__c":"test Details 2"}';
-        flowLogs.add(flowLog2);
-        List<TritonFlow.FlowLogOutput> results = TritonFlow.log(flowLogs);
-        flushCachedFlowLogs();
+
+        List<TritonFlow.FlowLogOutput> results = TritonFlow.log(
+            new List<TritonFlow.FlowLog>{ flowLog1, flowLog2 }
+        );
+        TritonTestFactory.flushCachedFlowLogs();
         Test.stopTest();
 
         System.assertEquals(2, results.size());
         System.assertEquals('teststacktrace1', results.get(0).fullStacktrace);
         System.assertEquals('teststacktrace1teststacktrace2', results.get(1).fullStacktrace);
 
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c, pharos__Stacktrace__c FROM pharos__Log__c];
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
         System.assertEquals(2, logs.size());
         System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
         System.assertEquals('test summary 2', logs.get(1).pharos__Summary__c);
@@ -232,24 +156,19 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_flow_wrong_category() {
-        assertBefore();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
 
         Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
+        TritonFlow.FlowLog flowLog = TritonTestFactory.makeFlowLog('test');
         flowLog.category = 'InvalidCategory';
-        flowLog.type = 'type';
-        flowLog.area = 'area';
-        flowLog.summary = 'test';
         flowLog.details = 'test';
         flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
-        flowLogs.add(flowLog);
-        TritonFlow.log(flowLogs);
-        flushCachedFlowLogs();
+        TritonFlow.log(new List<TritonFlow.FlowLog>{ flowLog });
+        TritonTestFactory.flushCachedFlowLogs();
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Hash__c FROM pharos__Log__c];
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
         System.assertEquals(1, logs.size());
         System.assertEquals(TritonTypes.Category.Flow.name(), logs.get(0).pharos__Category__c);
     }
@@ -259,15 +178,11 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_flow_create_issue() {
-        assertBefore();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
 
         Test.startTest();
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = TritonTypes.Category.Flow.name();
-        flowLog.type = 'type';
-        flowLog.area = 'area';
-        flowLog.summary = 'test';
+        TritonFlow.FlowLog flowLog = TritonTestFactory.makeFlowLog('test');
         flowLog.details = 'test';
         flowLog.level = 'ERROR';
         flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
@@ -283,29 +198,21 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_flow_bad_additional_fields_json() {
-        assertBefore();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
 
         Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = TritonTypes.Category.Flow.name();
+        TritonFlow.FlowLog flowLog = TritonTestFactory.makeFlowLog('test summary');
         flowLog.type = 'test type';
         flowLog.area = 'test area';
-        flowLog.summary = 'test summary';
         flowLog.details = 'test';
         flowLog.level = 'level';
         flowLog.additionalFields = '{bad_json "test"}';
-        flowLogs.add(flowLog);
-        TritonFlow.log(flowLogs);
-        flushCachedFlowLogs();
+        TritonFlow.log(new List<TritonFlow.FlowLog>{ flowLog });
+        TritonTestFactory.flushCachedFlowLogs();
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [SELECT Id,
-                                       pharos__Details__c,
-                                       pharos__Summary__c,
-                                       pharos__Hash__c
-                                FROM pharos__Log__c];
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
         pharos__Log__c log = logs.get(0);
         System.assertEquals(1, logs.size());
         System.assertEquals('test summary', log.pharos__Summary__c);
@@ -323,20 +230,16 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_single_flow_invocable_publishes_log() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
         Test.startTest();
         List<TritonFlow.FlowLogOutput> results = TritonFlow.log(
-            new List<TritonFlow.FlowLog>{ makeFlowLog('single-log') }
+            new List<TritonFlow.FlowLog>{ TritonTestFactory.makeFlowLog('single-log') }
         );
-        flushCachedFlowLogs();
+        TritonTestFactory.flushCachedFlowLogs();
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [
-            SELECT Id, pharos__Summary__c, pharos__Category__c, pharos__Area__c
-            FROM pharos__Log__c
-        ];
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
         System.assertEquals(1, logs.size(), 'Should publish exactly 1 log');
         System.assertEquals(TritonTypes.Category.Flow.name(), logs[0].pharos__Category__c);
         System.assertEquals(0, Triton.logs.size(), 'Triton buffer should be empty after drain');
@@ -349,19 +252,16 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_multiple_flow_invocable_calls_in_transaction() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
         Test.startTest();
-        TritonFlow.log(new List<TritonFlow.FlowLog>{ makeFlowLog('action-1') });
-        TritonFlow.log(new List<TritonFlow.FlowLog>{ makeFlowLog('action-2') });
-        TritonFlow.log(new List<TritonFlow.FlowLog>{ makeFlowLog('action-3') });
-        flushCachedFlowLogs();
+        TritonFlow.log(new List<TritonFlow.FlowLog>{ TritonTestFactory.makeFlowLog('action-1') });
+        TritonFlow.log(new List<TritonFlow.FlowLog>{ TritonTestFactory.makeFlowLog('action-2') });
+        TritonFlow.log(new List<TritonFlow.FlowLog>{ TritonTestFactory.makeFlowLog('action-3') });
+        TritonTestFactory.flushCachedFlowLogs();
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [
-            SELECT Id, pharos__Summary__c FROM pharos__Log__c ORDER BY CreatedDate
-        ];
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
         System.assertEquals(3, logs.size(),
             'All 3 logs from separate invocable calls should be published');
         System.assertEquals(0, Triton.logs.size(),
@@ -373,20 +273,17 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_flow_invocable_with_transaction_id() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
-        TritonFlow.FlowLog flowLog = makeFlowLog('tx-test');
+        TritonFlow.FlowLog flowLog = TritonTestFactory.makeFlowLog('tx-test');
         flowLog.transactionId = 'custom-tx-id';
 
         Test.startTest();
         TritonFlow.log(new List<TritonFlow.FlowLog>{ flowLog });
-        flushCachedFlowLogs();
+        TritonTestFactory.flushCachedFlowLogs();
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [
-            SELECT Id, pharos__Transaction_Id_External__c FROM pharos__Log__c
-        ];
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
         System.assertEquals(1, logs.size());
         System.assertEquals('custom-tx-id', logs[0].pharos__Transaction_Id_External__c,
             'Transaction ID should be preserved through the batch pipeline');
@@ -397,20 +294,17 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_flow_invocable_error_level_creates_issue() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
-        TritonFlow.FlowLog flowLog = makeFlowLog('error-test');
+        TritonFlow.FlowLog flowLog = TritonTestFactory.makeFlowLog('error-test');
         flowLog.level = 'ERROR';
 
         Test.startTest();
         TritonFlow.log(new List<TritonFlow.FlowLog>{ flowLog });
-        flushCachedFlowLogs();
+        TritonTestFactory.flushCachedFlowLogs();
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [
-            SELECT Id, pharos__Do_Not_Create_Issue__c FROM pharos__Log__c
-        ];
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
         System.assertEquals(1, logs.size());
         System.assertEquals(false, logs[0].pharos__Do_Not_Create_Issue__c,
             'ERROR level should create an issue');
@@ -422,24 +316,21 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_flow_invocable_respects_log_level_filtering() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
         Log_Level__mdt ll = new Log_Level__mdt();
         ll.Level__c = TritonTypes.Level.DEBUG.name();
         Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ ll };
         Triton.LOG_LEVELS = null;
 
-        TritonFlow.FlowLog flowLog = makeFlowLog('should-be-filtered');
+        TritonFlow.FlowLog flowLog = TritonTestFactory.makeFlowLog('should-be-filtered');
         flowLog.level = 'FINE';
 
         Test.startTest();
         TritonFlow.log(new List<TritonFlow.FlowLog>{ flowLog });
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [SELECT Id FROM pharos__Log__c];
-        System.assertEquals(0, logs.size(),
-            'FINE log should be filtered out when org level is DEBUG');
+        TritonTestFactory.assertNoLogs();
         System.assertEquals(0, TritonFlowFlushBatch.pendingLogs.size(),
             'Filtered log should not reach the batch pending buffer');
     }
@@ -449,16 +340,14 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_flow_invocable_empty_list() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
         Test.startTest();
         List<TritonFlow.FlowLogOutput> results = TritonFlow.log(new List<TritonFlow.FlowLog>());
         Test.stopTest();
 
         System.assertEquals(0, results.size(), 'Empty input should produce empty output');
-        List<pharos__Log__c> logs = [SELECT Id FROM pharos__Log__c];
-        System.assertEquals(0, logs.size(), 'No logs should be created');
+        TritonTestFactory.assertNoLogs();
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -467,14 +356,13 @@ private class TritonFlowTest {
 
     /**
      * Full cache round-trip: put → getKeys → get → remove.
-     * Skips gracefully if Org Cache is unavailable.
      */
     @IsTest
     private static void test_cache_roundtrip_put_get_remove() {
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
         List<pharos__Log__c> logs = new List<pharos__Log__c>{
-            makeLogRecord('cache-1'), makeLogRecord('cache-2')
+            TritonTestFactory.makeLogRecord('cache-1'), TritonTestFactory.makeLogRecord('cache-2')
         };
 
         Boolean cached = TritonHelper.cacheFlowLogs('txroundtrip', logs);
@@ -498,14 +386,13 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_batch_constructor_reads_and_clears_cache() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
         List<pharos__Log__c> txA = new List<pharos__Log__c>{
-            makeLogRecord('a-1'), makeLogRecord('a-2')
+            TritonTestFactory.makeLogRecord('a-1'), TritonTestFactory.makeLogRecord('a-2')
         };
         List<pharos__Log__c> txB = new List<pharos__Log__c>{
-            makeLogRecord('b-1'), makeLogRecord('b-2'), makeLogRecord('b-3')
+            TritonTestFactory.makeLogRecord('b-1'), TritonTestFactory.makeLogRecord('b-2'), TritonTestFactory.makeLogRecord('b-3')
         };
 
         TritonHelper.cacheFlowLogs('txa', txA);
@@ -527,23 +414,20 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_addLogs_accumulates_in_static_buffer_with_cache() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
-
-        List<pharos__Log__c> batch1 = new List<pharos__Log__c>{ makeLogRecord('log1') };
+        TritonTestFactory.resetFlowState();
 
         Test.startTest();
-        TritonFlowFlushBatch.addLogs(batch1, 'txacc');
         TritonFlowFlushBatch.addLogs(
-            new List<pharos__Log__c>{ makeLogRecord('log2'), makeLogRecord('log3') },
+            new List<pharos__Log__c>{ TritonTestFactory.makeLogRecord('log1') }, 'txacc'
+        );
+        TritonFlowFlushBatch.addLogs(
+            new List<pharos__Log__c>{ TritonTestFactory.makeLogRecord('log2'), TritonTestFactory.makeLogRecord('log3') },
             'txacc'
         );
-        flushCachedFlowLogs();
+        TritonTestFactory.flushCachedFlowLogs();
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [SELECT Id FROM pharos__Log__c];
-        System.assertEquals(3, logs.size(),
-            'All 3 accumulated logs should be published');
+        TritonTestFactory.assertLogCount(3);
     }
 
     /**
@@ -552,22 +436,19 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_addLogs_publishes_all_logs() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
         List<pharos__Log__c> logs = new List<pharos__Log__c>{
-            makeLogRecord('publish-1'),
-            makeLogRecord('publish-2')
+            TritonTestFactory.makeLogRecord('publish-1'),
+            TritonTestFactory.makeLogRecord('publish-2')
         };
 
         Test.startTest();
         TritonFlowFlushBatch.addLogs(logs, 'txpublish');
-        flushCachedFlowLogs();
+        TritonTestFactory.flushCachedFlowLogs();
         Test.stopTest();
 
-        List<pharos__Log__c> published = [SELECT Id, pharos__Summary__c FROM pharos__Log__c];
-        System.assertEquals(2, published.size(),
-            'All logs should be published regardless of cache availability');
+        TritonTestFactory.assertLogCount(2);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -612,7 +493,7 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_reset_clears_static_pending_logs() {
-        TritonFlowFlushBatch.pendingLogs.add(makeLogRecord('stale'));
+        TritonFlowFlushBatch.pendingLogs.add(TritonTestFactory.makeLogRecord('stale'));
         System.assertEquals(1, TritonFlowFlushBatch.pendingLogs.size());
 
         TritonFlowFlushBatch.reset();
@@ -626,18 +507,13 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_scheduleBatchIfNeeded_creates_job() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
         Test.startTest();
         TritonFlowFlushBatch.scheduleBatchIfNeeded();
         Test.stopTest();
 
-        Integer jobCount = [
-            SELECT COUNT() FROM AsyncApexJob
-            WHERE ApexClass.Name = 'TritonFlowFlushBatch'
-        ];
-        System.assert(jobCount >= 1,
+        System.assert(TritonTestFactory.countFlowFlushBatchJobs() >= 1,
             'scheduleBatchIfNeeded should create at least 1 batch job');
     }
 
@@ -647,21 +523,18 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_batch_full_lifecycle_start_execute_finish() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
         List<pharos__Log__c> logs = new List<pharos__Log__c>{
-            makeLogRecord('lifecycle-1'),
-            makeLogRecord('lifecycle-2')
+            TritonTestFactory.makeLogRecord('lifecycle-1'),
+            TritonTestFactory.makeLogRecord('lifecycle-2')
         };
 
         Test.startTest();
         Database.executeBatch(new TritonFlowFlushBatch(logs), 200);
         Test.stopTest();
 
-        List<pharos__Log__c> published = [SELECT Id, pharos__Summary__c FROM pharos__Log__c];
-        System.assertEquals(2, published.size(),
-            'Both logs should be published through the batch lifecycle');
+        TritonTestFactory.assertLogCount(2);
     }
 
     /**
@@ -671,28 +544,21 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_batch_finish_reschedules_when_new_keys_exist() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
         // Construct the batch first (reads current cache, which is empty)
         TritonFlowFlushBatch batch = new TritonFlowFlushBatch();
 
         // Now simulate new logs arriving during batch execution
-        List<pharos__Log__c> lateArrival = new List<pharos__Log__c>{
-            makeLogRecord('late-1')
-        };
-        TritonHelper.cacheFlowLogs('txlate', lateArrival);
+        TritonHelper.cacheFlowLogs('txlate', new List<pharos__Log__c>{
+            TritonTestFactory.makeLogRecord('late-1')
+        });
 
         Test.startTest();
-        // Call finish() — it should detect new cache keys and reschedule
         batch.finish(null);
         Test.stopTest();
 
-        Integer jobCount = [
-            SELECT COUNT() FROM AsyncApexJob
-            WHERE ApexClass.Name = 'TritonFlowFlushBatch'
-        ];
-        System.assert(jobCount >= 1,
+        System.assert(TritonTestFactory.countFlowFlushBatchJobs() >= 1,
             'finish() should reschedule a batch when new cache keys exist');
     }
 
@@ -701,8 +567,7 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_batch_finish_no_reschedule_when_empty() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
         TritonFlowFlushBatch batch = new TritonFlowFlushBatch();
 
@@ -710,12 +575,7 @@ private class TritonFlowTest {
         batch.finish(null);
         Test.stopTest();
 
-        Integer jobCount = [
-            SELECT COUNT() FROM AsyncApexJob
-            WHERE ApexClass.Name = 'TritonFlowFlushBatch'
-            AND Status IN ('Queued', 'Preparing', 'Processing', 'Holding')
-        ];
-        System.assertEquals(0, jobCount,
+        System.assertEquals(0, TritonTestFactory.countActiveFlowFlushBatchJobs(),
             'finish() should not reschedule when no cache keys exist');
     }
 
@@ -725,9 +585,9 @@ private class TritonFlowTest {
     @IsTest
     private static void test_batch_start_returns_logs() {
         List<pharos__Log__c> logs = new List<pharos__Log__c>{
-            makeLogRecord('start-1'),
-            makeLogRecord('start-2'),
-            makeLogRecord('start-3')
+            TritonTestFactory.makeLogRecord('start-1'),
+            TritonTestFactory.makeLogRecord('start-2'),
+            TritonTestFactory.makeLogRecord('start-3')
         };
         TritonFlowFlushBatch batch = new TritonFlowFlushBatch(logs);
 
@@ -748,8 +608,8 @@ private class TritonFlowTest {
     @IsTest
     private static void test_batch_execute_publishes_scope() {
         List<pharos__Log__c> scope = new List<pharos__Log__c>{
-            makeLogRecord('exec-1'),
-            makeLogRecord('exec-2')
+            TritonTestFactory.makeLogRecord('exec-1'),
+            TritonTestFactory.makeLogRecord('exec-2')
         };
         TritonFlowFlushBatch batch = new TritonFlowFlushBatch(new List<pharos__Log__c>());
 
@@ -757,9 +617,7 @@ private class TritonFlowTest {
         batch.execute(null, scope);
         Test.stopTest();
 
-        List<pharos__Log__c> published = [SELECT Id, pharos__Summary__c FROM pharos__Log__c];
-        System.assertEquals(2, published.size(),
-            'execute() should publish all logs in the scope');
+        TritonTestFactory.assertLogCount(2);
     }
 
     /**
@@ -768,22 +626,19 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_batch_with_injected_logs() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
         List<pharos__Log__c> injectedLogs = new List<pharos__Log__c>{
-            makeLogRecord('inject-1'),
-            makeLogRecord('inject-2'),
-            makeLogRecord('inject-3')
+            TritonTestFactory.makeLogRecord('inject-1'),
+            TritonTestFactory.makeLogRecord('inject-2'),
+            TritonTestFactory.makeLogRecord('inject-3')
         };
 
         Test.startTest();
         Database.executeBatch(new TritonFlowFlushBatch(injectedLogs), 200);
         Test.stopTest();
 
-        List<pharos__Log__c> published = [SELECT Id FROM pharos__Log__c];
-        System.assertEquals(3, published.size(),
-            'All injected logs should be published through the batch');
+        TritonTestFactory.assertLogCount(3);
     }
 
     /**
@@ -792,24 +647,18 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_addLogs_cache_failure_falls_back_to_immediate_flush() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
-
-        List<pharos__Log__c> logs = new List<pharos__Log__c>{
-            makeLogRecord('fallback-1')
-        };
+        TritonTestFactory.resetFlowState();
 
         Test.startTest();
         // null transactionId causes NPE in buildFlowCacheKey → cacheFlowLogs returns false
-        TritonFlowFlushBatch.addLogs(logs, null);
+        TritonFlowFlushBatch.addLogs(
+            new List<pharos__Log__c>{ TritonTestFactory.makeLogRecord('fallback-1') }, null
+        );
         Test.stopTest();
 
         System.assertEquals(0, TritonFlowFlushBatch.pendingLogs.size(),
             'Buffer should be cleared after cache failure fallback');
-
-        List<pharos__Log__c> published = [SELECT Id FROM pharos__Log__c];
-        System.assertEquals(1, published.size(),
-            'Log should be published via immediate flush fallback');
+        TritonTestFactory.assertLogCount(1);
     }
 
     /**
@@ -817,20 +666,19 @@ private class TritonFlowTest {
      */
     @IsTest
     private static void test_addLogs_multiple_transactions() {
-        TritonFlowFlushBatch.reset();
-        TritonCacheManager.resetMock();
+        TritonTestFactory.resetFlowState();
 
         Test.startTest();
         TritonFlowFlushBatch.addLogs(
-            new List<pharos__Log__c>{ makeLogRecord('robust-1') }, 'txr1'
+            new List<pharos__Log__c>{ TritonTestFactory.makeLogRecord('robust-1') }, 'txr1'
         );
         TritonFlowFlushBatch.addLogs(
-            new List<pharos__Log__c>{ makeLogRecord('robust-2') }, 'txr2'
+            new List<pharos__Log__c>{ TritonTestFactory.makeLogRecord('robust-2') }, 'txr2'
         );
-        flushCachedFlowLogs();
+        TritonTestFactory.flushCachedFlowLogs();
         Test.stopTest();
 
-        List<pharos__Log__c> published = [SELECT Id FROM pharos__Log__c];
+        List<pharos__Log__c> published = TritonTestFactory.queryLogs();
         System.assert(published.size() >= 2,
             'All logs should be published whether via batch or immediate flush');
     }
