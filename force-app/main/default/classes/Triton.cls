@@ -104,14 +104,7 @@ global with sharing class Triton {
     private static Boolean CACHE_AVAILABLE {
         get {
             if (CACHE_AVAILABLE == null) {
-                try {
-                    // Try to get the Session partition - this will throw an exception
-                    // if platform cache is not enabled or no partitions are configured
-                    Cache.Session.getKeys();
-                    CACHE_AVAILABLE = true;
-                } catch (Exception e) {
-                    CACHE_AVAILABLE = false;
-                }
+                CACHE_AVAILABLE = TritonCacheManager.sessionAvailable();
             }
             return CACHE_AVAILABLE;
         }
@@ -185,6 +178,18 @@ global with sharing class Triton {
         }
         logger.flush();
         logs.clear();
+    }
+
+    /**
+    * Returns all buffered logs and clears the internal buffer.
+    * Used by TritonFlow to hand off logs to the deferred flush batch
+    * without publishing them immediately.
+    * @return List of buffered log records
+    */
+    public static List<pharos__Log__c> drain() {
+        List<pharos__Log__c> drained = new List<pharos__Log__c>(logs);
+        logs.clear();
+        return drained;
     }
 
     /**

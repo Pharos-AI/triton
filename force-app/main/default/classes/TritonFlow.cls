@@ -40,7 +40,12 @@ global with sharing class TritonFlow {
             FlowLogOutput result = processFlowLog(flowLog);
             flowLogOutputs.add(result);
         }
-        Triton.flush();
+        // Drain buffered logs and defer to batch flush instead of immediate publish.
+        // addLogs handles all failure cases internally — no logs are ever lost.
+        List<pharos__Log__c> buffered = Triton.drain();
+        if (!buffered.isEmpty()) {
+            TritonFlowFlushBatch.addLogs(buffered, Triton.TRANSACTION_ID);
+        }
         return flowLogOutputs;
     }
     

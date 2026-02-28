@@ -39,7 +39,7 @@ public with sharing class TritonHelper {
      */
     public static void cacheTransactionId(String transactionId) {
         try {
-            Cache.Session.put(getUserCacheKey(), transactionId, DEFAULT_TRANSACTION_CACHE_DURATION);
+            TritonCacheManager.sessionPut(getUserCacheKey(), transactionId, DEFAULT_TRANSACTION_CACHE_DURATION);
         } catch (Exception e) {
             // Silently handle cache failures - logging system should continue without cache
         }
@@ -51,7 +51,7 @@ public with sharing class TritonHelper {
      */
     public static String getCachedTransactionId() {
         try {
-            return (String)Cache.Session.get(getUserCacheKey());
+            return TritonCacheManager.sessionGet(getUserCacheKey());
         } catch (Exception e) {
             // Silently handle cache failures - logging system should continue without cache
             return null;
@@ -62,7 +62,89 @@ public with sharing class TritonHelper {
      * Clears transaction ID from platform cache
      */
     public static void clearCachedTransactionId() {
-        Cache.Session.remove(getUserCacheKey());
+        TritonCacheManager.sessionRemove(getUserCacheKey());
+    }
+
+    // ─── Flow Log Org Cache helpers ───────────────────────────────────────
+
+    private static final String FLOW_LOG_CACHE_PREFIX = 'flFlush';
+    private static final String NON_ALPHANUMERIC_PATTERN = '[^a-zA-Z0-9]';
+
+    /**
+     * Builds a cache-safe key from a transaction ID by stripping non-alphanumeric characters.
+     * Org Cache keys must be alphanumeric only.
+     */
+    private static String buildFlowCacheKey(String transactionId) {
+        return FLOW_LOG_CACHE_PREFIX + transactionId.replaceAll(NON_ALPHANUMERIC_PATTERN, '');
+    }
+    private static final Integer FLOW_LOG_CACHE_TTL = 300;
+
+    /**
+     * Saves flow logs to Org Cache keyed by transaction ID.
+     * Stores SObjects directly — no JSON serialization.
+     * Overwrites previous entry for the same transaction (last write wins).
+     * @param transactionId The transaction ID used as cache key suffix
+     * @param logs The list of log records to cache
+     * @return true if cache write succeeded, false otherwise
+     */
+    public static Boolean cacheFlowLogs(String transactionId, List<pharos__Log__c> logs) {
+        try {
+            TritonCacheManager.put(buildFlowCacheKey(transactionId), logs, FLOW_LOG_CACHE_TTL);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Retrieves flow logs from Org Cache by key.
+     * Casts directly from cached Object — no JSON deserialization.
+     * @param key The full cache key (including prefix)
+     * @return List of cached log records, or empty list on failure
+     */
+    public static List<pharos__Log__c> getCachedFlowLogs(String key) {
+        try {
+            Object data = TritonCacheManager.get(key);
+            if (data != null) {
+                return (List<pharos__Log__c>) data;
+            }
+        } catch (Exception e) {
+            // Silently handle cache failures
+        }
+        return new List<pharos__Log__c>();
+    }
+
+    /**
+     * Returns all Org Cache keys matching the flow log prefix.
+     * Used by the flush batch to discover pending logs across transactions.
+     * @return Set of cache keys for pending flow logs
+     */
+    public static Set<String> getFlowLogCacheKeys() {
+        try {
+            Set<String> allKeys = TritonCacheManager.getKeys();
+            Set<String> flowKeys = new Set<String>();
+            for (String key : allKeys) {
+                if (key.startsWith(FLOW_LOG_CACHE_PREFIX)) {
+                    flowKeys.add(key);
+                }
+            }
+            return flowKeys;
+        } catch (Exception e) {
+            // Silently handle cache failures
+        }
+        return new Set<String>();
+    }
+
+    /**
+     * Removes a flow log cache entry after processing.
+     * @param key The full cache key to remove
+     */
+    public static void removeFlowLogCacheKey(String key) {
+        try {
+            TritonCacheManager.remove(key);
+        } catch (Exception e) {
+            // Silently handle cache failures
+        }
     }
 
     /**

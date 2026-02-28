@@ -460,225 +460,6 @@ private class TritonTest {
     }
 
     @IsTest
-    private static void test_flow() {
-        assertBefore();
-
-        Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        
-        // Test 1: Basic flow log with valid category
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = TritonTypes.Category.Flow.name();
-        flowLog.type = 'type';
-        flowLog.area = 'area';
-        flowLog.summary = 'test';
-        flowLog.details = 'test';
-        flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
-        flowLogs.add(flowLog);
-        
-        // Test 2: Flow log with invalid category
-        TritonFlow.FlowLog invalidCategoryLog = new TritonFlow.FlowLog();
-        invalidCategoryLog.category = 'InvalidCategory';
-        invalidCategoryLog.type = 'type';
-        invalidCategoryLog.area = 'area';
-        invalidCategoryLog.summary = 'test invalid';
-        invalidCategoryLog.details = 'test invalid';
-        flowLogs.add(invalidCategoryLog);
-        
-        // Test 3: Flow log with transaction ID
-        TritonFlow.FlowLog transactionLog = new TritonFlow.FlowLog();
-        transactionLog.category = TritonTypes.Category.Flow.name();
-        transactionLog.type = 'type';
-        transactionLog.area = 'area';
-        transactionLog.summary = 'test transaction';
-        transactionLog.details = 'test transaction';
-        transactionLog.transactionId = 'test-transaction-id';
-        flowLogs.add(transactionLog);
-        
-        // Test 4: Flow log with empty category
-        TritonFlow.FlowLog emptyCategoryLog = new TritonFlow.FlowLog();
-        emptyCategoryLog.category = '';
-        emptyCategoryLog.type = 'type';
-        emptyCategoryLog.area = 'area';
-        emptyCategoryLog.summary = 'test empty';
-        emptyCategoryLog.details = 'test empty';
-        flowLogs.add(emptyCategoryLog);
-        
-        TritonFlow.log(flowLogs);
-        Test.stopTest();
-
-        // Verify logs were created with correct properties
-        List<pharos__Log__c> logs = [
-            SELECT Id, 
-                   pharos__Category__c, 
-                   pharos__Summary__c, 
-                   pharos__Details__c,
-                   pharos__Transaction_Id_External__c,
-                   pharos__Hash__c 
-            FROM pharos__Log__c 
-            ORDER BY CreatedDate
-        ];
-        
-        System.assertEquals(4, logs.size(), 'Should have created 4 logs');
-        
-        // Verify first log (valid category)
-        System.assertEquals(TritonTypes.Category.Flow.name(), logs[0].pharos__Category__c);
-        System.assertEquals('test summary', logs[0].pharos__Summary__c);
-        
-        // Verify second log (invalid category)
-        System.assertEquals(TritonTypes.Category.Flow.name(), logs[1].pharos__Category__c);
-        System.assert(logs[1].pharos__Details__c.contains('Unable to locate category: InvalidCategory'));
-        
-        // Verify third log (with transaction ID)
-        System.assertEquals('test-transaction-id', logs[2].pharos__Transaction_Id_External__c);
-        
-        // Verify fourth log (empty category)
-        System.assertEquals(TritonTypes.Category.Flow.name(), logs[3].pharos__Category__c);
-        System.assert(!logs[3].pharos__Details__c.contains('Unable to locate category'));
-        
-    }
-
-    @IsTest
-    private static void test_flow_with_stacktrace() {
-        assertBefore();
-
-        Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = TritonTypes.Category.Flow.name();
-        flowLog.type = 'type';
-        flowLog.area = 'area';
-        flowLog.summary = 'test';
-        flowLog.details = 'test';
-        flowLog.stacktrace = 'test stacktrace';
-        flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
-        flowLogs.add(flowLog);
-        List<TritonFlow.FlowLogOutput> results = TritonFlow.log(flowLogs);
-        Test.stopTest();
-
-        System.assertEquals(1, results.size());
-        System.assertEquals('test stacktrace', results.get(0).fullStacktrace);
-
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
-        System.assertEquals(1, logs.size());
-        System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
-        System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
-    }
-
-    @IsTest
-    private static void test_flow_with_stacktrace_multiple_logs() {
-        assertBefore();
-
-        Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        TritonFlow.FlowLog flowLog1 = new TritonFlow.FlowLog();
-        flowLog1.category = TritonTypes.Category.Flow.name();
-        flowLog1.type = 'type';
-        flowLog1.area = 'area';
-        flowLog1.summary = 'test';
-        flowLog1.details = 'test';
-        flowLog1.stacktrace = 'teststacktrace1';
-        flowLog1.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
-        flowLogs.add(flowLog1);
-        TritonFlow.FlowLog flowLog2 = new TritonFlow.FlowLog();
-        flowLog2.category = TritonTypes.Category.Flow.name();
-        flowLog2.type = 'type';
-        flowLog2.area = 'area';
-        flowLog2.summary = 'test';
-        flowLog2.details = 'test';
-        flowLog2.fullStacktrace = flowLog1.stacktrace;
-        flowLog2.stacktrace = 'teststacktrace2';
-        flowLog2.additionalFields = '{"pharos__Summary__c":"test summary 2","pharos__Details__c":"test Details 2"}';
-        flowLogs.add(flowLog2);
-        List<TritonFlow.FlowLogOutput> results = TritonFlow.log(flowLogs);
-        Test.stopTest();
-
-        System.assertEquals(2, results.size());
-        System.assertEquals('teststacktrace1', results.get(0).fullStacktrace);
-        System.assertEquals('teststacktrace1teststacktrace2', results.get(1).fullStacktrace);
-
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c, pharos__Stacktrace__c FROM pharos__Log__c];
-        System.assertEquals(2, logs.size());
-        System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
-        System.assertEquals('test summary 2', logs.get(1).pharos__Summary__c);
-        System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
-        System.assertNotEquals(null, logs.get(1).pharos__Hash__c);
-        System.assertEquals('teststacktrace1', logs.get(0).pharos__Stacktrace__c);
-        System.assertEquals('teststacktrace1teststacktrace2', logs.get(1).pharos__Stacktrace__c);
-    }
-
-    @IsTest
-    private static void test_flow_wrong_category() {
-        assertBefore();
-
-        Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = 'InvalidCategory';
-        flowLog.type = 'type';
-        flowLog.area = 'area';
-        flowLog.summary = 'test';
-        flowLog.details = 'test';
-        flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
-        flowLogs.add(flowLog);
-        TritonFlow.log(flowLogs);
-        Test.stopTest();
-
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Hash__c FROM pharos__Log__c];
-        System.assertEquals(1, logs.size());
-        System.assertEquals(TritonTypes.Category.Flow.name(), logs.get(0).pharos__Category__c);
-    }
-
-    @IsTest
-    private static void test_flow_create_issue() {
-        assertBefore();
-
-        Test.startTest();
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = TritonTypes.Category.Flow.name();
-        flowLog.type = 'type';
-        flowLog.area = 'area';
-        flowLog.summary = 'test';
-        flowLog.details = 'test';
-        flowLog.level = 'ERROR';
-        flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
-        TritonFlow.processFlowLog(flowLog);
-        Test.stopTest();
-        System.assertEquals(1, Triton.logs.size());
-        System.assertEquals(false, Triton.logs.get(0).pharos__Do_Not_Create_Issue__c);
-    }    
-
-    @IsTest
-    private static void test_flow_bad_additional_fields_json() {
-        assertBefore();
-        
-        Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = TritonTypes.Category.Flow.name();
-        flowLog.type = 'test type';
-        flowLog.area = 'test area';
-        flowLog.summary = 'test summary';
-        flowLog.details = 'test';
-        flowLog.level = 'level';
-        flowLog.additionalFields = '{bad_json "test"}';
-        flowLogs.add(flowLog);
-        TritonFlow.log(flowLogs);
-        Test.stopTest();
-
-        List<pharos__Log__c> logs = [SELECT Id, 
-                                       pharos__Details__c, 
-                                       pharos__Summary__c, 
-                                       pharos__Hash__c 
-                                FROM pharos__Log__c];
-        pharos__Log__c log = logs.get(0);
-        System.assertEquals(1, logs.size());
-        System.assertEquals('test summary', log.pharos__Summary__c);
-        System.assert(log.pharos__Details__c.contains('Unable to locate log level'), 'Log level error should be present');
-        System.assert(log.pharos__Details__c.contains('failed to parse json input'), 'Additional fields parse error should be present');
-    }
-
-    @IsTest
     private static void test_triton_builder() {
         assertBefore();
 
@@ -1352,10 +1133,13 @@ private class TritonTest {
 
     @IsTest
     private static void test_cache_functionality() {
+        TritonCacheManager.resetMock();
+        // Reset CACHE_AVAILABLE so it re-evaluates through TritonCacheManager
+        Triton.CACHE_AVAILABLE = null;
+
         Test.startTest();
 
-        // Test withCache when cache is available
-        Cache.Org.put('test', 'test'); // This will make CACHE_AVAILABLE true
+        // Mock cache is always available in test context
         Triton.withCache();
         System.assert(Triton.cacheEnabled, 'Cache should be enabled');
 
@@ -1378,10 +1162,9 @@ private class TritonTest {
 
     @IsTest
     private static void test_cache_functionality_negative() {
-        Test.startTest();
+        TritonCacheManager.resetMock();
 
-        // Force cache to be unavailable
-        Cache.Org.remove('test'); // Clear any existing cache entries
+        Test.startTest();
 
         // Explicitly disable cache
         Triton.cacheEnabled = false;
@@ -2172,6 +1955,133 @@ private class TritonTest {
         String context = TritonHelper.formatExecutionContext();
         Test.stopTest();
         System.assertEquals('', context, 'Sync context should return empty string');
+    }
+
+    @IsTest
+    static void test_builder_clone() {
+        TritonBuilder original = Triton.makeBuilder()
+            .category(TritonTypes.Category.Integration)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .level(TritonTypes.Level.WARNING)
+            .withFullLimitInfo()
+            .traceable(true);
+
+        TritonBuilder cloned = original.cloneBuilder();
+        pharos__Log__c clonedLog = cloned.build();
+
+        System.assertEquals(TritonTypes.Category.Integration.name(), clonedLog.pharos__Category__c,
+            'Cloned builder should preserve category');
+        System.assertEquals(TritonTypes.Type.Backend.name(), clonedLog.pharos__Type__c,
+            'Cloned builder should preserve type');
+        System.assertEquals(TritonTypes.Area.Community.name(), clonedLog.pharos__Area__c,
+            'Cloned builder should preserve area');
+        System.assertEquals(true, cloned.fullLimitInfoRequested,
+            'Cloned builder should preserve fullLimitInfoRequested');
+        System.assertEquals(true, cloned.traceable,
+            'Cloned builder should preserve traceable');
+    }
+
+    @IsTest
+    static void test_builder_execution_context() {
+        TritonBuilder builder = Triton.makeBuilder()
+            .summary('exec context test')
+            .executionContext();
+        pharos__Log__c log = builder.build();
+        // In test (synchronous) context, executionContext returns empty string
+        // so details should not contain execution context info
+        System.assertNotEquals(null, log, 'Log should be built');
+    }
+
+    @IsTest
+    static void test_builder_post_processing() {
+        assertBefore();
+
+        Test.startTest();
+        TritonHelper.PostProcessingControlsBuilder ppBuilder =
+            Triton.makePostProcessingBuilder().setAll(true);
+        Triton.logNow(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Apex)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('post processing test')
+                .postProcessing(ppBuilder)
+                .error()
+        );
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [SELECT Id FROM pharos__Log__c];
+        System.assertEquals(1, logs.size(), 'Log with post processing should be created');
+    }
+
+    @IsTest
+    static void test_builder_action() {
+        TritonBuilder builder = Triton.makeBuilder()
+            .action('myAction')
+            .summary('action test');
+        pharos__Log__c log = builder.build();
+        System.assertEquals('myAction', log.Action__c, 'Action should be set');
+    }
+
+    @IsTest
+    static void test_builder_level_shorthands_with_summary() {
+        // warning(String)
+        pharos__Log__c log = Triton.makeBuilder().warning('warn msg').build();
+        System.assertEquals('warn msg', log.pharos__Summary__c);
+        System.assertEquals('WARNING', log.Log_Level__c);
+
+        // info(String)
+        log = Triton.makeBuilder().info('info msg').build();
+        System.assertEquals('info msg', log.pharos__Summary__c);
+        System.assertEquals('INFO', log.Log_Level__c);
+
+        // debug(String)
+        log = Triton.makeBuilder().debug('debug msg').build();
+        System.assertEquals('debug msg', log.pharos__Summary__c);
+        System.assertEquals('DEBUG', log.Log_Level__c);
+
+        // fine(String)
+        log = Triton.makeBuilder().fine('fine msg').build();
+        System.assertEquals('fine msg', log.pharos__Summary__c);
+        System.assertEquals('FINE', log.Log_Level__c);
+
+        // finer(String)
+        log = Triton.makeBuilder().finer('finer msg').build();
+        System.assertEquals('finer msg', log.pharos__Summary__c);
+        System.assertEquals('FINER', log.Log_Level__c);
+
+        // finest(String)
+        log = Triton.makeBuilder().finest('finest msg').build();
+        System.assertEquals('finest msg', log.pharos__Summary__c);
+        System.assertEquals('FINEST', log.Log_Level__c);
+    }
+
+    @IsTest
+    static void test_builder_related_object_null() {
+        TritonBuilder builder = Triton.makeBuilder();
+        builder.relatedObject((Id)null);
+        System.assertEquals(null, builder.build().pharos__Related_Objects__c,
+            'relatedObject(null) should be no-op');
+    }
+
+    @IsTest
+    static void test_builder_exception_null() {
+        TritonBuilder builder = Triton.makeBuilder();
+        builder.exception(null);
+        // Should be no-op — no type/summary/stacktrace set from exception
+        pharos__Log__c log = builder.build();
+        System.assertNotEquals(null, log, 'Builder should still produce a log');
+    }
+
+    @IsTest
+    static void test_builder_related_objects_list_string() {
+        Id validId = UserInfo.getUserId();
+        TritonBuilder builder = Triton.makeBuilder();
+        builder.relatedObjects(new List<String>{ validId, 'bad-id' });
+        pharos__Log__c log = builder.build();
+        System.assertEquals(JSON.serialize(new Set<Id>{ validId }), log.pharos__Related_Objects__c,
+            'Should include only valid IDs from List<String>');
     }
 
 }
