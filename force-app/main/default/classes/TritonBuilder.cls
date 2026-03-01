@@ -95,9 +95,6 @@ public with sharing class TritonBuilder {
 
     @TestVisible
     private Boolean includeLimitInfo = true;
-    @TestVisible
-    private Boolean traceable = false;
-
     private pharos.LogBuilder builder;
     
     @TestVisible
@@ -114,7 +111,6 @@ public with sharing class TritonBuilder {
         
         cloned.includeLimitInfo = this.includeLimitInfo;
         cloned.fullLimitInfoRequested = this.fullLimitInfoRequested;
-        cloned.traceable = this.traceable;
         cloned.initBuilder();
         return cloned;
     }
@@ -448,31 +444,6 @@ public with sharing class TritonBuilder {
     */
     public TritonBuilder attribute(String name, Object value) {
         this.builder.attribute(name, value);
-        return this;
-    }
-
-    /**
-    * Set a trace point on the log
-    * @return this builder instance
-    */
-    public TritonBuilder tracePoint() {
-        if (this.traceable) {
-            this.builder.tracePoint();
-            System.debug('TRACEPOINT:'+ this.builder.getTraceId());
-        }
-        return this;
-    }
-
-    /**
-    * Set traceable flag
-    * @param traceable -- Boolean value to set the traceable flag
-    * @return this builder instance
-    */
-    public TritonBuilder traceable(Boolean traceable) {
-        this.traceable = traceable;
-        if(traceable) {
-            this.createIssue();
-        }
         return this;
     }
 

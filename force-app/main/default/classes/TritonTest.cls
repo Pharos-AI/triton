@@ -775,64 +775,6 @@ private class TritonTest {
     }
 
     @IsTest
-    private static void test_triton_builder_traceable() {
-        TritonBuilder builder = new TritonBuilder();
-        builder
-            .category(TritonTypes.Category.Apex)
-            .type(TritonTypes.Type.Backend)
-            .area(TritonTypes.Area.Community)
-            .level(TritonTypes.Level.INFO)
-            .summary('some event')
-            .details('error details')
-            .stackTrace('Debug details')
-            .traceable(true)
-            .tracePoint();
-
-        System.assertEquals(true, builder.traceable, 'Traceable flag should be set');
-
-    }
-
-    @IsTest
-    private static void test_trace_point_when_not_traceable() {
-        TritonBuilder builder = new TritonBuilder();
-        builder
-            .category(TritonTypes.Category.Apex)
-            .type(TritonTypes.Type.Backend)
-            .area(TritonTypes.Area.Community)
-            .level(TritonTypes.Level.INFO)
-            .summary('trace point no-op test')
-            .details('details')
-            .traceable(false)
-            .tracePoint();
-
-        System.assertEquals(false, builder.traceable, 'Should not be traceable when traceable(false)');
-    }
-
-    @IsTest
-    private static void test_traceable_creates_issue() {
-        assertBefore();
-
-        Test.startTest();
-        Triton.instance.addLog(
-            Triton.makeBuilder()
-                .category(TritonTypes.Category.Apex)
-                .type(TritonTypes.Type.Backend)
-                .area(TritonTypes.Area.Community)
-                .level(TritonTypes.Level.INFO)
-                .summary('traceable creates issue test')
-                .details('details')
-                .traceable(true)
-                .tracePoint()
-        );
-        Triton.instance.flush();
-        Test.stopTest();
-
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Do_Not_Create_Issue__c FROM pharos__Log__c];
-        System.assertEquals(1, logs.size(), 'Should have one log');
-        System.assertEquals(false, logs.get(0).pharos__Do_Not_Create_Issue__c, 'traceable(true) should create issue');
-    }
-
-    @IsTest
     private static void test_template() {
         assertBefore();
         
@@ -2049,28 +1991,6 @@ private class TritonTest {
             
         System.assertNotEquals(2000, log.Heap_Size__c,
             'Template heap size should not be copied to logs created with fromTemplate()');
-    }
-
-    @isTest
-    private static void test_triton_addLog_method() {
-        TritonBuilder builder = new TritonBuilder();
-        builder
-            .category(TritonTypes.Category.Apex)
-            .type(TritonTypes.Type.Backend)
-            .area(TritonTypes.Area.Community)
-            .level(TritonTypes.Level.INFO)
-            .summary('some event')
-            .details('error details')
-            .stackTrace('Debug details')
-            .traceable(true)
-            .tracePoint();
-
-        Triton.instance.addLog(builder);
-        Triton.instance.flush();
-
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Stacktrace__c FROM pharos__Log__c];
-        System.assertNotEquals(null, logs, 'Log should be created');
-        System.assertEquals(true, builder.traceable, 'Traceable flag should be set');
     }
 
     /**
