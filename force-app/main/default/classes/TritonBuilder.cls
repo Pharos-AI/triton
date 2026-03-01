@@ -104,6 +104,7 @@ public with sharing class TritonBuilder {
     private Boolean fullLimitInfoRequested = false;
 
     private String fullSummary;
+    @TestVisible
     private String executionContextDetails;
     private String categoryValue;
 
@@ -241,7 +242,7 @@ public with sharing class TritonBuilder {
      * For async contexts (batch, queueable, scheduled, future): labels the context type.
      * Appended to details at build time.
      */
-    public TritonBuilder executionContext() {
+    public TritonBuilder apexExecutionContext() {
         this.executionContextDetails = TritonHelper.formatExecutionContext();
         return this;
     }
@@ -730,6 +731,11 @@ public with sharing class TritonBuilder {
 
         // Add tracepoint and limits
         this.tracePoint().limitInfo();
+
+        // Capture execution context for Apex logs only
+        if (this.categoryValue == TritonTypes.Category.Apex.name()) {
+            this.apexExecutionContext();
+        }
 
         return this;
     }

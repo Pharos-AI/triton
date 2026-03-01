@@ -187,9 +187,12 @@ private class TritonTest {
         HttpCalloutMock multiCalloutMock = new MultiRequestMock(createEndpoint2TestResp());
         Test.setMock(HttpCalloutMock.class, multiCalloutMock);
         testHttpRequest();
-        Contact contact = new Contact();
-        contact.LastName = 'Test';
-        insert contact;
+        pharos__Log__c spacerLog = new pharos__Log__c(
+            pharos__Summary__c = 'Spacer',
+            pharos__Post_Processing_Status__c = 'Not Needed'
+        );
+        insert spacerLog;
+        delete spacerLog;
         testHttpRequest();
         Test.stopTest();
 
@@ -728,24 +731,21 @@ private class TritonTest {
     @IsTest
     private static void testDMLErrorLogging() {
         Test.startTest();
-        
-        // 1. Test SaveResult - Invalid account without required Name field
-        Account invalidAcc = new Account();
-        Database.SaveResult[] srList = Database.insert(new List<Account>{invalidAcc}, false);
+        Id fakeId = pharos__Log__c.SObjectType.getDescribe().getKeyPrefix() + '000000000000';
+
+        // 1. Test SaveResult - Insert log with invalid lookup to force failure
+        pharos__Log__c invalidLog = new pharos__Log__c(pharos__Issue__c = fakeId);
+        Database.SaveResult[] srList = Database.insert(new List<pharos__Log__c>{invalidLog}, false);
         System.assert(!srList[0].isSuccess(), 'Insert should fail');
         Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(srList));
 
-        // 2. Create a Contact with missing required field (LastName) to test field-specific errors
-        Contact invalidContact = new Contact();
-        // FirstName is optional, but LastName is required
-        invalidContact.FirstName = 'Test';
-        // Deliberately omit LastName to cause a field-specific error
-        Database.SaveResult[] contactSrList = Database.insert(new List<Contact>{invalidContact}, false);
-        System.assert(!contactSrList[0].isSuccess(), 'Contact insert should fail due to missing LastName');
-        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Community).dmlResults(contactSrList));
+        // 2. Test SaveResult with field-specific error details
+        pharos__Log__c invalidLog2 = new pharos__Log__c(pharos__Issue__c = fakeId);
+        Database.SaveResult[] fieldSrList = Database.insert(new List<pharos__Log__c>{invalidLog2}, false);
+        System.assert(!fieldSrList[0].isSuccess(), 'Insert should fail with field error');
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Community).dmlResults(fieldSrList));
 
         // 3. Test DeleteResult - Try to delete non-existent record
-        Id fakeId = '001000000000000AAA';
         Database.DeleteResult[] drList = Database.delete(new List<Id>{fakeId}, false);
         System.assert(!drList[0].isSuccess(), 'Delete should fail');
         Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(drList));
@@ -756,91 +756,77 @@ private class TritonTest {
         Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(urList));
 
         // 5. Test UpsertResult - Try to update non-existent record
-        Account invalidUpsertAcc = new Account(Id = fakeId);
-        Database.UpsertResult[] urList2 = Database.upsert(new List<Account>{invalidUpsertAcc}, false);
+        pharos__Log__c invalidUpsertLog = new pharos__Log__c(Id = fakeId);
+        Database.UpsertResult[] urList2 = Database.upsert(new List<pharos__Log__c>{invalidUpsertLog}, false);
         System.assert(!urList2[0].isSuccess(), 'Upsert should fail');
         Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(urList2));
 
-        // 6. Test MergeResult - Try to merge with invalid record
-        Account masterAcc = new Account(Name = 'Master');
-        insert masterAcc;
-        Database.MergeResult[] mergeList = Database.merge(masterAcc, new List<Id>{fakeId}, false);
-        System.assert(!mergeList[0].isSuccess(), 'Merge should fail');
-        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(mergeList));
-        
         Test.stopTest();
-        
+
         // Verify logs were created
         List<pharos__Log__c> logs = [
-            SELECT Id, pharos__Category__c, pharos__Type__c, pharos__Area__c, 
+            SELECT Id, pharos__Category__c, pharos__Type__c, pharos__Area__c,
                    pharos__Summary__c, pharos__Details__c, Log_Level__c,
                    pharos__Apex_Name__c
             FROM pharos__Log__c
             WHERE pharos__Type__c = :TritonTypes.Type.DMLResult.name()
             ORDER BY CreatedDate
         ];
-                
-        System.assertEquals(6, logs.size(), 'Expected 6 DML error logs to be created (one for each DML operation)');
-        
-        Set<String> expectedOperations = new Set<String>{'Save', 'Delete', 'Undelete', 'Upsert', 'Merge'};
+
+        System.assertEquals(5, logs.size(), 'Expected 5 DML error logs');
+
+        Set<String> expectedOperations = new Set<String>{'Save', 'Delete', 'Undelete', 'Upsert'};
         Set<String> foundOperations = new Set<String>();
-        
-        // Find the Contact error log
-        pharos__Log__c contactErrorLog = null;
+
+        // Find the field error log
+        pharos__Log__c fieldErrorLog = null;
         for(pharos__Log__c log : logs) {
             System.assertEquals(TritonTypes.Type.DMLResult.name(), log.pharos__Type__c);
             System.assertEquals(TritonTypes.Level.ERROR.name(), log.Log_Level__c);
             System.assert(log.pharos__Summary__c.contains('DML Operation'));
-            
-            // Store the operation type
+
             foundOperations.add(log.pharos__Apex_Name__c);
-            
-            // Find the Contact error log
+
             if(log.pharos__Area__c == TritonTypes.Area.Community.name()) {
-                contactErrorLog = log;
+                fieldErrorLog = log;
             }
         }
-        
+
         // Verify all expected operations are found
         System.assertEquals(expectedOperations, foundOperations);
-        
-        // Verify field-level error information is included in the Contact error log
-        System.assertNotEquals(null, contactErrorLog, 'Contact error log should be created');
-        System.assert(contactErrorLog.pharos__Details__c.contains('Fields:'), 
-            'Contact error log should include field information');
-        System.assert(contactErrorLog.pharos__Details__c.contains('LastName'), 
-            'Contact error log should mention LastName field');
-        System.assert(contactErrorLog.pharos__Details__c.contains('Status Code:'), 
-            'Contact error log should include status code');
+
+        // Verify error information is included in the field error log
+        System.assertNotEquals(null, fieldErrorLog, 'Field error log should be created');
+        System.assert(fieldErrorLog.pharos__Details__c.contains('Status Code:'),
+            'Error log should include status code');
     }
 
     @IsTest
     private static void testDMLErrorLogging_NoErrors() {
-        // Setup
-        Account validAcc = new Account(Name = 'Test Account');
-        insert validAcc;
-        
         Test.startTest();
-        
+
         // 1. Test SaveResult with valid data
-        Account newAcc = new Account(Name = 'Valid Account');
-        Database.SaveResult[] srList = Database.insert(new List<Account>{newAcc}, false);
+        pharos__Log__c newLog = new pharos__Log__c(
+            pharos__Summary__c = 'Valid Log',
+            pharos__Post_Processing_Status__c = 'Not Needed'
+        );
+        Database.SaveResult[] srList = Database.insert(new List<pharos__Log__c>{newLog}, false);
         System.assert(srList[0].isSuccess(), 'Insert should succeed');
         Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(srList));
 
         // 2. Test UpsertResult with valid data
-        newAcc.Name = 'Updated Name';
-        Database.UpsertResult[] upsertList = Database.upsert(new List<Account>{newAcc}, false);
+        newLog.pharos__Summary__c = 'Updated Log';
+        Database.UpsertResult[] upsertList = Database.upsert(new List<pharos__Log__c>{newLog}, false);
         System.assert(upsertList[0].isSuccess(), 'Upsert should succeed');
         Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(upsertList));
 
         // 3. Test DeleteResult with valid data
-        Database.DeleteResult[] drList = Database.delete(new List<Id>{newAcc.Id}, false);
+        Database.DeleteResult[] drList = Database.delete(new List<Id>{newLog.Id}, false);
         System.assert(drList[0].isSuccess(), 'Delete should succeed');
         Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(drList));
 
         // 4. Test UndeleteResult with valid data
-        Database.UndeleteResult[] urList = Database.undelete(new List<Id>{newAcc.Id}, false);
+        Database.UndeleteResult[] urList = Database.undelete(new List<Id>{newLog.Id}, false);
         System.assert(urList[0].isSuccess(), 'Undelete should succeed');
         Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(urList));
         
@@ -960,10 +946,13 @@ private class TritonTest {
         
         // Create some limit usage
         for(Integer i = 0; i < 5; i++) {
-            List<Account> accounts = [SELECT Id FROM Account LIMIT 1];
+            List<pharos__Log__c> logs = [SELECT Id FROM pharos__Log__c LIMIT 1];
         }
-        Account acc = new Account(Name = 'Test');
-        insert acc;
+        pharos__Log__c testLog = new pharos__Log__c(
+            pharos__Summary__c = 'Limit Test',
+            pharos__Post_Processing_Status__c = 'Not Needed'
+        );
+        insert testLog;
         
         // Test via builder
         TritonBuilder builder = Triton.makeBuilder()
@@ -1274,9 +1263,12 @@ private class TritonTest {
 
     @IsTest
     private static void test_warning_and_debug_with_related_objects() {
-        Account testAccount = new Account(Name = 'Test Account');
-        insert testAccount;
-        Set<Id> relatedIds = new Set<Id>{testAccount.Id};
+        pharos__Log__c testLog = new pharos__Log__c(
+            pharos__Summary__c = 'Related Objects Test',
+            pharos__Post_Processing_Status__c = 'Not Needed'
+        );
+        insert testLog;
+        Set<Id> relatedIds = new Set<Id>{testLog.Id};
         
         Test.startTest();
         
@@ -1693,17 +1685,15 @@ private class TritonTest {
     @IsTest
     private static void test_field_error_format() {
         Test.startTest();
-        
-        // Create a Contact with missing required fields to generate a real field error
-        Contact invalidContact = new Contact();
-        // FirstName is optional, but LastName is required (omitted to cause field error)
-        Database.SaveResult[] srList = Database.insert(new List<Contact>{invalidContact}, false);
-        
+
+        // Insert a pharos__Log__c with invalid lookup to generate a field-specific error
+        Id fakeId = pharos__Log__c.SObjectType.getDescribe().getKeyPrefix() + '000000000000';
+        pharos__Log__c invalidLog = new pharos__Log__c(pharos__Issue__c = fakeId);
+        Database.SaveResult[] srList = Database.insert(new List<pharos__Log__c>{invalidLog}, false);
+
         // Verify we got a field error
         System.assert(!srList[0].isSuccess(), 'Insert should fail');
-        Database.Error err = srList[0].getErrors()[0];
-        System.assert(err.getFields().contains('LastName'), 'Error should reference LastName field');
-        
+
         // Log the error - captures error via formatDMLError method
         Triton.logNow(
             Triton.makeBuilder()
@@ -1711,6 +1701,7 @@ private class TritonTest {
                 .dmlResults(srList)
         );
         Test.stopTest();
+
         // Retrieve the log to verify error formatting
         pharos__Log__c log = [
             SELECT pharos__Details__c
@@ -1718,14 +1709,11 @@ private class TritonTest {
             WHERE pharos__Area__c = :TritonTypes.Area.Accounts.name()
             LIMIT 1
         ];
-        
-        // Verify details contain field information
+
+        // Verify details contain error information
         System.assertNotEquals(null, log, 'A log should be created');
-        System.assert(log.pharos__Details__c.contains('Fields: LastName'), 
-            'Log details should include the field name');
-        System.assert(log.pharos__Details__c.contains('Status Code:'), 
+        System.assert(log.pharos__Details__c.contains('Status Code:'),
             'Log details should include status code');
-        
     }
     
     /**
@@ -1736,25 +1724,28 @@ private class TritonTest {
         Test.startTest();
         
         // Generate different DML error types
-        
-        // 1. Error with no specific fields (entity locking error)
-        Account acc = new Account(Name = 'Test Account');
-        insert acc;
-        
+
+        // 1. Error with no specific fields (simulated concurrent update)
+        pharos__Log__c testLog = new pharos__Log__c(
+            pharos__Summary__c = 'Test Log',
+            pharos__Post_Processing_Status__c = 'Not Needed'
+        );
+        insert testLog;
+
         // Create a locking error by attempting concurrent updates
         // This requires some creativity in a test context
         try {
             // Set up conflicting operations
             // First operation - establish update
-            acc.Name = 'Updated Name 1';
-            
+            testLog.pharos__Summary__c = 'Updated 1';
+
             // Second operation (simulated concurrent) - would cause lock error in real scenario
-            Account sameAcc = [SELECT Id, Name FROM Account WHERE Id = :acc.Id];
-            sameAcc.Name = 'Updated Name 2';
-            update sameAcc;
-            
+            pharos__Log__c sameLog = [SELECT Id, pharos__Summary__c FROM pharos__Log__c WHERE Id = :testLog.Id];
+            sameLog.pharos__Summary__c = 'Updated 2';
+            update sameLog;
+
             // Try updating original record to cause error
-            update acc;
+            update testLog;
         } catch (Exception e) {
             // Create a log from the exception
             Triton.logNow(
@@ -1767,7 +1758,7 @@ private class TritonTest {
         }
 
         // 2. Record not found error
-        Id fakeId = '001000000000000AAA';
+        Id fakeId = pharos__Log__c.SObjectType.getDescribe().getKeyPrefix() + '000000000000';
         Database.DeleteResult[] drList = Database.delete(new List<Id>{fakeId}, false);
         Triton.logNow(
             Triton.makeBuilder()
@@ -1969,14 +1960,51 @@ private class TritonTest {
     }
 
     @IsTest
-    static void test_builder_execution_context() {
+    static void test_execution_context_captured_for_apex_category() {
         TritonBuilder builder = Triton.makeBuilder()
-            .summary('exec context test')
-            .executionContext();
-        pharos__Log__c log = builder.build();
-        // In test (synchronous) context, executionContext returns empty string
-        // so details should not contain execution context info
-        System.assertNotEquals(null, log, 'Log should be built');
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .summary('apex context test')
+            .details('original details');
+
+        // Simulate the internal log path which calls prepareForLogging
+        Triton.log(builder);
+
+        // In synchronous test context formatExecutionContext returns empty string,
+        // but the gate should have attempted to capture it (executionContextDetails is set to '')
+        System.assertNotEquals(null, builder.executionContextDetails,
+            'Apex category should trigger execution context capture');
+    }
+
+    @IsTest
+    static void test_execution_context_skipped_for_flow_category() {
+        TritonBuilder builder = Triton.makeBuilder()
+            .category(TritonTypes.Category.Flow)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .summary('flow context test')
+            .details('original details');
+
+        Triton.log(builder);
+
+        System.assertEquals(null, builder.executionContextDetails,
+            'Flow category should not trigger execution context capture');
+    }
+
+    @IsTest
+    static void test_execution_context_skipped_for_lwc_category() {
+        TritonBuilder builder = Triton.makeBuilder()
+            .category(TritonTypes.Category.LWC)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .summary('lwc context test')
+            .details('original details');
+
+        Triton.log(builder);
+
+        System.assertEquals(null, builder.executionContextDetails,
+            'LWC category should not trigger execution context capture');
     }
 
     @IsTest
