@@ -7,6 +7,11 @@
     <description>Provides read-only access to Triton logging records and metadata</description>
     <fieldPermissions>
         <editable>false</editable>
+        <field>pharos__Log__c.Action__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
         <field>pharos__Log__c.Batch_Jobs_Limit__c</field>
         <readable>true</readable>
     </fieldPermissions>
@@ -48,6 +53,11 @@
     <fieldPermissions>
         <editable>false</editable>
         <field>pharos__Log__c.DML_Statements__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>pharos__Log__c.DML_Statements_Limit__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>

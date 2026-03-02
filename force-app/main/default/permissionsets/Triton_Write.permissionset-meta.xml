@@ -31,6 +31,11 @@
     <description>Provides full access to Triton logging framework including create/edit permissions</description>
     <fieldPermissions>
         <editable>true</editable>
+        <field>pharos__Log__c.Action__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
         <field>pharos__Log__c.Batch_Jobs_Limit__c</field>
         <readable>true</readable>
     </fieldPermissions>
@@ -72,6 +77,11 @@
     <fieldPermissions>
         <editable>true</editable>
         <field>pharos__Log__c.DML_Statements__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>pharos__Log__c.DML_Statements_Limit__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
