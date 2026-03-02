@@ -275,14 +275,25 @@ global with sharing class Triton {
      * Log methods.
      * ---------------------------
      *
-     * log(builder)    - Buffers log for later flush
-     * logNow(builder) - Immediately flushes log
+     * Buffered (queued for later flush):
+     *   Triton.log(builder)     - Uses builder's level
+     *   Triton.info(builder)    - Overrides level to INFO
+     *   Triton.debug(builder)   - Overrides level to DEBUG
+     *   Triton.warning(builder) - Overrides level to WARNING
+     *   Triton.error(builder)   - Overrides level to ERROR
+     *   Triton.fine(builder)    - Overrides level to FINE
+     *   Triton.finer(builder)   - Overrides level to FINER
+     *   Triton.finest(builder)  - Overrides level to FINEST
+     *
+     * Immediate (flushed right away):
+     *   Triton.logNow(builder)  - Uses builder's level
      *
      * Use Triton.t as shorthand for Triton.fromTemplate()
      *
      * Examples:
-     *   Triton.log(Triton.t.summary('Info').level(Level.INFO));
-     *   Triton.logNow(Triton.t.summary('Error').level(Level.ERROR).exception(e));
+     *   Triton.info(Triton.t.summary('Fetching items').details('...'));
+     *   Triton.error(Triton.t.summary('Failed').exception(e));
+     *   Triton.logNow(Triton.t.summary('Critical').error().exception(e));
      */
 
     /**
@@ -308,6 +319,14 @@ global with sharing class Triton {
         log(builder);
         flushTop();
     }
+
+    public static void error(TritonBuilder builder) { log(builder.error()); }
+    public static void warning(TritonBuilder builder) { log(builder.warning()); }
+    public static void info(TritonBuilder builder) { log(builder.info()); }
+    public static void debug(TritonBuilder builder) { log(builder.debug()); }
+    public static void fine(TritonBuilder builder) { log(builder.fine()); }
+    public static void finer(TritonBuilder builder) { log(builder.finer()); }
+    public static void finest(TritonBuilder builder) { log(builder.finest()); }
 
     /**
     * Checks if a log should be persisted based on the current log level

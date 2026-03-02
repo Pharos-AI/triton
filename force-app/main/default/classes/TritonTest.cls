@@ -2098,4 +2098,85 @@ private class TritonTest {
             'Should include only valid IDs from List<String>');
     }
 
+    @IsTest
+    static void test_triton_level_shorthand_methods() {
+        Test.startTest();
+
+        Triton.setTemplate(Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community));
+
+        Triton.error(Triton.t.summary('error log'));
+        Triton.warning(Triton.t.summary('warning log'));
+        Triton.info(Triton.t.summary('info log'));
+        Triton.debug(Triton.t.summary('debug log'));
+        Triton.fine(Triton.t.summary('fine log'));
+        Triton.finer(Triton.t.summary('finer log'));
+        Triton.finest(Triton.t.summary('finest log'));
+
+        System.assertEquals(7, Triton.logs.size(), 'All 7 level methods should buffer a log');
+
+        System.assertEquals(TritonTypes.Level.ERROR.name(), Triton.logs[0].Log_Level__c);
+        System.assertEquals(TritonTypes.Level.WARNING.name(), Triton.logs[1].Log_Level__c);
+        System.assertEquals(TritonTypes.Level.INFO.name(), Triton.logs[2].Log_Level__c);
+        System.assertEquals(TritonTypes.Level.DEBUG.name(), Triton.logs[3].Log_Level__c);
+        System.assertEquals(TritonTypes.Level.FINE.name(), Triton.logs[4].Log_Level__c);
+        System.assertEquals(TritonTypes.Level.FINER.name(), Triton.logs[5].Log_Level__c);
+        System.assertEquals(TritonTypes.Level.FINEST.name(), Triton.logs[6].Log_Level__c);
+
+        Test.stopTest();
+    }
+
+    @IsTest
+    static void test_triton_level_shorthand_overrides_template() {
+        Test.startTest();
+
+        Triton.setTemplate(Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .level(TritonTypes.Level.DEBUG));
+
+        Triton.error(Triton.t.summary('should be error'));
+
+        System.assertEquals(1, Triton.logs.size());
+        System.assertEquals(TritonTypes.Level.ERROR.name(), Triton.logs[0].Log_Level__c,
+            'Triton.error() should override template level');
+
+        Test.stopTest();
+    }
+
+    @IsTest
+    static void test_triton_level_shorthand_persists() {
+        TritonTestFactory.assertNoLogs();
+
+        Test.startTest();
+
+        Triton.setTemplate(Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community));
+
+        Triton.info(Triton.t.summary('info to persist').details('some details'));
+        Triton.error(Triton.t.summary('error to persist').details('error details'));
+        Triton.flush();
+
+        Test.stopTest();
+
+        List<pharos__Log__c> persistedLogs = [
+            SELECT pharos__Summary__c, Log_Level__c
+            FROM pharos__Log__c
+            ORDER BY CreatedDate
+        ];
+        System.assertEquals(2, persistedLogs.size(), 'Both logs should be persisted');
+
+        Set<String> levels = new Set<String>();
+        for (pharos__Log__c log : persistedLogs) {
+            levels.add(log.Log_Level__c);
+        }
+        System.assert(levels.contains(TritonTypes.Level.INFO.name()), 'Should contain INFO level log');
+        System.assert(levels.contains(TritonTypes.Level.ERROR.name()), 'Should contain ERROR level log');
+    }
+
 }
