@@ -2179,4 +2179,54 @@ private class TritonTest {
         System.assert(levels.contains(TritonTypes.Level.ERROR.name()), 'Should contain ERROR level log');
     }
 
+    @IsTest
+    static void test_builder_span_id_explicit() {
+        TritonBuilder builder = Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .summary('span test')
+            .spanId('explicit-span-id')
+            .parentSpanId('explicit-parent-span-id');
+
+        pharos__Log__c log = builder.build();
+
+        System.assertEquals('explicit-span-id', (String) log.get(TritonBuilder.SPAN_ID),
+            'Should set explicit span ID');
+        System.assertEquals('explicit-parent-span-id', (String) log.get(TritonBuilder.PARENT_SPAN_ID),
+            'Should set explicit parent span ID');
+    }
+
+    @IsTest
+    static void test_builder_span_id_fallback_to_request_id() {
+        TritonBuilder builder = Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .summary('span fallback test');
+
+        pharos__Log__c log = builder.build();
+
+        String requestId = System.Request.getCurrent().getRequestId();
+        System.assertEquals(requestId, (String) log.get(TritonBuilder.SPAN_ID),
+            'Should fallback to request ID when no span ID explicitly set');
+    }
+
+    @IsTest
+    static void test_builder_clone_preserves_span_ids() {
+        TritonBuilder original = Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .spanId('clone-span')
+            .parentSpanId('clone-parent');
+
+        TritonBuilder cloned = original.cloneBuilder();
+
+        System.assertEquals('clone-span', cloned.currentSpanId,
+            'Cloned builder should preserve span ID');
+        System.assertEquals('clone-parent', cloned.currentParentSpanId,
+            'Cloned builder should preserve parent span ID');
+    }
+
 }

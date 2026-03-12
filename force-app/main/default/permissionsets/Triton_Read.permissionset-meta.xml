@@ -87,6 +87,11 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>false</editable>
+        <field>pharos__Log__c.Parent_Span_Id__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
         <field>pharos__Log__c.Publish_Immediate_DML_Limit__c</field>
         <readable>true</readable>
     </fieldPermissions>
@@ -113,6 +118,11 @@
     <fieldPermissions>
         <editable>false</editable>
         <field>pharos__Log__c.Queueable_Jobs__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>pharos__Log__c.Span_Id__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>

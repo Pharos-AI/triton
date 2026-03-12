@@ -27,6 +27,8 @@ jest.mock('c/tritonBuilder', () => {
       userId: jest.fn().mockReturnThis(),
       runtimeInfo: jest.fn().mockReturnThis(),
       timestamp: jest.fn().mockReturnThis(),
+      spanId: jest.fn().mockReturnThis(),
+      parentSpanId: jest.fn().mockReturnThis(),
       componentDetails: jest.fn().mockReturnThis(),
       clone: jest.fn().mockImplementation(() => {
         // Return a new mock with the same structure
@@ -44,6 +46,8 @@ jest.mock('c/tritonBuilder', () => {
           userId: jest.fn().mockReturnThis(),
           runtimeInfo: jest.fn().mockReturnThis(),
           timestamp: jest.fn().mockReturnThis(),
+          spanId: jest.fn().mockReturnThis(),
+          parentSpanId: jest.fn().mockReturnThis(),
           componentDetails: jest.fn().mockReturnThis(),
           build: jest.fn().mockReturnValue({ mockBuiltLog: true }),
           clone: jest.fn().mockReturnThis(),
@@ -237,13 +241,15 @@ describe('Triton', () => {
       expect(TritonBuilder).toHaveBeenCalled();
     });
 
-    test('should refresh builder', () => {
+    test('should refresh builder with span context', () => {
       const mockBuilder = new TritonBuilder();
       const result = triton.refreshBuilder(mockBuilder);
-      
+
       expect(result).toBe(mockBuilder);
       expect(mockBuilder.runtimeInfo).toHaveBeenCalledWith({ mockRuntimeInfo: true });
       expect(mockBuilder.timestamp).toHaveBeenCalled();
+      expect(mockBuilder.spanId).toHaveBeenCalledWith('mock-transaction-id');
+      expect(mockBuilder.parentSpanId).toHaveBeenCalled();
     });
 
     test('should set component info when component is bound', () => {
@@ -698,10 +704,145 @@ describe('PerformanceTracker', () => {
 
   test('should create component data for unknown components', () => {
     const componentData = triton.performance.getComponentData('unknown');
-    
+
     expect(componentData).toBeDefined();
     expect(componentData.marks).toBeInstanceOf(Map);
     expect(componentData.renderCounts).toBe(0);
     expect(componentData.lifecycleEvents).toBeInstanceOf(Map);
+  });
+
+  test('should clear all marks', () => {
+    boundTriton.startPerformanceMark('mark1');
+    boundTriton.startPerformanceMark('mark2');
+
+    triton.performance.clearAllMarks();
+
+    const componentData = triton.performance.getComponentData(boundTriton._componentKey);
+    expect(componentData.marks.size).toBe(0);
+  });
+
+  test('should identify active mark span IDs', () => {
+    boundTriton.startPerformanceMark('mark1');
+
+    // The mock generateTransactionId always returns 'mock-transaction-id'
+    // so isActiveMarkSpanId checks against that
+    expect(triton.performance.isActiveMarkSpanId('mock-transaction-id')).toBe(true);
+    expect(triton.performance.isActiveMarkSpanId('non-existent-span')).toBe(false);
+  });
+});
+
+describe('SpanContext', () => {
+  let triton;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    Object.defineProperty(window, 'sessionStorage', {
+      value: {
+        getItem: jest.fn().mockReturnValue(null),
+        setItem: jest.fn(),
+        removeItem: jest.fn()
+      },
+      writable: true,
+      configurable: true
+    });
+
+    triton = new Triton();
+    triton.logs = [];
+  });
+
+  test('should initialize span context on construction', () => {
+    expect(triton.spanContext).toBeDefined();
+  });
+
+  test('should reset span context on startTransaction', () => {
+    triton.startTransaction();
+    const current = triton.spanContext.current();
+
+    expect(current).toBe(triton.transactionId);
+  });
+
+  test('should reset span context on resumeTransaction', () => {
+    triton.resumeTransaction('resume-txn-id');
+    const current = triton.spanContext.current();
+
+    expect(current).toBe('resume-txn-id');
+  });
+
+  test('should clear span context on stopTransaction', () => {
+    triton.startTransaction();
+    triton.spanContext.push('child-span');
+    triton.stopTransaction();
+
+    expect(triton.spanContext.current()).toBeNull();
+  });
+
+  test('push/pop should manage stack correctly', () => {
+    triton.spanContext.reset('root');
+    triton.spanContext.push('child1');
+    triton.spanContext.push('child2');
+
+    expect(triton.spanContext.current()).toBe('child2');
+    expect(triton.spanContext.parent()).toBe('child1');
+
+    triton.spanContext.pop('child2');
+    expect(triton.spanContext.current()).toBe('child1');
+  });
+
+  test('pop should handle out-of-order removal', () => {
+    triton.spanContext.reset('root');
+    triton.spanContext.push('a');
+    triton.spanContext.push('b');
+    triton.spanContext.push('c');
+
+    // Remove middle element
+    triton.spanContext.pop('b');
+    const stack = triton.spanContext.getStack();
+
+    expect(stack).toEqual(['root', 'a', 'c']);
+  });
+
+  test('enterStep should reset to root and push step span', () => {
+    triton.startTransaction();
+    triton.spanContext.push('old-child');
+
+    const stepId = triton.enterStep('step-1');
+
+    expect(stepId).toBe('step-1');
+    const stack = triton.spanContext.getStack();
+    expect(stack).toEqual([triton.transactionId, 'step-1']);
+  });
+
+  test('enterStep should auto-generate span ID if not provided', () => {
+    const stepId = triton.enterStep();
+
+    expect(stepId).toBe('mock-transaction-id'); // from mocked generateTransactionId
+  });
+
+  test('getStableParent should skip active mark spans', () => {
+    triton.spanContext.reset('root');
+    triton.spanContext.push('stable-parent');
+    triton.spanContext.push('active-mark-span');
+
+    const isActiveMark = (id) => id === 'active-mark-span';
+    const parent = triton.spanContext.getStableParent(isActiveMark);
+
+    expect(parent).toBe('stable-parent');
+  });
+
+  test('enableSpanPersistence should enable sessionStorage', () => {
+    triton.enableSpanPersistence();
+    triton.spanContext.push('persisted-span');
+
+    expect(window.sessionStorage.setItem).toHaveBeenCalled();
+  });
+
+  test('clear should empty the stack', () => {
+    triton.spanContext.reset('root');
+    triton.spanContext.push('child');
+    triton.spanContext.clear();
+
+    expect(triton.spanContext.current()).toBeNull();
+    expect(triton.spanContext.getStack()).toEqual([]);
   });
 });
