@@ -93,6 +93,16 @@ export default class TritonBuilder {
     }
 
     /**
+     * Sets the action name
+     * @param {string} action - Action name (e.g., performance mark, backend call, user interaction name)
+     * @returns {TritonBuilder} Builder instance for chaining
+     */
+    action(action) {
+        this._action = action;
+        return this;
+    }
+
+    /**
      * Sets the created timestamp
      * @param {number} [timestamp] - Optional timestamp to set (defaults to current time)
      * @returns {TritonBuilder} Builder instance for chaining
@@ -195,7 +205,11 @@ export default class TritonBuilder {
             if (this[key] !== undefined && typeof this[key] !== 'function') {
                 // Handle objects that need deep cloning
                 if (this[key] && typeof this[key] === 'object') {
-                    newBuilder[key] = { ...this[key] };
+                    if (Array.isArray(this[key])) {
+                        newBuilder[key] = [...this[key]];
+                    } else {
+                        newBuilder[key] = { ...this[key] };
+                    }
                 } else {
                     newBuilder[key] = this[key];
                 }
@@ -230,6 +244,7 @@ export default class TritonBuilder {
             transactionId: this._transactionId,
             componentInfo: this._componentInfo,
             duration: this._duration,
+            action: this._action,
             createdTimestamp: this._createdTimestamp,
             error: this._error,
             stack: this._stack,

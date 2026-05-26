@@ -80,6 +80,11 @@ public with sharing class TritonTypes {
         DMLResult,
         LongRunningRequest,
         ConcurrentRequestsLimit,
-        AccountTrigger
+        AccountTrigger,
+        BackendCall,
+        ComponentLifecycle,
+        ComponentRender,
+        UserInteraction,
+        Performance
     }
 }

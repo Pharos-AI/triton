@@ -17,6 +17,7 @@ const TRITON_METHOD_NAMES = ['makeBuilder', 'refreshBuilder', 'debug', 'info', '
  * @returns {boolean} True if the line is NOT from internal Triton files
  */
 const isNotTriton = (stackTraceLine) => {
+    if (!stackTraceLine) return true;
     return !TRITON_COMPONENTS.some(component => 
         stackTraceLine.indexOf(`c/${component}.js`) !== -1
     ) && !TRITON_METHOD_NAMES.some(method => 
@@ -30,9 +31,10 @@ const isNotTriton = (stackTraceLine) => {
  * @returns {string} The function name
  */
 const getFunctionName = (stackTraceLine) => {
+    if (!stackTraceLine) return '';
     const functionStartIndex = stackTraceLine.indexOf('at ') + 3;
     const functionEndIndex = stackTraceLine.lastIndexOf(' (');
-    if(functionEndIndex !== -1) {
+    if(functionEndIndex !== -1 && functionStartIndex > 2) {
         return stackTraceLine
             .substring(functionStartIndex, functionEndIndex)
             .trim();

@@ -1179,7 +1179,7 @@ private class TritonTest {
         Test.stopTest();
         
         List<pharos__Log__c> logs = [
-            SELECT Id, 
+            SELECT Id,
                    SOQL_Queries__c,
                    SOQL_Queries_Limit__c,
                    SOQL_Rows__c,
@@ -1193,72 +1193,92 @@ private class TritonTest {
                    Heap_Size__c,
                    Heap_Size_Limit__c,
                    Callouts__c,
-                   Callouts_Limit__c,
-                   SOSL_Queries__c,
-                   SOSL_Queries_Limit__c,
-                   Future_Calls__c,
-                   Future_Calls_Limit__c,
-                   Queueable_Jobs__c,
-                   Queueable_Jobs_Limit__c,
-                   Email_Invocations__c,
-                   Email_Invocations_Limit__c,
-                   Push_Notifications__c,
-                   Push_Notifications_Limit__c,
-                   Batch_Jobs__c,
-                   Batch_Jobs_Limit__c,
-                   Publish_Immediate_DML__c,
-                   Publish_Immediate_DML_Limit__c
-            FROM pharos__Log__c 
+                   Callouts_Limit__c
+            FROM pharos__Log__c
+            WHERE pharos__Area__c = :TritonTypes.Area.Community.name()
             ORDER BY CreatedDate
         ];
         
         System.assertEquals(2, logs.size(), 'Should have created two logs');
         
-        // Verify limits were captured for both logs
+        // Verify essential limits were captured (limitInfo without withFullLimitInfo only captures lite limits)
         for(pharos__Log__c log : logs) {
-            // SOQL Queries
             System.assert(log.SOQL_Queries__c >= 5, 'Should have recorded SOQL queries');
             System.assertEquals(System.Limits.getLimitQueries(), log.SOQL_Queries_Limit__c, 'Should match SOQL queries limit');
             
-            // DML Statements
             System.assert(log.DML_Statements__c >= 1, 'Should have recorded DML statements');
             System.assertEquals(System.Limits.getLimitDMLStatements(), log.DML_Statements_Limit__c, 'Should match DML statements limit');
             
-            // DML Rows
             System.assert(log.DML_Rows__c >= 1, 'Should have recorded DML rows');
             System.assertEquals(System.Limits.getLimitDMLRows(), log.DML_Rows_Limit__c, 'Should match DML rows limit');
             
-            // CPU Time and Heap Size
             System.assert(log.CPU_Time__c > 0, 'Should have recorded CPU time');
             System.assertEquals(System.Limits.getLimitCpuTime(), log.CPU_Time_Limit__c, 'Should match CPU time limit');
             System.assert(log.Heap_Size__c > 0, 'Should have recorded heap size');
             System.assertEquals(System.Limits.getLimitHeapSize(), log.Heap_Size_Limit__c, 'Should match heap size limit');
             
-            // Unused limits - verify both usage and limits
             System.assertEquals(0, log.Callouts__c, 'Should have recorded zero callouts');
             System.assertEquals(System.Limits.getLimitCallouts(), log.Callouts_Limit__c, 'Should match callouts limit');
-            
-            System.assertEquals(0, log.SOSL_Queries__c, 'Should have recorded zero SOSL queries');
-            System.assertEquals(System.Limits.getLimitSoslQueries(), log.SOSL_Queries_Limit__c, 'Should match SOSL queries limit');
-            
-            System.assertEquals(0, log.Future_Calls__c, 'Should have recorded zero future calls');
-            System.assertEquals(System.Limits.getLimitFutureCalls(), log.Future_Calls_Limit__c, 'Should match future calls limit');
-            
-            System.assertEquals(0, log.Queueable_Jobs__c, 'Should have recorded zero queueable jobs');
-            System.assertEquals(System.Limits.getLimitQueueableJobs(), log.Queueable_Jobs_Limit__c, 'Should match queueable jobs limit');
-            
-            System.assertEquals(0, log.Email_Invocations__c, 'Should have recorded zero email invocations');
-            System.assertEquals(System.Limits.getLimitEmailInvocations(), log.Email_Invocations_Limit__c, 'Should match email invocations limit');
-            
-            System.assertEquals(0, log.Push_Notifications__c, 'Should have recorded zero push notifications');
-            System.assertEquals(System.Limits.getLimitMobilePushApexCalls(), log.Push_Notifications_Limit__c, 'Should match push notifications limit');
-            
-            System.assertEquals(0, log.Batch_Jobs__c, 'Should have recorded zero batch jobs');
-            System.assertEquals(System.Limits.getLimitAsyncCalls(), log.Batch_Jobs_Limit__c, 'Should match batch jobs limit');
-            
-            System.assertEquals(0, log.Publish_Immediate_DML__c, 'Should have recorded zero publish immediate DML');
-            System.assertEquals(System.Limits.getLimitPublishImmediateDML(), log.Publish_Immediate_DML_Limit__c, 'Should match publish immediate DML limit');
         }
+    }
+
+    @IsTest
+    private static void test_limit_info_without_limit_info() {
+        assertBefore();
+
+        Test.startTest();
+        Triton.instance.addLog(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Debug)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('No limit info test')
+                .details('withoutLimitInfo then limitInfo should be no-op')
+                .withoutLimitInfo()
+                .limitInfo()
+        );
+        Triton.instance.flush();
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [
+            SELECT Id, SOQL_Queries__c, CPU_Time__c, Heap_Size__c
+            FROM pharos__Log__c
+            WHERE pharos__Summary__c = 'No limit info test'
+        ];
+        System.assertEquals(1, logs.size(), 'Should have one log');
+        System.assertEquals(null, logs.get(0).SOQL_Queries__c, 'limitInfo should be no-op when withoutLimitInfo');
+        System.assertEquals(null, logs.get(0).CPU_Time__c, 'limitInfo should be no-op when withoutLimitInfo');
+        System.assertEquals(null, logs.get(0).Heap_Size__c, 'limitInfo should be no-op when withoutLimitInfo');
+    }
+
+    @IsTest
+    private static void test_limit_info_full() {
+        assertBefore();
+
+        Test.startTest();
+        Triton.instance.addLog(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Debug)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('Full limit info test')
+                .details('withFullLimitInfo should capture extended limits')
+                .withFullLimitInfo()
+                .limitInfo()
+        );
+        Triton.instance.flush();
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [
+            SELECT Id, SOQL_Queries__c, SOQL_Aggregates__c, SOSL_Queries__c, Future_Calls__c
+            FROM pharos__Log__c
+            WHERE pharos__Summary__c = 'Full limit info test'
+        ];
+        System.assertEquals(1, logs.size(), 'Should have one log');
+        System.assertNotEquals(null, logs.get(0).SOQL_Queries__c, 'Should have essential limits');
+        System.assertNotEquals(null, logs.get(0).SOQL_Aggregates__c, 'Should have extended limits when withFullLimitInfo');
+        System.assertNotEquals(null, logs.get(0).SOSL_Queries__c, 'Should have extended limits when withFullLimitInfo');
+        System.assertNotEquals(null, logs.get(0).Future_Calls__c, 'Should have extended limits when withFullLimitInfo');
     }
 
     @IsTest
@@ -1482,6 +1502,7 @@ private class TritonTest {
                    pharos__Duration__c,
                    pharos__Summary__c
             FROM pharos__Log__c 
+            WHERE pharos__Area__c = :TritonTypes.Area.Community.name()
             ORDER BY CreatedDate
         ];
         
