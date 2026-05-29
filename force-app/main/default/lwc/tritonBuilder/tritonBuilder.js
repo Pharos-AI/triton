@@ -103,6 +103,26 @@ export default class TritonBuilder {
     }
 
     /**
+     * Sets the span ID for this log entry
+     * @param {string} spanId - Unique span identifier
+     * @returns {TritonBuilder} Builder instance for chaining
+     */
+    spanId(spanId) {
+        this._spanId = spanId;
+        return this;
+    }
+
+    /**
+     * Sets the parent span ID for this log entry
+     * @param {string} parentSpanId - Parent span identifier
+     * @returns {TritonBuilder} Builder instance for chaining
+     */
+    parentSpanId(parentSpanId) {
+        this._parentSpanId = parentSpanId;
+        return this;
+    }
+
+    /**
      * Sets the created timestamp
      * @param {number} [timestamp] - Optional timestamp to set (defaults to current time)
      * @returns {TritonBuilder} Builder instance for chaining
@@ -250,7 +270,9 @@ export default class TritonBuilder {
             stack: this._stack,
             userId: this._userId,
             runtimeInfo: this._runtimeInfo,
-            relatedObjectIds: this._relatedObjectIds
+            relatedObjectIds: this._relatedObjectIds,
+            spanId: this._spanId,
+            parentSpanId: this._parentSpanId
         };
     }
 

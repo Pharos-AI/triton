@@ -30,6 +30,8 @@ public with sharing class TritonBuilder {
     public static final String FLOW_API_NAME = 'pharos__Flow_API_Name__c';
     public static final String DO_NOT_CREATE_ISSUE = 'pharos__Do_Not_Create_Issue__c';
     public static final String REQUEST_ID = 'pharos__Request_Id_External__c';
+    public static final String SPAN_ID = 'Span_Id__c';
+    public static final String PARENT_SPAN_ID = 'Parent_Span_Id__c';
 
     /** transaction limit field names */
     @TestVisible
@@ -107,6 +109,10 @@ public with sharing class TritonBuilder {
     @TestVisible
     private String executionContextDetails;
     private String categoryValue;
+    @TestVisible
+    private String currentSpanId;
+    @TestVisible
+    private String currentParentSpanId;
 
     public TritonBuilder cloneBuilder() {
         pharos__Log__c clonedLog = this.builder.build().clone(false, true, false, false);
@@ -121,6 +127,8 @@ public with sharing class TritonBuilder {
         cloned.fullLimitInfoRequested = this.fullLimitInfoRequested;
         cloned.traceable = this.traceable;
         cloned.categoryValue = this.categoryValue;
+        cloned.currentSpanId = this.currentSpanId;
+        cloned.currentParentSpanId = this.currentParentSpanId;
         // fullSummary and executionContextDetails are intentionally NOT cloned — per-log values
         cloned.initBuilder();
         return cloned;
@@ -439,6 +447,28 @@ public with sharing class TritonBuilder {
     }
 
     /**
+    * Set span ID for the log
+    * @param spanId -- String value representing the span identifier
+    * @return this builder instance
+    */
+    public TritonBuilder spanId(String spanId) {
+        this.currentSpanId = spanId;
+        this.builder.attribute(SPAN_ID, spanId);
+        return this;
+    }
+
+    /**
+    * Set parent span ID for the log
+    * @param parentSpanId -- String value representing the parent span identifier
+    * @return this builder instance
+    */
+    public TritonBuilder parentSpanId(String parentSpanId) {
+        this.currentParentSpanId = parentSpanId;
+        this.builder.attribute(PARENT_SPAN_ID, parentSpanId);
+        return this;
+    }
+
+    /**
     * Set integration payload from HTTP request/response
     * @param request -- HttpRequest instance
     * @param response -- HttpResponse instance
@@ -708,6 +738,17 @@ public with sharing class TritonBuilder {
     }
 
     /**
+    * Ensures span IDs are populated with sensible defaults when not explicitly set.
+    * Uses the request ID as span ID fallback for Apex-originated logs.
+    */
+    private void ensureSpanIds() {
+        if (String.isBlank(this.currentSpanId)) {
+            String requestId = System.Request.getCurrent().getRequestId();
+            this.builder.attribute(SPAN_ID, requestId);
+        }
+    }
+
+    /**
     * Prepares the builder for logging by auto-enriching with runtime context.
     * Called by Triton.log() to add stacktrace, operation, tracepoint, and limits.
     * @param transactionId -- Transaction ID to associate with this log
@@ -745,6 +786,7 @@ public with sharing class TritonBuilder {
     * @return pharos__Log__c instance
     */
     public pharos__Log__c build() {
+        ensureSpanIds();
         pharos__Log__c log = this.builder.build();
 
         // Default category to Apex when not explicitly set

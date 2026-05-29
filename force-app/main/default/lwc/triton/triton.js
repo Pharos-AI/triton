@@ -50,10 +50,12 @@ export default class Triton {
         if (instance) {
             return instance;
         }
-        this.transactionManager = new TransactionManager(this);        
+        this.transactionManager = new TransactionManager(this);
         this.transactionId = this.transactionManager.initialize();
+        this.spanContext = new SpanContext();
+        this.spanContext.reset(this.transactionId);
         this.performance = new PerformanceTracker(this);
-        
+
         instance = this;
         return instance;
     }
@@ -107,6 +109,8 @@ export default class Triton {
      */
     startTransaction() {
         this.transactionId = this.transactionManager.start();
+        this.spanContext.reset(this.transactionId);
+        this.performance.clearAllMarks();
         return this.transactionId;
     }
 
@@ -117,6 +121,7 @@ export default class Triton {
      */
     resumeTransaction(transactionId) {
         this.transactionId = this.transactionManager.resume(transactionId);
+        this.spanContext.reset(this.transactionId);
     }
 
     /**
@@ -126,6 +131,7 @@ export default class Triton {
     stopTransaction() {
         this.transactionManager.stop();
         this.transactionId = null;
+        this.spanContext.clear();
     }
 
     /**
@@ -267,7 +273,30 @@ export default class Triton {
         return builder
             .runtimeInfo(captureRuntimeInfo())
             .transactionId(this.transactionId)
-            .timestamp(Date.now());
+            .timestamp(Date.now())
+            .spanId(generateTransactionId())
+            .parentSpanId(this.spanContext.current());
+    }
+
+    /**
+     * Enters a new logical step (e.g., wizard step), resetting the span stack
+     * to the transaction root and pushing a new span for the step.
+     * @param {string} [stepSpanId] - Optional custom span ID for the step (auto-generated if omitted)
+     * @returns {string} The span ID for this step
+     */
+    enterStep(stepSpanId) {
+        const spanId = stepSpanId || generateTransactionId();
+        this.spanContext.reset(this.transactionId);
+        this.spanContext.push(spanId);
+        return spanId;
+    }
+
+    /**
+     * Enables sessionStorage persistence for the span context stack.
+     * Useful for multi-page flows where span hierarchy must survive navigation.
+     */
+    enableSpanPersistence() {
+        this.spanContext.persist();
     }
 
     /**
@@ -435,7 +464,12 @@ class PerformanceCallBuilder {
      */
     async execute() {
         const startTime = this.triton.performance.getCurrentTime();
-        
+
+        // Capture span context at call start
+        const spanId = generateTransactionId();
+        const parentSpanId = this.triton.spanContext.current();
+        this.triton.spanContext.push(spanId);
+
         // Use explicit method name and determine log type based on call type
         const methodName = this.methodName;
         let logType, operationName;
@@ -456,13 +490,15 @@ class PerformanceCallBuilder {
                         .summary(`${operationName} started: ${methodName}`)
                         .details(`Initiating ${operationName.toLowerCase()}: ${methodName}`)
                         .action(methodName)
+                        .spanId(spanId)
+                        .parentSpanId(parentSpanId)
                 );
             }
-            
+
             const result = await this.callFunction();
             const endTime = this.triton.performance.getCurrentTime();
             const duration = endTime - startTime;
-            
+
             // Log successful operation (only if component is bound)
             if (this.triton._componentId) {
                 this.triton.log(
@@ -472,18 +508,20 @@ class PerformanceCallBuilder {
                         .details(`Duration: ${duration}ms`)
                         .duration(duration)
                         .action(methodName)
+                        .spanId(spanId)
+                        .parentSpanId(parentSpanId)
                 );
             }
-            
+
             return result;
-            
+
         } catch (error) {
             const endTime = this.triton.performance.getCurrentTime();
             const duration = endTime - startTime;
-            
+
             // Use custom error handler if provided, otherwise use built-in
             if (this.customErrorHandler) {
-                const context = this.callType === 'backend' 
+                const context = this.callType === 'backend'
                     ? { methodName, duration }
                     : { interactionName: methodName, duration };
                 this.customErrorHandler(error, context);
@@ -497,15 +535,19 @@ class PerformanceCallBuilder {
                         .duration(duration)
                         .action(methodName)
                         .exception(error)
+                        .spanId(spanId)
+                        .parentSpanId(parentSpanId)
                 );
             }
-            
+
             // Rethrow if configured
             if (this.shouldRethrow) {
                 throw error;
             }
-            
+
             return null;
+        } finally {
+            this.triton.spanContext.pop(spanId);
         }
     }
 }
@@ -576,13 +618,19 @@ class PerformanceTracker {
         const componentKey = tritonInstance._componentKey || 'unknown';
         const componentData = this.getComponentData(componentKey);
         const startTime = this.getCurrentTime();
-        
+
+        const spanId = generateTransactionId();
+        const parentSpanId = tritonInstance.spanContext.current();
+        tritonInstance.spanContext.push(spanId);
+
         componentData.marks.set(markName, {
             name: markName,
             startTime: startTime,
-            componentKey: componentKey
+            componentKey: componentKey,
+            spanId: spanId,
+            parentSpanId: parentSpanId
         });
-        
+
         return markName;
     }
 
@@ -596,20 +644,23 @@ class PerformanceTracker {
         const endTime = this.getCurrentTime();
         const componentKey = tritonInstance._componentKey || 'unknown';
         const componentData = this.getComponentData(componentKey);
-        
+
         const markData = componentData.marks.get(markName);
-        
+
         if (!markData) {
             console.warn(`Performance mark '${markName}' not found for component ${tritonInstance._componentId || 'unknown'}`);
             return;
         }
-        
+
         const duration = endTime - markData.startTime;
-        
+
+        // Remove this mark's span from the context stack
+        tritonInstance.spanContext.pop(markData.spanId);
+
         // Clean up the mark
         componentData.marks.delete(markName);
-        
-        // Log the performance data using the appropriate context
+
+        // Log the performance data using the mark's captured span context
         tritonInstance.log(
             tritonInstance.makeBuilder()
                 .type(TYPE.PERFORMANCE)
@@ -617,7 +668,35 @@ class PerformanceTracker {
                 .details(`Duration: ${duration}ms`)
                 .duration(duration)
                 .action(markData.name)
+                .spanId(markData.spanId)
+                .parentSpanId(markData.parentSpanId)
         );
+    }
+
+    /**
+     * Checks if a span ID belongs to an active performance mark
+     * @param {string} spanId - Span ID to check
+     * @returns {boolean}
+     */
+    isActiveMarkSpanId(spanId) {
+        for (const [, componentData] of this.componentInstances) {
+            for (const [, markData] of componentData.marks) {
+                if (markData.spanId === spanId) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Clears all active marks across all components.
+     * Called on new transaction to prevent stale marks.
+     */
+    clearAllMarks() {
+        for (const [, componentData] of this.componentInstances) {
+            componentData.marks.clear();
+        }
     }
 
     /**
@@ -660,6 +739,141 @@ class PerformanceTracker {
                 .details(`Render count: ${componentData.renderCounts}`)
                 .action('component-render')
         );
+    }
+}
+
+/**
+ * Manages span hierarchy tracking with an in-memory stack.
+ * Optionally persists to sessionStorage for cross-navigation scenarios.
+ * @private
+ */
+class SpanContext {
+    static STORAGE_KEY = 'tritonContextStack';
+
+    constructor(options = {}) {
+        this._stack = [];
+        this._persist = options.persist || false;
+    }
+
+    /**
+     * Returns the current span stack
+     * @returns {string[]}
+     */
+    getStack() {
+        if (this._persist) {
+            try {
+                const stored = sessionStorage.getItem(SpanContext.STORAGE_KEY);
+                if (stored) {
+                    this._stack = JSON.parse(stored);
+                }
+            } catch (e) {
+                // fall back to in-memory
+            }
+        }
+        return this._stack;
+    }
+
+    /**
+     * Replaces the span stack
+     * @param {string[]} stack
+     */
+    setStack(stack) {
+        this._stack = stack;
+        if (this._persist) {
+            try {
+                sessionStorage.setItem(SpanContext.STORAGE_KEY, JSON.stringify(stack));
+            } catch (e) {
+                // fall back to in-memory
+            }
+        }
+    }
+
+    /**
+     * Push a span ID onto the stack
+     * @param {string} spanId
+     */
+    push(spanId) {
+        const stack = this.getStack();
+        stack.push(spanId);
+        this.setStack(stack);
+    }
+
+    /**
+     * Remove a specific span ID from the stack (supports out-of-order pops)
+     * @param {string} spanId
+     */
+    pop(spanId) {
+        const stack = this.getStack();
+        const index = stack.lastIndexOf(spanId);
+        if (index !== -1) {
+            stack.splice(index, 1);
+            this.setStack(stack);
+        }
+    }
+
+    /**
+     * Returns the current (top) span ID
+     * @returns {string|null}
+     */
+    current() {
+        const stack = this.getStack();
+        return stack.length > 0 ? stack[stack.length - 1] : null;
+    }
+
+    /**
+     * Returns the parent span ID (second from top)
+     * @returns {string|null}
+     */
+    parent() {
+        const stack = this.getStack();
+        return stack.length > 1 ? stack[stack.length - 2] : null;
+    }
+
+    /**
+     * Reset the stack to contain only the root ID
+     * @param {string} rootId
+     */
+    reset(rootId) {
+        this.setStack(rootId ? [rootId] : []);
+    }
+
+    /**
+     * Clear the stack entirely
+     */
+    clear() {
+        this._stack = [];
+        if (this._persist) {
+            try {
+                sessionStorage.removeItem(SpanContext.STORAGE_KEY);
+            } catch (e) {
+                // ignore
+            }
+        }
+    }
+
+    /**
+     * Enable sessionStorage persistence
+     */
+    persist() {
+        this._persist = true;
+        // Write current in-memory stack to storage
+        this.setStack(this._stack);
+    }
+
+    /**
+     * Returns a stable parent span ID by skipping active mark spans.
+     * Walks the stack from top down, skipping any span IDs that match active marks.
+     * @param {Function} isActiveMarkFn - Predicate: (spanId) => boolean
+     * @returns {string|null}
+     */
+    getStableParent(isActiveMarkFn) {
+        const stack = this.getStack();
+        for (let i = stack.length - 1; i >= 0; i--) {
+            if (!isActiveMarkFn(stack[i])) {
+                return stack[i];
+            }
+        }
+        return null;
     }
 }
 

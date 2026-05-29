@@ -121,9 +121,23 @@ describe('TritonBuilder', () => {
 
     test('runtimeInfo() should handle undefined input with default empty object', () => {
       const result = builder.runtimeInfo();
-      
+
       expect(result).toBe(builder);
       expect(builder._runtimeInfo).toEqual({});
+    });
+
+    test('spanId() should set the span ID and return builder for chaining', () => {
+      const result = builder.spanId('span-123');
+
+      expect(result).toBe(builder);
+      expect(builder._spanId).toBe('span-123');
+    });
+
+    test('parentSpanId() should set the parent span ID and return builder for chaining', () => {
+      const result = builder.parentSpanId('parent-span-456');
+
+      expect(result).toBe(builder);
+      expect(builder._parentSpanId).toBe('parent-span-456');
     });
   });
 
@@ -428,7 +442,9 @@ describe('TritonBuilder', () => {
         .timestamp(timestamp)
         .userId('user-456')
         .relatedObjects(['obj-1'])
-        .runtimeInfo(runtimeInfo);
+        .runtimeInfo(runtimeInfo)
+        .spanId('span-abc')
+        .parentSpanId('span-parent');
 
       builder._componentInfo = componentInfo;
       builder._error = error;
@@ -452,7 +468,9 @@ describe('TritonBuilder', () => {
         stack: 'test stack',
         userId: 'user-456',
         runtimeInfo: runtimeInfo,
-        relatedObjectIds: ['obj-1']
+        relatedObjectIds: ['obj-1'],
+        spanId: 'span-abc',
+        parentSpanId: 'span-parent'
       });
     });
 
@@ -475,7 +493,9 @@ describe('TritonBuilder', () => {
         stack: undefined,
         userId: undefined,
         runtimeInfo: undefined,
-        relatedObjectIds: undefined
+        relatedObjectIds: undefined,
+        spanId: undefined,
+        parentSpanId: undefined
       });
     });
 
