@@ -1309,21 +1309,32 @@ private class TritonTest {
     private static void test_cache_functionality() {
         Test.startTest();
         
-        // Test withCache when cache is available
-        Cache.Org.put('test', 'test'); // This will make CACHE_AVAILABLE true
+        Boolean sessionCacheAvailable;
+        try {
+            Cache.Session.getKeys();
+            sessionCacheAvailable = true;
+        } catch (Exception e) {
+            sessionCacheAvailable = false;
+        }
+
+        // Production transaction caching uses Cache.Session. Cache.Org requires
+        // a default partition, which is not present in every validation org.
+        Triton.CACHE_AVAILABLE = sessionCacheAvailable;
         Triton instance = Triton.instance.withCache();
-        System.assert(instance.withCache, 'Cache should be enabled');
+        System.assertEquals(sessionCacheAvailable, instance.withCache, 'Cache usage should match Session Cache availability');
         
         // Start a transaction and verify it's cached
         String transactionId = instance.startTransaction();
         System.assertNotEquals(null, transactionId, 'Transaction ID should be generated');
-        System.assertEquals(transactionId, TritonHelper.getCachedTransactionId(), 'Transaction ID should be cached');
-        
+        String expectedCachedTransactionId = sessionCacheAvailable ? transactionId : null;
+        System.assertEquals(expectedCachedTransactionId, TritonHelper.getCachedTransactionId(), 'Transaction cache should match Session Cache availability');
+
         // Resume transaction and verify cache is updated
         String newTransactionId = 'test-transaction-id';
         instance.resumeTransaction(newTransactionId);
-        System.assertEquals(newTransactionId, TritonHelper.getCachedTransactionId(), 'New transaction ID should be cached');
-        
+        expectedCachedTransactionId = sessionCacheAvailable ? newTransactionId : null;
+        System.assertEquals(expectedCachedTransactionId, TritonHelper.getCachedTransactionId(), 'Updated transaction cache should match Session Cache availability');
+
         // Stop transaction and verify cache is cleared
         instance.stopTransaction();
         System.assertEquals(null, TritonHelper.getCachedTransactionId(), 'Cache should be cleared after stopping transaction');
@@ -1335,8 +1346,12 @@ private class TritonTest {
     private static void test_cache_functionality_negative() {
         Test.startTest();
         
-        // Force cache to be unavailable by simulating a Platform Cache exception
-        Cache.Org.remove('test'); // Clear any existing cache entries
+        // Clear any existing Session Cache transaction entry when available.
+        try {
+            TritonHelper.clearCachedTransactionId();
+        } catch (Exception e) {
+            // Session Cache can be unavailable in some validation orgs.
+        }
         
         // Create instance with cache disabled
         Triton instance = Triton.instance;
