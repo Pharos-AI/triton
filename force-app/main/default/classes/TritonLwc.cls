@@ -33,6 +33,7 @@ global with sharing class TritonLwc {
     public static void saveComponentLogs(List<ComponentLog> componentLogs) {
         String transactionId = Triton.startTransaction();
         Triton.withCache();
+        Boolean transactionIdFromCache = Triton.TRANSACTION_ID != transactionId;
         transactionId = Triton.TRANSACTION_ID;
 
         for (ComponentLog componentLog : componentLogs) {
@@ -43,10 +44,13 @@ global with sharing class TritonLwc {
             TritonTypes.Level level = TritonTypes.Level.INFO;
             String details = componentLog.details == null ? '' : componentLog.details;
 
-            // Each log independently carries its own transaction ID if provided
-            String logTransactionId = String.isNotBlank(componentLog.transactionId)
-                ? componentLog.transactionId
-                : transactionId;
+            //transaction was not resumed from cache
+            //transaction id was provided by the component
+            if(!transactionIdFromCache && String.isNotBlank(componentLog.transactionId)) {
+                transactionId = componentLog.transactionId;
+                Triton.resumeTransaction(transactionId);
+                transactionIdFromCache = true;
+            }
             try {
                 userId = UserInfo.getUserId();
                 if(!String.isBlank(componentLog.userId)) {
@@ -115,7 +119,7 @@ global with sharing class TritonLwc {
                                     componentLog.error != null ? componentLog.error.message : null)
                             .stackTrace(componentLog.stack)
                             .details(details)
-                            .transactionId(logTransactionId)
+                            .transactionId(transactionId)
                             .spanId(componentLog.spanId)
                             .parentSpanId(componentLog.parentSpanId)
                             .userId(userId)
