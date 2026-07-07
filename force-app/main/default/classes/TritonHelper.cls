@@ -34,24 +34,24 @@ public with sharing class TritonHelper {
     }
     
     /**
-     * Saves transaction ID to platform cache with user-specific key
+     * Saves transaction ID to Org cache with user-specific key
      * @param transactionId Transaction ID to cache
      */
     public static void cacheTransactionId(String transactionId) {
         try {
-            TritonCacheManager.sessionPut(getUserCacheKey(), transactionId, DEFAULT_TRANSACTION_CACHE_DURATION);
+            TritonCacheManager.put(getUserCacheKey(), transactionId, DEFAULT_TRANSACTION_CACHE_DURATION);
         } catch (Exception e) {
             // Silently handle cache failures - logging system should continue without cache
         }
     }
 
     /**
-     * Retrieves transaction ID from platform cache using user-specific key
+     * Retrieves transaction ID from Org cache using user-specific key
      * @return Cached transaction ID or null if not found
      */
     public static String getCachedTransactionId() {
         try {
-            return TritonCacheManager.sessionGet(getUserCacheKey());
+            return (String) TritonCacheManager.get(getUserCacheKey());
         } catch (Exception e) {
             // Silently handle cache failures - logging system should continue without cache
             return null;
@@ -59,10 +59,10 @@ public with sharing class TritonHelper {
     }
 
     /**
-     * Clears transaction ID from platform cache
+     * Clears transaction ID from Org cache
      */
     public static void clearCachedTransactionId() {
-        TritonCacheManager.sessionRemove(getUserCacheKey());
+        TritonCacheManager.remove(getUserCacheKey());
     }
 
     // ─── Flow Log Org Cache helpers ───────────────────────────────────────

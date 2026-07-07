@@ -104,7 +104,7 @@ global with sharing class Triton {
     private static Boolean CACHE_AVAILABLE {
         get {
             if (CACHE_AVAILABLE == null) {
-                CACHE_AVAILABLE = TritonCacheManager.sessionAvailable();
+                CACHE_AVAILABLE = TritonCacheManager.available();
             }
             return CACHE_AVAILABLE;
         }
