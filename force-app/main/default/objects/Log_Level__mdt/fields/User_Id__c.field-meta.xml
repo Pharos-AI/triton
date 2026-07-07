@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>User_Id__c</fullName>
+    <description>Optional. Scopes this log level to a single user. Enter the 15-character Salesforce User Id. Matching is performed on the case-sensitive 15-character Id prefix.</description>
+    <externalId>false</externalId>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <inlineHelpText>15-character Salesforce User Id this log level applies to. Leave blank to apply to all users.</inlineHelpText>
+    <label>User Id</label>
+    <length>15</length>
+    <required>false</required>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

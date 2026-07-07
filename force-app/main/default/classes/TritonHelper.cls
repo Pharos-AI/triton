@@ -148,17 +148,6 @@ public with sharing class TritonHelper {
     }
 
     /**
-    * Creates a key for log level based on:
-    * @param category -- log category field
-    * @param tye -- log type field
-    * @param area -- log functional area field
-    * @return -- a string with values in the following format: Category:{0};Type:{1};Area:{2}
-    */
-    public static String buildLogLevelKey(String category, String type, String area) {
-        return String.format('Category:{0};Type:{1};Area:{2}', new String[]{category, type, area});
-    }
-
-    /**
     * Compares 2 log levels.
     * @param value -- this is the value compared against
     * @param toCompare -- comparison performed against this value

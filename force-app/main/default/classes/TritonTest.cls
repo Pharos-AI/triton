@@ -34,10 +34,9 @@ private class TritonTest {
         Log_Level__mdt ll = new Log_Level__mdt();
         ll.Level__c = TritonTypes.Level.DEBUG.name();
         Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ll};
+        Triton.LOG_LEVELS = null;
 
-        System.assertEquals(1, Triton.LOG_LEVELS.size());
-        System.assertEquals('Category:null;Type:null;Area:null', new List<String>(Triton.LOG_LEVELS.keySet())[0]);
-        System.assertEquals(TritonTypes.Level.DEBUG, Triton.LOG_LEVELS.get('Category:null;Type:null;Area:null'));
+        System.assertEquals(1, Triton.LOG_LEVELS.size(), 'Expected a single parsed log level rule');
     }
 
     @IsTest
@@ -84,6 +83,7 @@ private class TritonTest {
         categoryAndAreaLevel.Area__c = TritonTypes.Area.Community.name();
 
         Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{globalLevel, categoryLevel, categoryAndAreaLevel};
+        Triton.LOG_LEVELS = null;
     }
 
     @IsTest
@@ -92,12 +92,7 @@ private class TritonTest {
 
         setupLogLevelsMap();
 
-        System.assertEquals(3, Triton.LOG_LEVELS.size());
-        System.assertEquals(TritonTypes.Level.DEBUG, Triton.LOG_LEVELS.get('Category:null;Type:null;Area:null'));
-        System.assertEquals(TritonTypes.Level.FINE, Triton.LOG_LEVELS.get('Category:Event;Type:null;Area:null'));
-        System.assertEquals(TritonTypes.Level.FINEST, Triton.LOG_LEVELS.get('Category:Event;Type:null;Area:Community'));
-
-
+        System.assertEquals(3, Triton.LOG_LEVELS.size(), 'Expected three parsed log level rules');
 
         Test.startTest();
         Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.FINEST));
@@ -117,6 +112,187 @@ private class TritonTest {
         Test.stopTest();
 
         System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()]);
+    }
+
+    // A user-scoped log level record used by the user id tests below.
+    private static void setupUserIdLogLevel(Id userId) {
+        Log_Level__mdt userLevel = new Log_Level__mdt();
+        userLevel.Level__c = TritonTypes.Level.DEBUG.name();
+        userLevel.User_Id__c = userId;
+
+        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ userLevel };
+        Triton.LOG_LEVELS = null;
+    }
+
+    @IsTest
+    private static void test_log_level_by_user_id_positive() {
+        TritonTestFactory.assertNoLogs();
+
+        // Level defined only for the current user, allowing DEBUG and above.
+        setupUserIdLogLevel(UserInfo.getUserId());
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').userId(UserInfo.getUserId()).level(TritonTypes.Level.DEBUG));
+        Test.stopTest();
+
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
+    }
+
+    @IsTest
+    private static void test_log_level_by_user_id_negative() {
+        TritonTestFactory.assertNoLogs();
+
+        // The user-scoped level allows only DEBUG and above; a FINE log for that
+        // same user must be filtered out.
+        setupUserIdLogLevel(UserInfo.getUserId());
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').userId(UserInfo.getUserId()).level(TritonTypes.Level.FINE));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()]);
+    }
+
+    @IsTest
+    private static void test_log_level_by_user_id_different_user() {
+        TritonTestFactory.assertNoLogs();
+
+        // Level is scoped to a different user, so it must not target the current
+        // user's logs -- the FINE log falls through the default-allow path.
+        setupUserIdLogLevel('005000000000001');
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').userId(UserInfo.getUserId()).level(TritonTypes.Level.FINE));
+        Test.stopTest();
+
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
+    }
+
+    @IsTest
+    private static void test_log_level_by_component_apex_positive() {
+        TritonTestFactory.assertNoLogs();
+
+        // Level defined only for the 'MyComponent' Apex class, allowing DEBUG and above.
+        Log_Level__mdt componentLevel = new Log_Level__mdt();
+        componentLevel.Level__c = TritonTypes.Level.DEBUG.name();
+        componentLevel.Component_Name__c = 'MyComponent';
+        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ componentLevel };
+        Triton.LOG_LEVELS = null;
+
+        Test.startTest();
+        // Apex Name is Class.Method; the class portion must match the component name.
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').operation('MyComponent.someMethod').level(TritonTypes.Level.DEBUG));
+        Test.stopTest();
+
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
+    }
+
+    @IsTest
+    private static void test_log_level_by_component_apex_negative() {
+        TritonTestFactory.assertNoLogs();
+
+        Log_Level__mdt componentLevel = new Log_Level__mdt();
+        componentLevel.Level__c = TritonTypes.Level.DEBUG.name();
+        componentLevel.Component_Name__c = 'MyComponent';
+        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ componentLevel };
+        Triton.LOG_LEVELS = null;
+
+        Test.startTest();
+        // Component matches but FINE is more verbose than the allowed DEBUG.
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').operation('MyComponent.someMethod').level(TritonTypes.Level.FINE));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()]);
+    }
+
+    @IsTest
+    private static void test_log_level_by_component_flow() {
+        TritonTestFactory.assertNoLogs();
+
+        // For flows the component is identified by the Flow API name, which takes
+        // precedence over the Apex Name.
+        Log_Level__mdt componentLevel = new Log_Level__mdt();
+        componentLevel.Level__c = TritonTypes.Level.DEBUG.name();
+        componentLevel.Component_Name__c = 'My_Flow';
+        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ componentLevel };
+        Triton.LOG_LEVELS = null;
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').flowApiName('My_Flow').operation('Some.Apex').level(TritonTypes.Level.DEBUG));
+        Test.stopTest();
+
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
+    }
+
+    @IsTest
+    private static void test_log_level_all_attributes() {
+        TritonTestFactory.assertNoLogs();
+
+        // A single, fully-specified rule so the assertion isolates the new
+        // user id / component matching (nothing broader can match instead).
+        Log_Level__mdt allLevel = new Log_Level__mdt();
+        allLevel.Level__c = TritonTypes.Level.FINER.name();
+        allLevel.Category__c = TritonTypes.Category.Event.name();
+        allLevel.Type__c = TritonTypes.Type.DMLResult.name();
+        allLevel.Area__c = TritonTypes.Area.Community.name();
+        allLevel.User_Id__c = UserInfo.getUserId();
+        allLevel.Component_Name__c = 'TestComponentName';
+        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ allLevel };
+        Triton.LOG_LEVELS = null;
+
+        Test.startTest();
+        // Matches every attribute at exactly the allowed level.
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.DMLResult).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').userId(UserInfo.getUserId()).operation('TestComponentName').level(TritonTypes.Level.FINER));
+        // Same attributes but a different component -> no rule targets it -> allowed by default.
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.DMLResult).area(TritonTypes.Area.Community)
+            .summary('other event').details('error details').userId(UserInfo.getUserId()).operation('OtherComponent').level(TritonTypes.Level.FINER));
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [
+            SELECT pharos__User_Id__c, pharos__Apex_Name__c
+            FROM pharos__Log__c
+            WHERE pharos__Category__c = :TritonTypes.Category.Event.name()
+            ORDER BY pharos__Apex_Name__c
+        ];
+        System.assertEquals(2, logs.size(), 'Both the targeted (allowed) and untargeted (default-allowed) logs should persist');
+        System.assertEquals('OtherComponent', logs.get(0).pharos__Apex_Name__c);
+        System.assertEquals('TestComponentName', logs.get(1).pharos__Apex_Name__c);
+        System.assertEquals(UserInfo.getUserId(), logs.get(1).pharos__User_Id__c);
+    }
+
+    @IsTest
+    private static void test_get_component_name() {
+        // Flow API name takes precedence.
+        pharos__Log__c flowLog = new pharos__Log__c(pharos__Flow_API_Name__c = 'My_Flow', pharos__Apex_Name__c = 'Some.Apex');
+        System.assertEquals('My_Flow', Triton.getComponentName(flowLog));
+
+        // Apex name: class portion before the first dot.
+        pharos__Log__c apexLog = new pharos__Log__c(pharos__Apex_Name__c = 'MyClass.myMethod');
+        System.assertEquals('MyClass', Triton.getComponentName(apexLog));
+
+        // Apex name without a dot is returned as-is.
+        pharos__Log__c plainLog = new pharos__Log__c(pharos__Apex_Name__c = 'MyClass');
+        System.assertEquals('MyClass', Triton.getComponentName(plainLog));
+
+        // Nothing to resolve.
+        System.assertEquals(null, Triton.getComponentName(new pharos__Log__c()));
+    }
+
+    @IsTest
+    private static void test_normalize_user_id() {
+        Id userId = UserInfo.getUserId();
+        System.assertEquals(String.valueOf(userId).substring(0, 15), Triton.normalizeUserId(userId),
+            '18-character Id should be truncated to its 15-character prefix');
+        System.assertEquals('015CHAR00000000', Triton.normalizeUserId('015CHAR00000000'),
+            '15-character value should be returned unchanged');
+        System.assertEquals(null, Triton.normalizeUserId(null));
     }
 
     @IsTest
