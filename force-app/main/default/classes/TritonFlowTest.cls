@@ -700,21 +700,7 @@ private class TritonFlowTest {
         try { TritonCacheManager.get('tcm_test'); } catch (Exception e) { /* expected */ }
         try { TritonCacheManager.getKeys(); } catch (Exception e) { /* expected */ }
         try { TritonCacheManager.remove('tcm_test'); } catch (Exception e) { /* expected */ }
-
-        TritonCacheManager.resetMock(); // resets useMock = true
-    }
-
-    /**
-     * Exercises real Cache.Session code paths by disabling the mock.
-     */
-    @IsTest
-    private static void test_cache_manager_session_production_paths() {
-        TritonCacheManager.useMock = false;
-
-        try { TritonCacheManager.sessionPut('tcm_sess', 'value', 300); } catch (Exception e) { /* expected */ }
-        try { TritonCacheManager.sessionGet('tcm_sess'); } catch (Exception e) { /* expected */ }
-        try { TritonCacheManager.sessionRemove('tcm_sess'); } catch (Exception e) { /* expected */ }
-        try { TritonCacheManager.sessionAvailable(); } catch (Exception e) { /* expected */ }
+        try { TritonCacheManager.available(); } catch (Exception e) { /* expected */ }
 
         TritonCacheManager.resetMock(); // resets useMock = true
     }

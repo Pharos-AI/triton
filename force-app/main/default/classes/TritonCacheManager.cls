@@ -9,16 +9,16 @@
  */
 
 /**
- * Centralizes all platform cache operations (Org and Session).
- * In production, delegates to Cache.Org / Cache.Session.
- * In test context, uses static Maps to avoid platform cache limitations
+ * Centralizes all platform cache operations (Org Cache).
+ * In production, delegates to Cache.Org.
+ * In test context, uses a static Map to avoid platform cache limitations
  * where put() succeeds silently but get() returns null.
  */
 public with sharing class TritonCacheManager {
 
-    // Controls whether mock maps are used instead of real platform cache.
+    // Controls whether the mock map is used instead of real platform cache.
     // Defaults to true in test context. Tests can set to false to exercise
-    // production Cache.Org / Cache.Session code paths.
+    // production Cache.Org code paths.
     @TestVisible
     private static Boolean useMock = Test.isRunningTest();
 
@@ -57,44 +57,16 @@ public with sharing class TritonCacheManager {
         }
     }
 
-    // ─── Session Cache ────────────────────────────────────────────────
-
-    @TestVisible
-    private static Map<String, String> mockSessionCache = new Map<String, String>();
-
-    public static void sessionPut(String key, String value, Integer ttl) {
-        if (useMock) {
-            mockSessionCache.put(key, value);
-        } else {
-            Cache.Session.put(key, value, ttl);
-        }
-    }
-
-    public static String sessionGet(String key) {
-        if (useMock) {
-            return mockSessionCache.get(key);
-        }
-        return (String) Cache.Session.get(key);
-    }
-
-    public static void sessionRemove(String key) {
-        if (useMock) {
-            mockSessionCache.remove(key);
-        } else {
-            Cache.Session.remove(key);
-        }
-    }
-
     /**
-     * Checks whether Session cache is available.
+     * Checks whether Org cache is available.
      * In test context with mock enabled, always returns true.
      */
-    public static Boolean sessionAvailable() {
+    public static Boolean available() {
         if (useMock) {
             return true;
         }
         try {
-            Cache.Session.getKeys();
+            Cache.Org.getKeys();
             return true;
         } catch (Exception e) {
             return false;
@@ -106,7 +78,6 @@ public with sharing class TritonCacheManager {
     @TestVisible
     private static void resetMock() {
         mockCache.clear();
-        mockSessionCache.clear();
         useMock = true;
     }
 }
