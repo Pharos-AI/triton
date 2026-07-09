@@ -50,6 +50,13 @@ global with sharing class TritonFlow {
             FlowLogOutput result = processFlowLog(flowLog);
             flowLogOutputs.add(result);
         }
+        // When the deferred batch is disabled, publish synchronously in-transaction.
+        // Triton.flush() drains and publishes its own buffer — no logs are lost.
+        if (TritonHelper.isFlowFlushBatchDisabled()) {
+            Triton.flush();
+            return flowLogOutputs;
+        }
+
         // Drain buffered logs and defer to batch flush instead of immediate publish.
         // addLogs handles all failure cases internally — no logs are ever lost.
         List<pharos__Log__c> buffered = Triton.drain();
