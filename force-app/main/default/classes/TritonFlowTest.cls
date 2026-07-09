@@ -320,8 +320,8 @@ private class TritonFlowTest {
 
         Log_Level__mdt ll = new Log_Level__mdt();
         ll.Level__c = TritonTypes.Level.DEBUG.name();
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ ll };
-        Triton.LOG_LEVELS = null;
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ ll };
+        TritonHelper.Config.logLevels = null;
 
         TritonFlow.FlowLog flowLog = TritonTestFactory.makeFlowLog('should-be-filtered');
         flowLog.level = 'FINE';
@@ -709,7 +709,7 @@ private class TritonFlowTest {
     private static void test_flow_master_switch_disables_logging() {
         TritonTestFactory.assertNoLogs();
         TritonTestFactory.resetFlowState();
-        TritonHelper.settings = new TritonSettings__c(Disable_Logging__c = true);
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Logging__c = true);
 
         Test.startTest();
         List<TritonFlow.FlowLogOutput> outputs = TritonFlow.log(
@@ -729,7 +729,7 @@ private class TritonFlowTest {
     private static void test_flow_batch_disabled_flushes_immediately() {
         TritonTestFactory.assertNoLogs();
         TritonTestFactory.resetFlowState();
-        TritonHelper.settings = new TritonSettings__c(Disable_Flow_Flush_Batch__c = true);
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Flow_Flush_Batch__c = true);
 
         Test.startTest();
         TritonFlow.log(new List<TritonFlow.FlowLog>{
@@ -750,7 +750,7 @@ private class TritonFlowTest {
     private static void test_flow_batch_enabled_defers_flush() {
         TritonTestFactory.assertNoLogs();
         TritonTestFactory.resetFlowState();
-        TritonHelper.settings = new TritonSettings__c(Disable_Flow_Flush_Batch__c = false);
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Flow_Flush_Batch__c = false);
 
         Test.startTest();
         TritonFlow.log(new List<TritonFlow.FlowLog>{
@@ -769,7 +769,7 @@ private class TritonFlowTest {
     private static void test_flow_both_switches_on_persists_nothing() {
         TritonTestFactory.assertNoLogs();
         TritonTestFactory.resetFlowState();
-        TritonHelper.settings = new TritonSettings__c(
+        TritonHelper.Config.settings = new TritonSettings__c(
             Disable_Logging__c = true,
             Disable_Flow_Flush_Batch__c = true
         );

@@ -31,7 +31,7 @@ global with sharing class TritonLwc {
     */
     @AuraEnabled
     public static void saveComponentLogs(List<ComponentLog> componentLogs) {
-        if (TritonHelper.isLoggingDisabled()) {
+        if (TritonHelper.Config.isLoggingDisabled()) {
             return;
         }
 

@@ -24,8 +24,8 @@ public class TritonTestFactory {
      */
     public static void initTestSetup() {
         pharos.Test_Logger.initSettings();
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{};
-        Triton.LOG_LEVELS = null;
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{};
+        TritonHelper.Config.logLevels = null;
     }
 
     // ─── State Reset ────────────────────────────────────────────────
