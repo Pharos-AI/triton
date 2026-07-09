@@ -764,4 +764,23 @@ private class TritonFlowTest {
 
         TritonTestFactory.assertLogCount(1);
     }
+
+    @IsTest
+    private static void test_flow_both_switches_on_persists_nothing() {
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
+        TritonHelper.settings = new TritonSettings__c(
+            Disable_Logging__c = true,
+            Disable_Flow_Flush_Batch__c = true
+        );
+
+        Test.startTest();
+        List<TritonFlow.FlowLogOutput> outputs = TritonFlow.log(
+            new List<TritonFlow.FlowLog>{ TritonTestFactory.makeFlowLog('nope') });
+        TritonTestFactory.flushCachedFlowLogs();
+        Test.stopTest();
+
+        System.assertEquals(1, outputs.size(), 'Output cardinality preserved');
+        TritonTestFactory.assertNoLogs();
+    }
 }
