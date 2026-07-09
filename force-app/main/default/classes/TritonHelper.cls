@@ -24,6 +24,49 @@ public with sharing class TritonHelper {
 
     private static final String TRANSACTION_CACHE_KEY = 'tritonTransactionId';
     private static final Integer DEFAULT_TRANSACTION_CACHE_DURATION = 300;
+
+    // ─── Feature Switches ────────────────────────────────────────────
+
+    /**
+     * Cached org-level Triton settings, read once per transaction.
+     * @TestVisible so tests inject flag values without DML.
+     */
+    @TestVisible
+    private static TritonSettings__c settings {
+        get {
+            if (settings == null) {
+                settings = TritonSettings__c.getOrgDefaults();
+            }
+            return settings;
+        }
+        set;
+    }
+
+    /**
+     * True when all Triton logging is disabled via the org-level switch.
+     * Fail-safe: any error resolves to false (logging enabled) so a config
+     * read hiccup never silently drops logs.
+     */
+    public static Boolean isLoggingDisabled() {
+        try {
+            return settings != null && settings.Disable_Logging__c == true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * True when the deferred Flow flush batch is disabled. When disabled,
+     * Flow logs are flushed immediately instead of via the batch.
+     * Fail-safe: any error resolves to false (batch enabled).
+     */
+    public static Boolean isFlowFlushBatchDisabled() {
+        try {
+            return settings != null && settings.Disable_Flow_Flush_Batch__c == true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
     
     /**
      * Generates a user-specific cache key

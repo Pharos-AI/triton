@@ -2405,4 +2405,31 @@ private class TritonTest {
             'Cloned builder should preserve parent span ID');
     }
 
+    @IsTest
+    private static void test_switches_default_enabled() {
+        TritonHelper.settings = null;
+        System.assertEquals(false, TritonHelper.isLoggingDisabled(),
+            'Logging should be enabled by default (org defaults / no record)');
+        System.assertEquals(false, TritonHelper.isFlowFlushBatchDisabled(),
+            'Flow flush batch should be enabled by default');
+    }
+
+    @IsTest
+    private static void test_switch_logging_disabled_flag() {
+        TritonHelper.settings = new TritonSettings__c(Disable_Logging__c = true);
+        System.assertEquals(true, TritonHelper.isLoggingDisabled(),
+            'isLoggingDisabled should reflect the Disable_Logging__c flag');
+        System.assertEquals(false, TritonHelper.isFlowFlushBatchDisabled(),
+            'Flow flush batch flag is independent and defaults false');
+    }
+
+    @IsTest
+    private static void test_switch_flow_flush_batch_disabled_flag() {
+        TritonHelper.settings = new TritonSettings__c(Disable_Flow_Flush_Batch__c = true);
+        System.assertEquals(true, TritonHelper.isFlowFlushBatchDisabled(),
+            'isFlowFlushBatchDisabled should reflect the Disable_Flow_Flush_Batch__c flag');
+        System.assertEquals(false, TritonHelper.isLoggingDisabled(),
+            'Logging flag is independent and defaults false');
+    }
+
 }
