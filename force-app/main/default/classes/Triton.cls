@@ -301,6 +301,10 @@ global with sharing class Triton {
     * @param builder TritonBuilder instance containing log details
     */
     public static void log(TritonBuilder builder) {
+        if (TritonHelper.isLoggingDisabled()) {
+            return;
+        }
+
         pharos__Log__c log = builder.build();
 
         if (!isLogAllowedForLogLevel(log)) {

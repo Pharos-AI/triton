@@ -35,6 +35,16 @@ global with sharing class TritonFlow {
                     Label='Log' 
                     Description='Creates a log for a flow or process builder')
     public static List<FlowLogOutput> log(List<FlowLog> flowLogs) {
+        // Master kill switch: skip all log construction, but preserve the
+        // invocable contract of one output per input.
+        if (TritonHelper.isLoggingDisabled()) {
+            List<FlowLogOutput> disabledOutputs = new List<FlowLogOutput>();
+            for (Integer i = 0; i < flowLogs.size(); i++) {
+                disabledOutputs.add(new FlowLogOutput());
+            }
+            return disabledOutputs;
+        }
+
         List<FlowLogOutput> flowLogOutputs = new List<FlowLogOutput>();
         for (FlowLog flowLog : flowLogs) {
             FlowLogOutput result = processFlowLog(flowLog);

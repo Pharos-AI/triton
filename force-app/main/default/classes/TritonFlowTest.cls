@@ -704,4 +704,24 @@ private class TritonFlowTest {
 
         TritonCacheManager.resetMock(); // resets useMock = true
     }
+
+    @IsTest
+    private static void test_flow_master_switch_disables_logging() {
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
+        TritonHelper.settings = new TritonSettings__c(Disable_Logging__c = true);
+
+        Test.startTest();
+        List<TritonFlow.FlowLogOutput> outputs = TritonFlow.log(
+            new List<TritonFlow.FlowLog>{
+                TritonTestFactory.makeFlowLog('a'),
+                TritonTestFactory.makeFlowLog('b')
+            });
+        TritonTestFactory.flushCachedFlowLogs();
+        Test.stopTest();
+
+        System.assertEquals(2, outputs.size(),
+            'One output per input must be returned even when logging is disabled');
+        TritonTestFactory.assertNoLogs();
+    }
 }

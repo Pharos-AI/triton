@@ -2432,4 +2432,62 @@ private class TritonTest {
             'Logging flag is independent and defaults false');
     }
 
+    @IsTest
+    private static void test_master_switch_disables_apex_logging() {
+        TritonTestFactory.assertNoLogs();
+        TritonHelper.settings = new TritonSettings__c(Disable_Logging__c = true);
+
+        Test.startTest();
+        Triton.logNow(Triton.t
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Accounts)
+            .summary('should not persist')
+            .level(TritonTypes.Level.INFO));
+        Triton.log(Triton.t
+            .category(TritonTypes.Category.Apex)
+            .summary('buffered should not persist')
+            .level(TritonTypes.Level.ERROR));
+        Triton.flush();
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
+    }
+
+    @IsTest
+    private static void test_master_switch_enabled_still_logs() {
+        TritonTestFactory.assertNoLogs();
+        TritonHelper.settings = new TritonSettings__c(Disable_Logging__c = false);
+
+        Test.startTest();
+        Triton.logNow(Triton.t
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Accounts)
+            .summary('should persist')
+            .level(TritonTypes.Level.INFO));
+        Test.stopTest();
+
+        TritonTestFactory.assertLogCount(1);
+    }
+
+    @IsTest
+    private static void test_master_switch_disables_lwc_logging() {
+        TritonTestFactory.assertNoLogs();
+        TritonHelper.settings = new TritonSettings__c(Disable_Logging__c = true);
+
+        TritonLwc.ComponentLog cl = new TritonLwc.ComponentLog();
+        cl.category = TritonTypes.Category.LWC.name();
+        cl.level = TritonTypes.Level.INFO.name();
+        cl.summary = 'lwc should not persist';
+        cl.componentInfo = new TritonLwc.Component();
+        cl.componentInfo.name = 'myCmp';
+
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ cl });
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
+    }
+
 }
