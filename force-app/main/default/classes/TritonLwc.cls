@@ -31,6 +31,10 @@ global with sharing class TritonLwc {
     */
     @AuraEnabled
     public static void saveComponentLogs(List<ComponentLog> componentLogs) {
+        if (TritonHelper.Config.isLoggingDisabled()) {
+            return;
+        }
+
         String transactionId = Triton.startTransaction();
         Triton.withCache();
         Boolean transactionIdFromCache = Triton.TRANSACTION_ID != transactionId;

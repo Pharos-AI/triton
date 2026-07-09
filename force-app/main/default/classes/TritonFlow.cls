@@ -35,11 +35,28 @@ global with sharing class TritonFlow {
                     Label='Log' 
                     Description='Creates a log for a flow or process builder')
     public static List<FlowLogOutput> log(List<FlowLog> flowLogs) {
+        // Master kill switch: skip all log construction, but preserve the
+        // invocable contract of one output per input.
+        if (TritonHelper.Config.isLoggingDisabled()) {
+            List<FlowLogOutput> disabledOutputs = new List<FlowLogOutput>();
+            for (Integer i = 0; i < flowLogs.size(); i++) {
+                disabledOutputs.add(new FlowLogOutput());
+            }
+            return disabledOutputs;
+        }
+
         List<FlowLogOutput> flowLogOutputs = new List<FlowLogOutput>();
         for (FlowLog flowLog : flowLogs) {
             FlowLogOutput result = processFlowLog(flowLog);
             flowLogOutputs.add(result);
         }
+        // When the deferred batch is disabled, publish synchronously in-transaction.
+        // Triton.flush() drains and publishes its own buffer — no logs are lost.
+        if (TritonHelper.Config.isFlowFlushBatchDisabled()) {
+            Triton.flush();
+            return flowLogOutputs;
+        }
+
         // Drain buffered logs and defer to batch flush instead of immediate publish.
         // addLogs handles all failure cases internally — no logs are ever lost.
         List<pharos__Log__c> buffered = Triton.drain();

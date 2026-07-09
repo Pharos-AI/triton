@@ -33,10 +33,10 @@ private class TritonTest {
 
         Log_Level__mdt ll = new Log_Level__mdt();
         ll.Level__c = TritonTypes.Level.DEBUG.name();
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ll};
-        Triton.LOG_LEVELS = null;
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ll};
+        TritonHelper.Config.logLevels = null;
 
-        System.assertEquals(1, Triton.LOG_LEVELS.size(), 'Expected a single parsed log level rule');
+        System.assertEquals(1, TritonHelper.Config.logLevels.size(), 'Expected a single parsed log level rule');
     }
 
     @IsTest
@@ -45,7 +45,7 @@ private class TritonTest {
 
         Log_Level__mdt ll = new Log_Level__mdt();
         ll.Level__c = TritonTypes.Level.DEBUG.name();
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ll};
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ll};
 
         Test.startTest();
         Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.DEBUG));
@@ -60,7 +60,7 @@ private class TritonTest {
 
         Log_Level__mdt ll = new Log_Level__mdt();
         ll.Level__c = TritonTypes.Level.DEBUG.name();
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ll};
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ll};
 
         Test.startTest();
         Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.FINE));
@@ -82,8 +82,8 @@ private class TritonTest {
         categoryAndAreaLevel.Category__c = TritonTypes.Category.Event.name();
         categoryAndAreaLevel.Area__c = TritonTypes.Area.Community.name();
 
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{globalLevel, categoryLevel, categoryAndAreaLevel};
-        Triton.LOG_LEVELS = null;
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{globalLevel, categoryLevel, categoryAndAreaLevel};
+        TritonHelper.Config.logLevels = null;
     }
 
     @IsTest
@@ -92,7 +92,7 @@ private class TritonTest {
 
         setupLogLevelsMap();
 
-        System.assertEquals(3, Triton.LOG_LEVELS.size(), 'Expected three parsed log level rules');
+        System.assertEquals(3, TritonHelper.Config.logLevels.size(), 'Expected three parsed log level rules');
 
         Test.startTest();
         Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.FINEST));
@@ -120,8 +120,8 @@ private class TritonTest {
         userLevel.Level__c = TritonTypes.Level.DEBUG.name();
         userLevel.User_Id__c = userId;
 
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ userLevel };
-        Triton.LOG_LEVELS = null;
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ userLevel };
+        TritonHelper.Config.logLevels = null;
     }
 
     @IsTest
@@ -179,8 +179,8 @@ private class TritonTest {
         Log_Level__mdt componentLevel = new Log_Level__mdt();
         componentLevel.Level__c = TritonTypes.Level.DEBUG.name();
         componentLevel.Component_Name__c = 'MyComponent';
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ componentLevel };
-        Triton.LOG_LEVELS = null;
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ componentLevel };
+        TritonHelper.Config.logLevels = null;
 
         Test.startTest();
         // Apex Name is Class.Method; the class portion must match the component name.
@@ -198,8 +198,8 @@ private class TritonTest {
         Log_Level__mdt componentLevel = new Log_Level__mdt();
         componentLevel.Level__c = TritonTypes.Level.DEBUG.name();
         componentLevel.Component_Name__c = 'MyComponent';
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ componentLevel };
-        Triton.LOG_LEVELS = null;
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ componentLevel };
+        TritonHelper.Config.logLevels = null;
 
         Test.startTest();
         // Component matches but FINE is more verbose than the allowed DEBUG.
@@ -219,8 +219,8 @@ private class TritonTest {
         Log_Level__mdt componentLevel = new Log_Level__mdt();
         componentLevel.Level__c = TritonTypes.Level.DEBUG.name();
         componentLevel.Component_Name__c = 'My_Flow';
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ componentLevel };
-        Triton.LOG_LEVELS = null;
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ componentLevel };
+        TritonHelper.Config.logLevels = null;
 
         Test.startTest();
         Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
@@ -243,8 +243,8 @@ private class TritonTest {
         allLevel.Area__c = TritonTypes.Area.Community.name();
         allLevel.User_Id__c = UserInfo.getUserId();
         allLevel.Component_Name__c = 'TestComponentName';
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ allLevel };
-        Triton.LOG_LEVELS = null;
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ allLevel };
+        TritonHelper.Config.logLevels = null;
 
         Test.startTest();
         // Matches every attribute at exactly the allowed level.
@@ -271,28 +271,28 @@ private class TritonTest {
     private static void test_get_component_name() {
         // Flow API name takes precedence.
         pharos__Log__c flowLog = new pharos__Log__c(pharos__Flow_API_Name__c = 'My_Flow', pharos__Apex_Name__c = 'Some.Apex');
-        System.assertEquals('My_Flow', Triton.getComponentName(flowLog));
+        System.assertEquals('My_Flow', TritonHelper.getComponentName(flowLog));
 
         // Apex name: class portion before the first dot.
         pharos__Log__c apexLog = new pharos__Log__c(pharos__Apex_Name__c = 'MyClass.myMethod');
-        System.assertEquals('MyClass', Triton.getComponentName(apexLog));
+        System.assertEquals('MyClass', TritonHelper.getComponentName(apexLog));
 
         // Apex name without a dot is returned as-is.
         pharos__Log__c plainLog = new pharos__Log__c(pharos__Apex_Name__c = 'MyClass');
-        System.assertEquals('MyClass', Triton.getComponentName(plainLog));
+        System.assertEquals('MyClass', TritonHelper.getComponentName(plainLog));
 
         // Nothing to resolve.
-        System.assertEquals(null, Triton.getComponentName(new pharos__Log__c()));
+        System.assertEquals(null, TritonHelper.getComponentName(new pharos__Log__c()));
     }
 
     @IsTest
     private static void test_normalize_user_id() {
         Id userId = UserInfo.getUserId();
-        System.assertEquals(String.valueOf(userId).substring(0, 15), Triton.normalizeUserId(userId),
+        System.assertEquals(String.valueOf(userId).substring(0, 15), TritonHelper.normalizeUserId(userId),
             '18-character Id should be truncated to its 15-character prefix');
-        System.assertEquals('015CHAR00000000', Triton.normalizeUserId('015CHAR00000000'),
+        System.assertEquals('015CHAR00000000', TritonHelper.normalizeUserId('015CHAR00000000'),
             '15-character value should be returned unchanged');
-        System.assertEquals(null, Triton.normalizeUserId(null));
+        System.assertEquals(null, TritonHelper.normalizeUserId(null));
     }
 
     @IsTest
@@ -2403,6 +2403,91 @@ private class TritonTest {
             'Cloned builder should preserve span ID');
         System.assertEquals('clone-parent', cloned.currentParentSpanId,
             'Cloned builder should preserve parent span ID');
+    }
+
+    @IsTest
+    private static void test_switches_default_enabled() {
+        TritonHelper.Config.settings = null;
+        System.assertEquals(false, TritonHelper.Config.isLoggingDisabled(),
+            'Logging should be enabled by default (org defaults / no record)');
+        System.assertEquals(false, TritonHelper.Config.isFlowFlushBatchDisabled(),
+            'Flow flush batch should be enabled by default');
+    }
+
+    @IsTest
+    private static void test_switch_logging_disabled_flag() {
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Logging__c = true);
+        System.assertEquals(true, TritonHelper.Config.isLoggingDisabled(),
+            'isLoggingDisabled should reflect the Disable_Logging__c flag');
+        System.assertEquals(false, TritonHelper.Config.isFlowFlushBatchDisabled(),
+            'Flow flush batch flag is independent and defaults false');
+    }
+
+    @IsTest
+    private static void test_switch_flow_flush_batch_disabled_flag() {
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Flow_Flush_Batch__c = true);
+        System.assertEquals(true, TritonHelper.Config.isFlowFlushBatchDisabled(),
+            'isFlowFlushBatchDisabled should reflect the Disable_Flow_Flush_Batch__c flag');
+        System.assertEquals(false, TritonHelper.Config.isLoggingDisabled(),
+            'Logging flag is independent and defaults false');
+    }
+
+    @IsTest
+    private static void test_master_switch_disables_apex_logging() {
+        TritonTestFactory.assertNoLogs();
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Logging__c = true);
+
+        Test.startTest();
+        Triton.logNow(Triton.t
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Accounts)
+            .summary('should not persist')
+            .level(TritonTypes.Level.INFO));
+        Triton.log(Triton.t
+            .category(TritonTypes.Category.Apex)
+            .summary('buffered should not persist')
+            .level(TritonTypes.Level.ERROR));
+        Triton.flush();
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
+    }
+
+    @IsTest
+    private static void test_master_switch_enabled_still_logs() {
+        TritonTestFactory.assertNoLogs();
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Logging__c = false);
+
+        Test.startTest();
+        Triton.logNow(Triton.t
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Accounts)
+            .summary('should persist')
+            .level(TritonTypes.Level.INFO));
+        Test.stopTest();
+
+        TritonTestFactory.assertLogCount(1);
+    }
+
+    @IsTest
+    private static void test_master_switch_disables_lwc_logging() {
+        TritonTestFactory.assertNoLogs();
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Logging__c = true);
+
+        TritonLwc.ComponentLog cl = new TritonLwc.ComponentLog();
+        cl.category = TritonTypes.Category.LWC.name();
+        cl.level = TritonTypes.Level.INFO.name();
+        cl.summary = 'lwc should not persist';
+        cl.componentInfo = new TritonLwc.Component();
+        cl.componentInfo.name = 'myCmp';
+
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ cl });
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
     }
 
 }

@@ -320,8 +320,8 @@ private class TritonFlowTest {
 
         Log_Level__mdt ll = new Log_Level__mdt();
         ll.Level__c = TritonTypes.Level.DEBUG.name();
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ ll };
-        Triton.LOG_LEVELS = null;
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ ll };
+        TritonHelper.Config.logLevels = null;
 
         TritonFlow.FlowLog flowLog = TritonTestFactory.makeFlowLog('should-be-filtered');
         flowLog.level = 'FINE';
@@ -703,5 +703,84 @@ private class TritonFlowTest {
         try { TritonCacheManager.available(); } catch (Exception e) { /* expected */ }
 
         TritonCacheManager.resetMock(); // resets useMock = true
+    }
+
+    @IsTest
+    private static void test_flow_master_switch_disables_logging() {
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Logging__c = true);
+
+        Test.startTest();
+        List<TritonFlow.FlowLogOutput> outputs = TritonFlow.log(
+            new List<TritonFlow.FlowLog>{
+                TritonTestFactory.makeFlowLog('a'),
+                TritonTestFactory.makeFlowLog('b')
+            });
+        TritonTestFactory.flushCachedFlowLogs();
+        Test.stopTest();
+
+        System.assertEquals(2, outputs.size(),
+            'One output per input must be returned even when logging is disabled');
+        TritonTestFactory.assertNoLogs();
+    }
+
+    @IsTest
+    private static void test_flow_batch_disabled_flushes_immediately() {
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Flow_Flush_Batch__c = true);
+
+        Test.startTest();
+        TritonFlow.log(new List<TritonFlow.FlowLog>{
+            TritonTestFactory.makeFlowLog('immediate')
+        });
+        // Disabled batch must NOT defer to Org Cache — nothing buffered for a batch.
+        System.assert(TritonHelper.getFlowLogCacheKeys().isEmpty(),
+            'Disabled batch should not write Flow logs to Org Cache');
+        System.assertEquals(0, TritonTestFactory.countActiveFlowFlushBatchJobs(),
+            'No deferred batch job should be scheduled when the batch is disabled');
+        Test.stopTest();
+
+        // The immediately-flushed log is delivered by pharos at stopTest.
+        TritonTestFactory.assertLogCount(1);
+    }
+
+    @IsTest
+    private static void test_flow_batch_enabled_defers_flush() {
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Flow_Flush_Batch__c = false);
+
+        Test.startTest();
+        TritonFlow.log(new List<TritonFlow.FlowLog>{
+            TritonTestFactory.makeFlowLog('deferred')
+        });
+        // Enabled batch defers: Flow logs are buffered in Org Cache for the batch.
+        System.assert(!TritonHelper.getFlowLogCacheKeys().isEmpty(),
+            'Enabled batch should buffer Flow logs in Org Cache for deferred flush');
+        TritonTestFactory.flushCachedFlowLogs();
+        Test.stopTest();
+
+        TritonTestFactory.assertLogCount(1);
+    }
+
+    @IsTest
+    private static void test_flow_both_switches_on_persists_nothing() {
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
+        TritonHelper.Config.settings = new TritonSettings__c(
+            Disable_Logging__c = true,
+            Disable_Flow_Flush_Batch__c = true
+        );
+
+        Test.startTest();
+        List<TritonFlow.FlowLogOutput> outputs = TritonFlow.log(
+            new List<TritonFlow.FlowLog>{ TritonTestFactory.makeFlowLog('nope') });
+        TritonTestFactory.flushCachedFlowLogs();
+        Test.stopTest();
+
+        System.assertEquals(1, outputs.size(), 'Output cardinality preserved');
+        TritonTestFactory.assertNoLogs();
     }
 }

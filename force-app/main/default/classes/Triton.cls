@@ -53,28 +53,6 @@ global with sharing class Triton {
         private set;
     }
 
-    /**
-    * Cached, parsed Log_Level__mdt rules used to decide whether a log is verbose
-    * enough to be persisted. Lazily built from LOG_LEVELS_MDT and reset by tests
-    * by assigning null.
-    */
-    @TestVisible
-    private static List<LogLevelRule> LOG_LEVELS {
-        get {
-            if (LOG_LEVELS == null) {
-                LOG_LEVELS = new List<LogLevelRule>();
-                for (Log_Level__mdt ll : LOG_LEVELS_MDT) {
-                    LOG_LEVELS.add(new LogLevelRule(ll));
-                }
-            }
-            return LOG_LEVELS;
-        }
-        set;
-    }
-
-    @TestVisible
-    private static Log_Level__mdt[] LOG_LEVELS_MDT = Log_Level__mdt.getAll().values();
-
     private static TritonBuilder template {
         get {
             if (template == null) {
@@ -301,9 +279,13 @@ global with sharing class Triton {
     * @param builder TritonBuilder instance containing log details
     */
     public static void log(TritonBuilder builder) {
+        if (TritonHelper.Config.isLoggingDisabled()) {
+            return;
+        }
+
         pharos__Log__c log = builder.build();
 
-        if (!isLogAllowedForLogLevel(log)) {
+        if (!TritonHelper.Config.isLogAllowed(log)) {
             return;
         }
 
@@ -328,109 +310,4 @@ global with sharing class Triton {
     public static void finer(TritonBuilder builder) { log(builder.finer()); }
     public static void finest(TritonBuilder builder) { log(builder.finest()); }
 
-    /**
-    * Checks if a log should be persisted based on the configured log levels.
-    *
-    * A Log_Level__mdt record "targets" a log when every attribute it specifies
-    * (Category, Type, Area, User Id, Component Name) matches the log. Unspecified
-    * (null) attributes act as wildcards, so a record can scope a level as broadly
-    * (a global default) or as narrowly (a single user or component) as needed.
-    *
-    * A log is allowed when either no configured level targets it, or at least one
-    * targeting level is verbose enough (its level is greater than or equal to the
-    * log's level).
-    * @param log -- Pharos log record to be saved
-    */
-    public static Boolean isLogAllowedForLogLevel(pharos__Log__c log) {
-        if (String.isBlank(log.Log_Level__c) || LOG_LEVELS.isEmpty()) return true;
-
-        String logUserId = normalizeUserId(log.pharos__User_Id__c);
-        String logComponent = getComponentName(log);
-        TritonTypes.Level currentLevel = TritonTypes.Level.valueOf(log.Log_Level__c);
-
-        Boolean anyLevelTargetsLog = false;
-        for (LogLevelRule rule : LOG_LEVELS) {
-            if (!rule.targets(log, logUserId, logComponent)) continue;
-            anyLevelTargetsLog = true;
-            if (TritonHelper.compareLevel(rule.level, currentLevel)) return true;
-        }
-
-        // No configured level targets this log -- allow it through by default.
-        return !anyLevelTargetsLog;
-    }
-
-    /**
-    * Resolves the component name used for log level matching.
-    * Flows are identified by their API name; Apex/LWC by the class/component
-    * portion of the Apex Name (the text before the first '.').
-    *
-    * Note: this runs during the log level check, before prepareForLogging derives
-    * the operation from the stack trace. The component is therefore only available
-    * when it is known at log() time -- LWC logs, Flow logs, or Apex logs with an
-    * explicit operation. Apex logs relying on stack-trace-derived naming will have
-    * a blank component here and are not matched by component-scoped levels.
-    * @param log -- Pharos log record being evaluated
-    * @return the component name, or null/blank when it cannot be determined
-    */
-    @TestVisible
-    private static String getComponentName(pharos__Log__c log) {
-        if (String.isNotBlank(log.pharos__Flow_API_Name__c)) return log.pharos__Flow_API_Name__c;
-
-        String apexName = log.pharos__Apex_Name__c;
-        if (String.isBlank(apexName)) return apexName;
-        Integer dotIndex = apexName.indexOf('.');
-        return dotIndex == -1 ? apexName : apexName.substring(0, dotIndex);
-    }
-
-    /**
-    * Salesforce Ids are 18 characters in Apex, but Log Level metadata stores the
-    * 15-character form. Matching is performed on the case-sensitive 15-character
-    * prefix so both representations line up.
-    * @param userId -- a 15 or 18 character user Id (or null)
-    * @return the 15-character prefix, or the original value when shorter/blank
-    */
-    @TestVisible
-    private static String normalizeUserId(String userId) {
-        return String.isNotBlank(userId) && userId.length() > 15 ? userId.substring(0, 15) : userId;
-    }
-
-    /**
-    * In-memory representation of a Log_Level__mdt record, parsed once and cached
-    * so that log level checks avoid re-reading and re-parsing metadata per log.
-    */
-    private class LogLevelRule {
-        private final String category;
-        private final String type;
-        private final String area;
-        private final String userId;
-        private final String component;
-        private final TritonTypes.Level level;
-
-        private LogLevelRule(Log_Level__mdt mdt) {
-            this.category = mdt.Category__c;
-            this.type = mdt.Type__c;
-            this.area = mdt.Area__c;
-            this.userId = normalizeUserId(mdt.User_Id__c);
-            this.component = mdt.Component_Name__c;
-            this.level = TritonTypes.Level.valueOf(mdt.Level__c);
-        }
-
-        /**
-        * True when every attribute specified on this rule matches the log.
-        * Null (unspecified) rule attributes are treated as wildcards.
-        */
-        private Boolean targets(pharos__Log__c log, String logUserId, String logComponent) {
-            return matches(category, log.pharos__Category__c)
-                && matches(type, log.pharos__Type__c)
-                && matches(area, log.pharos__Area__c)
-                && matches(userId, logUserId)
-                && matches(component, logComponent);
-        }
-
-        // String.equals is case-sensitive and null-safe, preserving the
-        // case-sensitivity required for 15-character Salesforce Ids.
-        private Boolean matches(String ruleValue, String logValue) {
-            return ruleValue == null || ruleValue.equals(logValue);
-        }
-    }
 }
