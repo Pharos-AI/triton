@@ -32,11 +32,6 @@ global class TritonFlowFlushBatch implements Database.Batchable<SObject> {
         'Queued', 'Preparing', 'Processing', 'Holding'
     };
 
-    // Delay in minutes before the batch executes — gives concurrent Flows
-    // time to add their logs to cache before the batch picks them up.
-    @TestVisible
-    private static final Integer BATCH_DELAY_MINUTES = 1;
-
     // Per-transaction static state — accumulates logs across invocable calls
     @TestVisible
     private static List<pharos__Log__c> pendingLogs = new List<pharos__Log__c>();
@@ -143,7 +138,7 @@ global class TritonFlowFlushBatch implements Database.Batchable<SObject> {
         System.scheduleBatch(
             new TritonFlowFlushBatch(),
             BATCH_JOB_PREFIX + Datetime.now().getTime(),
-            BATCH_DELAY_MINUTES
+            TritonHelper.Config.getFlowFlushBatchDelayMinutes()
         );
     }
 

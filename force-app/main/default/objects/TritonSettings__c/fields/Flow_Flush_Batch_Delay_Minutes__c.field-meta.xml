@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Flow_Flush_Batch_Delay_Minutes__c</fullName>
+    <description>Delay, in minutes, before the flow flush batch runs. Blank uses Triton's packaged default.</description>
+    <externalId>false</externalId>
+    <inlineHelpText>Minutes to wait before the flow flush batch runs. Leave blank for the default.</inlineHelpText>
+    <label>Flow Flush Batch Delay (minutes)</label>
+    <precision>18</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <trackTrending>false</trackTrending>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

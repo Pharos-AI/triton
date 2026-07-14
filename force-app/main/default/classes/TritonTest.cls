@@ -2433,6 +2433,39 @@ private class TritonTest {
     }
 
     @IsTest
+    private static void test_operational_knobs_default_when_unset() {
+        TritonHelper.Config.settings = new TritonSettings__c();
+        System.assertEquals(300, TritonHelper.Config.getCacheTtlSeconds(),
+            'Cache TTL should fall back to the packaged default (300s) when unset');
+        System.assertEquals(1, TritonHelper.Config.getFlowFlushBatchDelayMinutes(),
+            'Batch delay should fall back to the packaged default (1 min) when unset');
+    }
+
+    @IsTest
+    private static void test_operational_knobs_read_configured_values() {
+        TritonHelper.Config.settings = new TritonSettings__c(
+            Cache_TTL_Minutes__c = 30,
+            Flow_Flush_Batch_Delay_Minutes__c = 5
+        );
+        System.assertEquals(30 * 60, TritonHelper.Config.getCacheTtlSeconds(),
+            'Cache TTL should be the configured minutes converted to seconds');
+        System.assertEquals(5, TritonHelper.Config.getFlowFlushBatchDelayMinutes(),
+            'Batch delay should reflect the configured minutes');
+    }
+
+    @IsTest
+    private static void test_operational_knobs_negative_falls_back_to_default() {
+        TritonHelper.Config.settings = new TritonSettings__c(
+            Cache_TTL_Minutes__c = -5,
+            Flow_Flush_Batch_Delay_Minutes__c = -1
+        );
+        System.assertEquals(300, TritonHelper.Config.getCacheTtlSeconds(),
+            'Negative cache TTL should fall back to the packaged default');
+        System.assertEquals(1, TritonHelper.Config.getFlowFlushBatchDelayMinutes(),
+            'Negative batch delay should fall back to the packaged default');
+    }
+
+    @IsTest
     private static void test_master_switch_disables_apex_logging() {
         TritonTestFactory.assertNoLogs();
         TritonHelper.Config.settings = new TritonSettings__c(Disable_Logging__c = true);
