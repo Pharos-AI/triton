@@ -2434,7 +2434,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_operational_knobs_default_when_unset() {
-        TritonHelper.Config.settings = new TritonSettings__c();
+        // No org-default record — getOrgDefaults() returns an empty setting.
         System.assertEquals(300, TritonHelper.Config.getCacheTtlSeconds(),
             'Cache TTL should fall back to the packaged default (300s) when unset');
         System.assertEquals(1, TritonHelper.Config.getFlowFlushBatchDelayMinutes(),
@@ -2443,7 +2443,10 @@ private class TritonTest {
 
     @IsTest
     private static void test_operational_knobs_read_configured_values() {
-        TritonHelper.Config.settings = new TritonSettings__c(
+        // Knobs are read live from the org-default custom setting, not the cached
+        // Config.settings member — so seed a real org-default record.
+        upsert new TritonSettings__c(
+            SetupOwnerId = UserInfo.getOrganizationId(),
             Cache_TTL_Minutes__c = 30,
             Flow_Flush_Batch_Delay_Minutes__c = 5
         );
@@ -2455,7 +2458,8 @@ private class TritonTest {
 
     @IsTest
     private static void test_operational_knobs_negative_falls_back_to_default() {
-        TritonHelper.Config.settings = new TritonSettings__c(
+        upsert new TritonSettings__c(
+            SetupOwnerId = UserInfo.getOrganizationId(),
             Cache_TTL_Minutes__c = -5,
             Flow_Flush_Batch_Delay_Minutes__c = -1
         );

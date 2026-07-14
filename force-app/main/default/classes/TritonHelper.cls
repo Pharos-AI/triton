@@ -661,13 +661,14 @@ public with sharing class TritonHelper {
 
         /**
          * Cache lifetime, in seconds, for Triton's Org Cache entries (the flow-log
-         * buffer and the transaction-id key). Sourced from Cache_TTL_Minutes__c and
-         * converted to seconds; a blank/negative value falls back to the packaged
-         * default. Fail-safe: any error resolves to the default.
+         * buffer and the transaction-id key). Read live from Cache_TTL_Minutes__c
+         * (org defaults) and converted to seconds. A blank/negative value
+         * falls back to the packaged default. Fail-safe: any error resolves
+         * to the default.
          */
         public Integer getCacheTtlSeconds() {
             try {
-                Decimal minutes = settings != null ? settings.Cache_TTL_Minutes__c : null;
+                Decimal minutes = TritonSettings__c.getOrgDefaults().Cache_TTL_Minutes__c;
                 return minutes != null && minutes >= 0
                     ? (Integer) (minutes * 60)
                     : DEFAULT_CACHE_TTL_SECONDS;
@@ -677,13 +678,14 @@ public with sharing class TritonHelper {
         }
 
         /**
-         * Delay, in minutes, before the deferred Flow flush batch runs. Sourced from
-         * Flow_Flush_Batch_Delay_Minutes__c; a blank/negative value falls back to the
-         * packaged default. Fail-safe: any error resolves to the default.
+         * Delay, in minutes, before the deferred Flow flush batch runs. Read live
+         * from Flow_Flush_Batch_Delay_Minutes__c (org defaults). A blank/negative
+         * value falls back to the packaged default. Fail-safe: any error resolves
+         * to the default.
          */
         public Integer getFlowFlushBatchDelayMinutes() {
             try {
-                Decimal minutes = settings != null ? settings.Flow_Flush_Batch_Delay_Minutes__c : null;
+                Decimal minutes = TritonSettings__c.getOrgDefaults().Flow_Flush_Batch_Delay_Minutes__c;
                 return minutes != null && minutes >= 0
                     ? minutes.intValue()
                     : DEFAULT_FLOW_FLUSH_BATCH_DELAY_MINUTES;
