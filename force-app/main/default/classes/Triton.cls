@@ -53,28 +53,6 @@ global with sharing class Triton {
         private set;
     }
 
-    /**
-    * Helper map for storing current log levels
-    */
-    @TestVisible
-    private static Map<String, TritonTypes.Level> LOG_LEVELS {
-        get {
-            if (LOG_LEVELS == null) {
-                LOG_LEVELS = new Map<String, TritonTypes.Level>();
-                for(Log_Level__mdt ll : LOG_LEVELS_MDT) {
-                    LOG_LEVELS.put(
-                            TritonHelper.buildLogLevelKey(ll.Category__c, ll.Type__c, ll.Area__c),
-                            TritonTypes.Level.valueOf(ll.Level__c));
-                }
-            }
-            return LOG_LEVELS;
-        }
-        set;
-    }
-
-    @TestVisible
-    private static Log_Level__mdt[] LOG_LEVELS_MDT = Log_Level__mdt.getAll().values();
-
     private static TritonBuilder template {
         get {
             if (template == null) {
@@ -104,7 +82,7 @@ global with sharing class Triton {
     private static Boolean CACHE_AVAILABLE {
         get {
             if (CACHE_AVAILABLE == null) {
-                CACHE_AVAILABLE = TritonCacheManager.sessionAvailable();
+                CACHE_AVAILABLE = TritonCacheManager.available();
             }
             return CACHE_AVAILABLE;
         }
@@ -301,9 +279,13 @@ global with sharing class Triton {
     * @param builder TritonBuilder instance containing log details
     */
     public static void log(TritonBuilder builder) {
+        if (TritonHelper.Config.isLoggingDisabled()) {
+            return;
+        }
+
         pharos__Log__c log = builder.build();
 
-        if (!isLogAllowedForLogLevel(log)) {
+        if (!TritonHelper.Config.isLogAllowed(log)) {
             return;
         }
 
@@ -328,35 +310,4 @@ global with sharing class Triton {
     public static void finer(TritonBuilder builder) { log(builder.finer()); }
     public static void finest(TritonBuilder builder) { log(builder.finest()); }
 
-    /**
-    * Checks if a log should be persisted based on the current log level
-    * @param log -- Pharos log record to be saved
-    */
-    public static Boolean isLogAllowedForLogLevel(pharos__Log__c log) {
-        if (String.isBlank(log.Log_Level__c) || LOG_LEVELS.isEmpty()) return true;
-
-        //a set of possible mapping permutations
-        //these will be checked in the same order as this list
-        String[] permutations = new String[] {
-                TritonHelper.buildLogLevelKey(log.pharos__Category__c, log.pharos__Type__c, log.pharos__Area__c),
-                TritonHelper.buildLogLevelKey(log.pharos__Category__c, log.pharos__Type__c, null),
-                TritonHelper.buildLogLevelKey(log.pharos__Category__c, null, log.pharos__Area__c),
-                TritonHelper.buildLogLevelKey(null, log.pharos__Type__c, log.pharos__Area__c),
-                TritonHelper.buildLogLevelKey(null, null, log.pharos__Area__c),
-                TritonHelper.buildLogLevelKey(null, log.pharos__Type__c, null),
-                TritonHelper.buildLogLevelKey(log.pharos__Category__c, null, null),
-                TritonHelper.buildLogLevelKey(null, null, null)
-        };
-
-        TritonTypes.Level currentLevel = TritonTypes.Level.valueOf(log.Log_Level__c);
-        Boolean allPermutationsDontExistInMdt = true;
-        for (String key : permutations) {
-            if (LOG_LEVELS.containsKey(key)) {
-                if (TritonHelper.compareLevel(LOG_LEVELS.get(key), currentLevel)) return true;
-            }
-            allPermutationsDontExistInMdt = allPermutationsDontExistInMdt && !LOG_LEVELS.containsKey(key);
-        }
-
-        return allPermutationsDontExistInMdt;
-    }
 }
