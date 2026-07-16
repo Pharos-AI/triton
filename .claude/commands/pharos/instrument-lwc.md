@@ -1,6 +1,6 @@
 ---
-description: Instrument an LWC component with Triton logging. Usage: /pharos:instrument-lwc <path-to-component-dir-or-js-file> [--area <Area>] [--type <Type>] [--deploy]
-argument-hint: <path-to-component-dir-or-js-file> [--area <Area>] [--type <Type>] [--deploy]
+description: Instrument an LWC component with Triton logging. Usage: /pharos:instrument-lwc <path-to-component-dir-or-js-file> [--area <Area>] [--type <Type>] [--perf <essential|standard|deep>] [--deploy]
+argument-hint: <path-to-component-dir-or-js-file> [--area <Area>] [--type <Type>] [--perf <essential|standard|deep>] [--deploy]
 ---
 
 Read the canonical skill definition at `agent-skills/instrument-lwc.md` (relative to the repo root) and follow it **exactly**, start to finish.

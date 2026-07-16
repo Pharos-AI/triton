@@ -1,7 +1,7 @@
 ---
 name: instrument-lwc
 summary: Instrument a Lightning Web Component with Triton logging, then optionally deploy.
-usage: instrument-lwc <path-to-component-dir-or-js-file> [--area <Area>] [--type <Type>] [--deploy]
+usage: instrument-lwc <path-to-component-dir-or-js-file> [--area <Area>] [--type <Type>] [--perf <essential|standard|deep>] [--deploy]
 ---
 
 # Instrument LWC
@@ -34,6 +34,10 @@ From the skill arguments:
 - **Path** — the LWC component directory (e.g. `force-app/main/default/lwc/myComponent/`) or the `.js` file directly (required). If not provided, ask.
 - **`--area`** — the feature's functional area, given as one of the `AREA` constants (`ACCOUNTS`, `COMMUNITY`, `LEAD_CONVERSION`, `OPPORTUNITY_MANAGEMENT`, `REST_API`). **Infer it from the code and match the area used by the paired Apex controller / related components** so the whole feature groups together (Step 2). The server records any area outside this set as `LWC`, so pick the closest matching constant; if none fits, omit `.area(...)` and logs record under `LWC`.
 - **`--type`** — Triton `TYPE` constant. Real values: `BACKEND`, `FRONTEND`, `BACKEND_CALL`, `COMPONENT_LIFECYCLE`, `COMPONENT_RENDER`, `USER_INTERACTION`, `PERFORMANCE`. Default: `FRONTEND`.
+- **`--perf`** — depth of performance/profiling instrumentation (§3k), as one of three verbosity tiers. Default: **`essential`**.
+  - `essential` — backend-call + user-interaction timing only (Category 1).
+  - `standard` — adds component-lifecycle timing and custom performance marks (Category 2).
+  - `deep` — adds render-cycle tracking (Category 3); noisy, requires a prod filter (see §3k).
 - **`--deploy`** — deploy after instrumentation.
 
 If a directory is given, find the main JS file: `<componentName>.js` within it.
@@ -49,6 +53,8 @@ Read the `.js` file (and the `.html` template if present for context). Identify:
 5. **Event handlers** — `handle*` methods (user interactions to log at DEBUG).
 6. **Error handling** — existing `.catch()` / `try...catch` (instrument these first).
 7. **Area — match related code (give this special attention).** Determine the feature's functional area from the code and, above all, **reuse the area the paired Apex controller and related components already use** so the feature's logs group together. Pick the matching `AREA` constant. (The server coerces any value outside the `AREA` set to `LWC`, so if the feature's area isn't one of the constants, omit `.area(...)` and logs record under `LWC`.)
+
+8. **Performance-instrumentation targets (drives §3k, scoped by `--perf`).** Note the sites each tier will touch: imperative Apex calls and `handle*` interaction handlers (Category 1); `connectedCallback`/`disconnectedCallback` and any notable client-side stretch — data shaping, debounce window, animation — worth a custom mark (Category 2); and whether the component re-renders enough to warrant render tracking (Category 3). You only instrument the tiers included by the resolved `--perf` level.
 
 Summarize findings to the user (1 paragraph), then proceed.
 
@@ -256,6 +262,78 @@ disconnectedCallback() {
 }
 ```
 
+### 3k — Performance instrumentation (scoped by `--perf`)
+
+Triton ships profiling helpers that piggy-back on the bound `triton` instance and emit `pharos__Log__c` records with a `duration` and a typed `TYPE.*` marker. Instrument them in **verbosity tiers** set by `--perf` (default `essential`). Each tier maps to one of three log-level categories:
+
+| Category | `--perf` from | Method(s) | Emitted `TYPE` | Instrument at |
+|----------|---------------|-----------|----------------|---------------|
+| **1 — Essential** (production baseline) | `essential`+ | `timeBackendCall(name, fn)` (§3d), `timeUserInteraction(name, fn)` | `BackendCall`, `UserInteraction` | imperative Apex calls; `handle*` interaction handlers |
+| **2 — Standard/diagnostic** | `standard`+ | `trackComponentLifecycle('connected'\|'disconnected')`, `startPerformanceMark`/`endPerformanceMark` | `ComponentLifecycle`, `Performance` | connected/disconnectedCallback; notable client-side stretches |
+| **3 — Deep trace** | `deep` only | `trackComponentRender()` | `ComponentRender` | `renderedCallback` |
+
+> **These helpers require `bindToComponent()`** (already done in §3b) — without it they no-op with a console warning. All profiling helpers require the component to be bound.
+
+> ⚠️ **All profiling logs emit at `INFO`** — the helpers don't set (or accept) a level, and the server defaults an un-leveled LWC log to INFO. You therefore **cannot** dial a perf log down to DEBUG/FINE. Control production noise at runtime with a **`Type`-scoped `Log_Level__mdt` rule** instead (each tier has its own `TYPE`), not by level. This is why the noisier tiers are opt-in.
+
+#### Category 1 — Essential (`--perf essential`, the default)
+
+`timeBackendCall` is already the preferred wrapper for imperative Apex calls (§3d) — it emits `BackendCall` start/complete timing for free. Additionally, wrap **user-driven handlers** whose responsiveness matters (`handle*` doing non-trivial work) with `timeUserInteraction`:
+
+```javascript
+async handleSearch(event) {
+    await this.triton.timeUserInteraction('product-search', async () => {
+        // existing handler body — the user-perceived latency of this block is timed
+        this.results = await this.triton.timeBackendCall('searchProducts', () =>
+            searchProducts({ term: this.term, transactionId: this.triton.transactionId })
+        ).execute();
+    }).execute();
+}
+```
+
+(`timeUserInteraction` returns the same builder as `timeBackendCall`: `.execute()`, `.withoutRethrow()`, `.withCustomErrorHandler(fn)`.) Reserve it for interactions that do real work — don't wrap trivial toggles.
+
+#### Category 2 — Standard (`--perf standard`)
+
+**Lifecycle timing** — mount/unmount, one call each:
+
+```javascript
+connectedCallback() {
+    this.triton.trackComponentLifecycle('connected');
+    // existing body...
+}
+disconnectedCallback() {
+    this.triton.trackComponentLifecycle('disconnected');
+    // existing body...
+}
+```
+
+**Custom marks** — for a notable client-side stretch the higher-level helpers don't model (data shaping, debounce window, animation). **Always pair start/end, and end in `finally`** so an exception can't leave a dangling mark:
+
+```javascript
+this.triton.startPerformanceMark('shape-results');
+try {
+    this.rows = this.transform(raw);   // the timed stretch
+} finally {
+    this.triton.endPerformanceMark('shape-results');   // emits one TYPE.PERFORMANCE log
+}
+```
+
+Don't stack a mark on top of a `timeBackendCall`/`timeUserInteraction` that already covers the same span.
+
+#### Category 3 — Deep (`--perf deep`)
+
+**Render tracking** — one call in `renderedCallback`:
+
+```javascript
+renderedCallback() {
+    this.triton.trackComponentRender();
+    // existing body...
+}
+```
+
+`renderedCallback` can fire many times, so this is the noisiest tier. Because the log is pinned to INFO, it **must** be filtered at runtime in production. When you add this, surface the note in the Step 4 diff (below) telling the user to add a `Log_Level__mdt` rule scoped to `Type = ComponentRender` at threshold `WARNING`, so the INFO render logs drop in prod but can be switched back on mid-investigation.
+
 ## Step 4 — Review diff with user
 
 ```
@@ -267,10 +345,14 @@ disconnectedCallback() {
 - N Apex calls instrumented (timeBackendCall / manual)
 - N error handlers instrumented with logNow
 - N event handlers instrumented at DEBUG
+- Performance (--perf=<essential|standard|deep>): N backend-call + N user-interaction timers <; N lifecycle + N marks (standard)> <; render tracking (deep)>
 - disconnectedCallback flush: <added (optional) | none>
 
 ### Key changes
-[Show import, constructor bind+template, one timeBackendCall example, one error handler]
+[Show import, constructor bind+template, one timeBackendCall example, one error handler; one perf example matching the resolved tier]
+
+<Include ONLY when --perf=deep added render tracking:>
+⚠️ **Render tracking emits at INFO and can flood production.** Add a `Log_Level__mdt` rule scoped to `Type = ComponentRender` at threshold `WARNING` so these logs drop in prod (switch back to `FINE`/lower to capture them mid-investigation).
 
 Apply? (yes / modify / skip)
 ```
@@ -306,6 +388,9 @@ Parse result:
 - Only pass `transactionId` to an Apex method that declares the param; otherwise use `withCache()` on the Apex side. Never inject an undeclared key into an Apex call.
 - **For `@wire` / cacheable Apex, always stitch with an explicit `transactionId`** (reactive property, §3d) — never rely on `withCache()`, which can't write to Platform Cache from cacheable Apex. See https://resources.pharos.ai/wire-cache-antipattern
 - **Scale per-log data to level (§3i):** ERROR/WARNING/INFO serialize state/inputs into `.details()` + `.relatedObjects([...])`; DEBUG uses named values only; FINE/FINER/FINEST stay terse. The PII carve-out always wins over "attach maximum data."
+- **Performance instrumentation is tiered by `--perf` (§3k), default `essential`:** Category 1 (`timeBackendCall`/`timeUserInteraction`) always; Category 2 (`trackComponentLifecycle`/custom marks) at `standard`+; Category 3 (`trackComponentRender`) at `deep` only. All profiling helpers require `bindToComponent()` and emit at **INFO** (level not settable) — control prod noise with `Type`-scoped `Log_Level__mdt` rules, not level.
+- **Never leave `--perf deep` render tracking unguarded in prod:** it emits at INFO and is high-frequency — always surface the `Type=ComponentRender → WARNING` `Log_Level__mdt` note in the diff.
+- Pair every `startPerformanceMark` with an `endPerformanceMark` in a `finally`; never wrap a span already covered by `timeBackendCall`/`timeUserInteraction`.
 - Prefer `timeBackendCall(name, fn).execute()` for imperative Apex calls.
 - Use `logNow` for errors (immediate), `log` for debug/info (buffered).
 - Never change the component's `@api` properties, event dispatching, or public interface.
