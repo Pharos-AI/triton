@@ -2433,6 +2433,43 @@ private class TritonTest {
     }
 
     @IsTest
+    private static void test_operational_knobs_default_when_unset() {
+        // No org-default record — getOrgDefaults() returns an empty setting.
+        System.assertEquals(300, TritonHelper.Config.getCacheTtlSeconds(),
+            'Cache TTL should fall back to the packaged default (300s) when unset');
+        System.assertEquals(1, TritonHelper.Config.getFlowFlushBatchDelayMinutes(),
+            'Batch delay should fall back to the packaged default (1 min) when unset');
+    }
+
+    @IsTest
+    private static void test_operational_knobs_read_configured_values() {
+        // Knobs are read live from the org-default custom setting, not the cached
+        // Config.settings member — so seed a real org-default record.
+        upsert new TritonSettings__c(
+            SetupOwnerId = UserInfo.getOrganizationId(),
+            Cache_TTL_Minutes__c = 30,
+            Flow_Flush_Batch_Delay_Minutes__c = 5
+        );
+        System.assertEquals(30 * 60, TritonHelper.Config.getCacheTtlSeconds(),
+            'Cache TTL should be the configured minutes converted to seconds');
+        System.assertEquals(5, TritonHelper.Config.getFlowFlushBatchDelayMinutes(),
+            'Batch delay should reflect the configured minutes');
+    }
+
+    @IsTest
+    private static void test_operational_knobs_negative_falls_back_to_default() {
+        upsert new TritonSettings__c(
+            SetupOwnerId = UserInfo.getOrganizationId(),
+            Cache_TTL_Minutes__c = -5,
+            Flow_Flush_Batch_Delay_Minutes__c = -1
+        );
+        System.assertEquals(300, TritonHelper.Config.getCacheTtlSeconds(),
+            'Negative cache TTL should fall back to the packaged default');
+        System.assertEquals(1, TritonHelper.Config.getFlowFlushBatchDelayMinutes(),
+            'Negative batch delay should fall back to the packaged default');
+    }
+
+    @IsTest
     private static void test_master_switch_disables_apex_logging() {
         TritonTestFactory.assertNoLogs();
         TritonHelper.Config.settings = new TritonSettings__c(Disable_Logging__c = true);

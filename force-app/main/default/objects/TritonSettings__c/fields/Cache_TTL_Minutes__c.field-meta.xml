@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Cache_TTL_Minutes__c</fullName>
+    <description>Cache lifetime, in minutes, used by Triton (TritonHelper / TritonFlowFlushBatch). Blank uses Triton's packaged default.</description>
+    <externalId>false</externalId>
+    <inlineHelpText>Cache time-to-live in minutes. Leave blank for the default.</inlineHelpText>
+    <label>Cache TTL (minutes)</label>
+    <precision>18</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <trackTrending>false</trackTrending>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

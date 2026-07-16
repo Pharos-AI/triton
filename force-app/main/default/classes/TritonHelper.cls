@@ -23,7 +23,11 @@
 public with sharing class TritonHelper {
 
     private static final String TRANSACTION_CACHE_KEY = 'tritonTransactionId';
-    private static final Integer DEFAULT_TRANSACTION_CACHE_DURATION = 300;
+
+    // Packaged defaults for the operational knobs, used when the org-level value
+    // (TritonSettings__c) is blank or unreadable. Referenced by TritonConfig.
+    private static final Integer DEFAULT_CACHE_TTL_SECONDS = 300;
+    private static final Integer DEFAULT_FLOW_FLUSH_BATCH_DELAY_MINUTES = 1;
 
     // ─── Configuration ───────────────────────────────────────────────
 
@@ -57,7 +61,7 @@ public with sharing class TritonHelper {
      */
     public static void cacheTransactionId(String transactionId) {
         try {
-            TritonCacheManager.put(getUserCacheKey(), transactionId, DEFAULT_TRANSACTION_CACHE_DURATION);
+            TritonCacheManager.put(getUserCacheKey(), transactionId, Config.getCacheTtlSeconds());
         } catch (Exception e) {
             // Silently handle cache failures - logging system should continue without cache
         }
@@ -95,7 +99,6 @@ public with sharing class TritonHelper {
     private static String buildFlowCacheKey(String transactionId) {
         return FLOW_LOG_CACHE_PREFIX + transactionId.replaceAll(NON_ALPHANUMERIC_PATTERN, '');
     }
-    private static final Integer FLOW_LOG_CACHE_TTL = 300;
 
     /**
      * Saves flow logs to Org Cache keyed by transaction ID.
@@ -107,7 +110,7 @@ public with sharing class TritonHelper {
      */
     public static Boolean cacheFlowLogs(String transactionId, List<pharos__Log__c> logs) {
         try {
-            TritonCacheManager.put(buildFlowCacheKey(transactionId), logs, FLOW_LOG_CACHE_TTL);
+            TritonCacheManager.put(buildFlowCacheKey(transactionId), logs, Config.getCacheTtlSeconds());
             return true;
         } catch (Exception e) {
             return false;
@@ -653,6 +656,41 @@ public with sharing class TritonHelper {
                 return settings != null && settings.Disable_Flow_Flush_Batch__c == true;
             } catch (Exception e) {
                 return false;
+            }
+        }
+
+        /**
+         * Cache lifetime, in seconds, for Triton's Org Cache entries (the flow-log
+         * buffer and the transaction-id key). Read live from Cache_TTL_Minutes__c
+         * (org defaults) and converted to seconds. A blank/negative value
+         * falls back to the packaged default. Fail-safe: any error resolves
+         * to the default.
+         */
+        public Integer getCacheTtlSeconds() {
+            try {
+                Decimal minutes = TritonSettings__c.getOrgDefaults().Cache_TTL_Minutes__c;
+                return minutes != null && minutes >= 0
+                    ? (Integer) (minutes * 60)
+                    : DEFAULT_CACHE_TTL_SECONDS;
+            } catch (Exception e) {
+                return DEFAULT_CACHE_TTL_SECONDS;
+            }
+        }
+
+        /**
+         * Delay, in minutes, before the deferred Flow flush batch runs. Read live
+         * from Flow_Flush_Batch_Delay_Minutes__c (org defaults). A blank/negative
+         * value falls back to the packaged default. Fail-safe: any error resolves
+         * to the default.
+         */
+        public Integer getFlowFlushBatchDelayMinutes() {
+            try {
+                Decimal minutes = TritonSettings__c.getOrgDefaults().Flow_Flush_Batch_Delay_Minutes__c;
+                return minutes != null && minutes >= 0
+                    ? minutes.intValue()
+                    : DEFAULT_FLOW_FLUSH_BATCH_DELAY_MINUTES;
+            } catch (Exception e) {
+                return DEFAULT_FLOW_FLUSH_BATCH_DELAY_MINUTES;
             }
         }
 

@@ -1,6 +1,7 @@
 .sf/
 .sfdx/
 .vscode/
+.idea/
 
 **/lwc/jsconfig.json
 node_modules/*
