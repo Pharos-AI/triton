@@ -186,6 +186,31 @@ If none exists and the flow is invoked from Apex/LWC, add an input variable and 
 
 (If no transaction id is supplied, `TritonFlow` starts/uses one automatically and correlates via the Interview GUID — so `transactionId` is optional.)
 
+> ⚠️ **When this Flow is stitched from an LWC `@wire`, the id must arrive as the explicit `transactionId` input** — pass it into the flow (from the LWC or the invoking Apex) and reference it here. `@wire` calls cacheable Apex, which is read-only for Platform Cache, so a cache-based stitch (`withCache()`) can't carry the id into this flow. Cacheable Apex / `@wire` can't use Platform Cache for stitching — pass `transactionId` explicitly. See https://resources.pharos.ai/wire-cache-antipattern
+
+### 3g — Data richness by level (attach more the more severe it is)
+
+**Per-log payload richness scales inverse to severity** — independent of how *often* a level fires. In Flows the richness knobs are the `details` input and `additionalFields` (a JSON string mapping to arbitrary `pharos__Log__c` fields). Match what you attach to the level:
+
+| Level | Per-log data |
+|-------|--------------|
+| **ERROR / WARNING / INFO** | **Maximum.** Put full context in `details` (`{!$Flow.FaultMessage}` on faults, plus the relevant flow variable values), and add an `additionalFields` JSON input carrying the key record ids / field values in scope at that point. |
+| **DEBUG** | **Reduced.** A short `summary` and one or two variable values in `details`. No `additionalFields` dump. |
+| **FINER / FINEST equivalents** | Not typical in Flows — keep low-level checkpoints terse (summary only). |
+
+Example `additionalFields` input on an ERROR fault log (JSON string; reference flow variables via a formula/text template resource if the values are dynamic):
+
+```xml
+<inputParameters>
+    <name>additionalFields</name>
+    <value><elementReference>Triton_AdditionalFields_JSON</elementReference></value>
+</inputParameters>
+```
+
+**Be more granular.** Verbosity is runtime-tunable via `Log_Level__mdt`, so add *more* DEBUG checkpoints than you otherwise would — but keep each lean. Runtime filtering, not sparse payloads, keeps production quiet.
+
+**PII carve-out.** Never place secrets or PII (passwords, tokens, SSNs, card numbers) into `details` or `additionalFields`. Omit those fields; this overrides the "attach maximum data" rule every time.
+
 ## Step 4 — Review diff with user
 
 ```
@@ -244,4 +269,6 @@ Parse result:
 - Never add Triton logs inside Loop elements (log before/after the loop, not per iteration).
 - Do not duplicate Triton actions on elements already instrumented (check for existing `<actionName>TritonFlow</actionName>`).
 - Reserve `ERROR` for fault paths and genuine failure branches — never on happy-path logs.
+- **Scale per-log data to level (§3g):** ERROR/WARNING/INFO carry rich `details` + `additionalFields`; DEBUG stays a short summary with one or two values. The PII carve-out always wins over "attach maximum data."
+- **When stitching from an LWC `@wire`, the id must come via the explicit `transactionId` input**, not a cache-based stitch (cacheable Apex is read-only for Platform Cache). See https://resources.pharos.ai/wire-cache-antipattern
 - Do not rely on the `stacktrace` output (always null); chain via `fullStacktrace`.

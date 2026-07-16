@@ -107,6 +107,8 @@ if (String.isNotBlank(transactionId)) {
 
 Or, to correlate with zero param changes, use platform cache at entry: `Triton.withCache();` (resumes the cached transaction id if present, else starts one; gracefully falls back to a new transaction if cache is unavailable). Pick **one** mechanism per call chain and keep the LWC side consistent (the instrument-lwc skill passes a param named `transactionId`).
 
+> ⚠️ **Do not use `withCache()` on `@AuraEnabled(Cacheable=true)` methods.** Salesforce treats cacheable Apex (which is what `@wire` calls) as **read-only** for Platform Cache, so `withCache()` cannot store or resume the id there — stitching silently breaks. For a cacheable method, take the explicit-param path: declare a `transactionId` param and call `Triton.resumeTransaction(transactionId)` (the instrument-lwc skill passes it). Cacheable Apex / `@wire` can't use Platform Cache for stitching — pass `transactionId` explicitly. See https://resources.pharos.ai/wire-cache-antipattern
+
 **Trigger handlers** — guard the start so before/after and recursive re-entry don't reset the id mid-transaction:
 
 ```apex
@@ -262,6 +264,41 @@ Leave `System.debug` calls in `@isTest` classes unchanged.
 
 When a method receives or produces record ids, add `.relatedObject(id)` (single) or `.relatedObjects(idSet)` (Set/List of Id or String) to the relevant builders. This drives correlation in the Pharos dashboard — prioritize it on error and DML logs.
 
+### 3i — Data richness by level (attach more the more severe it is)
+
+**Per-log payload richness scales inverse to severity.** The rarer and more serious the event, the more forensic context it carries — this is independent of how *often* a level fires. Match the data you attach to the level:
+
+| Level | Per-log data |
+|-------|--------------|
+| **ERROR / WARNING / INFO** | **Maximum.** Serialize the relevant inputs and in-scope state into `.details()` with `JSON.serialize(...)` (method params, the record/DTO in hand, key locals, computed values), attach `.relatedObjects(...)` for every involved id, and include `.duration(...)` where the block is timed. On ERROR, `.exception(e)` already carries stack + context — add the serialized state *on top* of it. |
+| **DEBUG** | **Reduced.** Named variables only — the branch taken, a query's shape/size, a count — as short `details` strings. No full serialization. |
+| **FINE / FINER / FINEST** | **Progressively terse.** Short markers only (loop index, step name, a single value). Never serialize objects here. |
+
+```apex
+// ERROR — pack in serialized state on top of the auto-captured exception context
+Triton.logNow(
+    Triton.t
+        .exception(e)
+        .details('input=' + JSON.serialize(request) + '; stage=' + stage + '; matched=' + matched.size())
+        .relatedObjects(new Map<Id, Account>(accounts).keySet())
+);
+
+// INFO — serialize the business-event payload
+Triton.info(
+    Triton.t
+        .summary('Order batch completed')
+        .details('result=' + JSON.serialize(new Map<String, Object>{ 'processed' => scope.size(), 'skipped' => skipped }))
+        .duration(System.now().getTime() - startTime)
+);
+
+// FINEST — terse marker, no serialization
+Triton.finest(Triton.t.summary('loop').details('i=' + i));
+```
+
+**Be more granular.** Verbosity is runtime-tunable via `Log_Level__mdt`, so instrument *more* DEBUG/FINE tracing points than you otherwise would — but keep each of those logs lean. Runtime filtering, not sparse payloads, is what keeps production quiet.
+
+**PII carve-out.** "Everything available" **never** includes secrets or PII — passwords, tokens, session ids, SSNs, card numbers. Serialize a redacted copy of any object that may hold them; when in doubt, omit the field and add `// TODO: sanitize before logging`. This overrides the "attach maximum data" rule every time.
+
 ## Step 4 — Review diff with user
 
 Present the full diff (old vs new) in a collapsed format:
@@ -317,6 +354,8 @@ Parse the JSON output:
 - Create logs via `Triton.log` / `Triton.logNow`, building from `Triton.t` (template) or `Triton.makeBuilder()`.
 - Never change method signatures, access modifiers, or return types — **except** adding an optional `transactionId`/`txId` param to an entry-point method for transaction stitching, which is sanctioned and must be flagged in the diff.
 - Always **resume-first**: `resumeTransaction(id)` if an id is supplied, else `startTransaction()` (or `withCache()`). Never blindly `startTransaction()` on an entry point that may be mid-chain.
+- **Never use `withCache()` on `@AuraEnabled(Cacheable=true)` methods** — cacheable Apex (what `@wire` calls) is read-only for Platform Cache, so it can't stitch. Use the explicit `transactionId` param + `resumeTransaction` there. See https://resources.pharos.ai/wire-cache-antipattern
+- **Scale per-log data to level (§3i):** ERROR/WARNING/INFO get maximum context — serialize inputs/state into `.details()` + `.relatedObjects(...)`; DEBUG gets named variables only; FINE/FINER/FINEST stay terse markers. The PII carve-out always wins over "attach maximum data."
 - Batchable classes must be `Database.Stateful`, capture the id in an instance field, resume per `execute`, and flush per `execute` and in `finish`.
 - Thread the transaction id through every async dispatch (`enqueueJob`, `executeBatch`, `@future`, `System.schedule`).
 - Call `Triton.stopTransaction()` only at a true end-of-chain boundary — never in every method.

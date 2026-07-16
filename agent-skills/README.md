@@ -47,4 +47,9 @@ Every per-file skill follows the same loop:
 
 **Area is the primary grouping key in Pharos.** Every skill reuses the Area already used by *related* code (same-object trigger, paired controller, the LWC/Flow on the other side of a call) so a feature's logs group together. `.area(...)` accepts any String; the `TritonTypes.Area` enum values are examples, not a required mapping.
 
+**Two cross-cutting rules every skill enforces:**
+
+- **Cacheable / `@wire` stitching never uses Platform Cache.** `@AuraEnabled(Cacheable=true)` Apex (what `@wire` calls) is read-only for Platform Cache, so `Triton.withCache()` can't carry a transaction id there — the stitch silently breaks. Those call chains always pass `transactionId` explicitly and `resumeTransaction(...)` on the server. See https://resources.pharos.ai/wire-cache-antipattern
+- **Per-log data richness scales inverse to severity.** ERROR/WARNING/INFO carry maximum forensic context — serialized inputs/state (PII-stripped) plus every related id; DEBUG carries named values only; FINE/FINER/FINEST stay terse markers. This is decoupled from event frequency: instrument *more* low-level tracing points (verbosity is runtime-tunable via `Log_Level__mdt`) but keep each such log lean.
+
 See the individual files for the per-technology detail, and [`instrumentation-agent.md`](instrumentation-agent.md) for running the whole thing as one persona.

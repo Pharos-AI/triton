@@ -99,6 +99,8 @@ const result = await loadOpps({
 
 **Option B — platform cache (no param).** Leave the Apex call unchanged and have the Apex method call `Triton.withCache()`; the id rides Salesforce platform cache.
 
+> ⚠️ **Never use Option B for `@wire` or any cacheable Apex.** `@wire` calls `@AuraEnabled(Cacheable=true)` methods, and cacheable Apex is **read-only** for Platform Cache — `withCache()` can't store or resume the id, so stitching silently breaks. For `@wire` / cacheable calls, **always** use Option A: pass `transactionId` explicitly (see §3d for the reactive-property wire pattern). Cacheable Apex / `@wire` can't use Platform Cache for stitching — pass `transactionId` explicitly. See https://resources.pharos.ai/wire-cache-antipattern
+
 Do **not** start or stop a transaction inside individual handlers. The constructor already established one; per-handler `startTransaction()`/`stopTransaction()` splits a component's logs across multiple transactions and `stopTransaction()` clears the shared id (severing downstream correlation). For a genuine multi-step wizard, use `this.triton.enterStep()` to mark logical steps within the single transaction.
 
 ### 3d — Instrument imperative Apex calls
@@ -134,10 +136,20 @@ try {
 }
 ```
 
-For `@wire` adapters, log errors from the callback:
+**For `@wire` adapters, stitch with an explicit `transactionId` — never `withCache()`.** Because `@wire` calls cacheable Apex (read-only for Platform Cache), the only reliable stitch is passing the id as a wire parameter. Expose the id as a **reactive property** set in the constructor, and reference it with the `'$prop'` syntax so the wire re-runs once it's assigned. The paired Apex method declares the `transactionId` param and calls `Triton.resumeTransaction(transactionId)`.
 
 ```javascript
-@wire(myApexMethod, { recordId: '$recordId' })
+_transactionId;
+
+constructor() {
+    super();
+    this.triton = new Triton().bindToComponent('<componentName>');
+    this._transactionId = this.triton.transactionId;   // reactive; drives the wire below
+    // ...setTemplate(...) as in 3b
+}
+
+// transactionId flows to Apex so the wire's logs join this component's transaction
+@wire(myApexMethod, { recordId: '$recordId', transactionId: '$_transactionId' })
 wiredResult({ data, error }) {
     if (error) {
         this.triton.logNow(
@@ -146,6 +158,8 @@ wiredResult({ data, error }) {
     }
 }
 ```
+
+> ⚠️ Cacheable Apex / `@wire` can't use Platform Cache for stitching — pass `transactionId` explicitly. See https://resources.pharos.ai/wire-cache-antipattern
 
 ### 3e — Event handler logging
 
@@ -194,7 +208,44 @@ this.triton.log(
 
 Whenever `this.recordId` or a result record id is available, chain `.relatedObjects([this.recordId])` — critical for dashboard correlation.
 
-### 3i — disconnectedCallback flush (optional safety)
+### 3i — Data richness by level (attach more the more severe it is)
+
+**Per-log payload richness scales inverse to severity** — independent of how *often* a level fires. Match the data you attach to the level:
+
+| Level | Per-log data |
+|-------|--------------|
+| **ERROR / WARNING / INFO** | **Maximum.** Serialize the relevant component state and call inputs into `.details()` with `JSON.stringify(...)` (the args passed to Apex, key `@api`/tracked values, the result summary), and attach `.relatedObjects([...])` for every involved id. |
+| **DEBUG** | **Reduced.** Named values only — which handler ran, the record id, a count — as short `details` strings. No full serialization. |
+| **FINE / FINER / FINEST** | **Progressively terse.** Short markers only (event name, step). Never serialize state here. |
+
+```javascript
+// ERROR — serialize the inputs/state alongside the exception
+await this.triton.logNow(
+    this.triton.exception(error)
+        .details('args=' + JSON.stringify({ recordId: this.recordId, qty: this.quantity }))
+        .relatedObjects([this.recordId])
+);
+
+// INFO — serialize the business-event result
+this.triton.log(
+    this.triton.info(TYPE.FRONTEND, AREA.<area>)
+        .summary('Order submitted')
+        .details('result=' + JSON.stringify({ orderId: result.id, lineCount: result.lines.length }))
+        .relatedObjects([this.recordId])
+);
+
+// DEBUG — named values only, terse
+this.triton.log(
+    this.triton.debug(TYPE.FRONTEND, AREA.<area>)
+        .summary('User clicked Save').details('recordId=' + this.recordId)
+);
+```
+
+**Be more granular.** Verbosity is runtime-tunable via `Log_Level__mdt`, so add *more* DEBUG/FINE tracing points than you otherwise would — but keep each of those logs lean. Runtime filtering, not sparse payloads, keeps production quiet.
+
+**PII carve-out.** "Everything available" **never** includes secrets or PII — passwords, tokens, session data, SSNs, card numbers. Serialize a redacted copy; when in doubt omit the field and add `// TODO: sanitize before logging`. This overrides the "attach maximum data" rule every time.
+
+### 3j — disconnectedCallback flush (optional safety)
 
 Flushing is already automatic (an idle auto-flush monitor runs, and `stopTransaction()` flushes). A `disconnectedCallback` flush is optional belt-and-suspenders:
 
@@ -253,6 +304,8 @@ Parse result:
 - Always `bindToComponent(name)`. Do not call `startTransaction()` in the constructor — construction already starts/resumes one.
 - Never start/stop a transaction per handler. Reserve `stopTransaction()` for true teardown; use `enterStep()` to segment a multi-step flow within one transaction.
 - Only pass `transactionId` to an Apex method that declares the param; otherwise use `withCache()` on the Apex side. Never inject an undeclared key into an Apex call.
+- **For `@wire` / cacheable Apex, always stitch with an explicit `transactionId`** (reactive property, §3d) — never rely on `withCache()`, which can't write to Platform Cache from cacheable Apex. See https://resources.pharos.ai/wire-cache-antipattern
+- **Scale per-log data to level (§3i):** ERROR/WARNING/INFO serialize state/inputs into `.details()` + `.relatedObjects([...])`; DEBUG uses named values only; FINE/FINER/FINEST stay terse. The PII carve-out always wins over "attach maximum data."
 - Prefer `timeBackendCall(name, fn).execute()` for imperative Apex calls.
 - Use `logNow` for errors (immediate), `log` for debug/info (buffered).
 - Never change the component's `@api` properties, event dispatching, or public interface.
