@@ -197,11 +197,34 @@ public with sharing class TritonHelper {
     }
 
     /**
-     * Returns the current stack trace as a string, excluding any Triton-related entries.
-     * This method works by throwing and catching an exception to obtain the stack trace,
-     * then filtering out any lines containing 'Triton' to provide a clean trace of the
-     * actual application code path.
-     * 
+     * The Triton framework's own runtime classes. Stack frames belonging to these
+     * are dropped when filtering a trace or deriving an operation, so that a log
+     * is always attributed to the calling application code rather than to Triton.
+     *
+     * Matched by exact class name rather than by looking for 'Triton' anywhere in
+     * the frame, which would also swallow application classes whose names merely
+     * contain the word (a customer's TritonWrapper, or this framework's own test
+     * classes). Add an entry here when a new runtime class is introduced.
+     */
+    private static final Set<String> TRITON_FRAMEWORK_CLASSES = new Set<String>{
+        'Triton',
+        'TritonBuilder',
+        'TritonCacheManager',
+        'TritonFlow',
+        'TritonFlowFlushBatch',
+        'TritonHelper',
+        'TritonLwc',
+        'TritonTypes'
+    };
+
+    private static final String CLASS_FRAME_PREFIX = 'Class.';
+
+    /**
+     * Returns the current stack trace as a string, excluding the Triton framework's
+     * own entries. This method works by throwing and catching an exception to obtain
+     * the stack trace, then filtering out framework frames to provide a clean trace
+     * of the actual application code path.
+     *
      * @return String The filtered stack trace with lines joined by newline characters
      */
     public static String getCurrentStackTrace() {
@@ -213,8 +236,9 @@ public with sharing class TritonHelper {
     }
 
     /**
-     * Test-visible method that processes a stack trace string and filters out Triton-related entries.
-     * 
+     * Test-visible method that processes a stack trace string and filters out the
+     * Triton framework's own entries.
+     *
      * @param stackTraceString The raw stack trace string to process
      * @return String The filtered stack trace with lines joined by newline characters
      */
@@ -223,11 +247,40 @@ public with sharing class TritonHelper {
         List<String> stackLines = new List<String>();
         for(String line : stackTraceString.split('\n')) {
             String trimmedLine = line.trim();
-            if (!trimmedLine.contains('Triton')) {
+            if (!isTritonFrame(trimmedLine)) {
                 stackLines.add(trimmedLine);
             }
         }
         return String.join(stackLines, '\n');
+    }
+
+    /**
+     * True when a stack trace frame belongs to a Triton framework class.
+     *
+     * Frames look like 'Class.[namespace.]MyClass[.InnerClass].method: line n, column m'.
+     * Every segment except the trailing method name is checked against
+     * TRITON_FRAMEWORK_CLASSES, so both namespaced and inner-class frames are
+     * recognised while a caller's method that merely happens to be named after a
+     * framework class is not. Triggers and anonymous blocks are always caller code.
+     *
+     * @param stackLine A single, trimmed stack trace line
+     * @return true when the frame is Triton's own
+     */
+    @TestVisible
+    private static Boolean isTritonFrame(String stackLine) {
+        if (String.isBlank(stackLine) || !stackLine.startsWith(CLASS_FRAME_PREFIX)) return false;
+
+        // Drop the 'Class.' prefix and the trailing ': line n, column m'.
+        String frame = stackLine.substringAfter(CLASS_FRAME_PREFIX);
+        Integer colonIndex = frame.indexOf(':');
+        if (colonIndex != -1) frame = frame.substring(0, colonIndex);
+
+        List<String> segments = frame.trim().split('\\.');
+        // Stop before the last segment: that is the method name.
+        for (Integer i = 0; i < segments.size() - 1; i++) {
+            if (TRITON_FRAMEWORK_CLASSES.contains(segments.get(i))) return true;
+        }
+        return false;
     }
 
     /**
@@ -412,11 +465,14 @@ public with sharing class TritonHelper {
     }
 
     /**
-     * Extracts the operation (Class.Method) from a stack trace string
-     * Takes the topmost non-Triton entry from the stack trace
-     * 
+     * Extracts the operation from a stack trace string.
+     * Takes the topmost entry that does not belong to the Triton framework itself,
+     * so the operation names the calling application code.
+     *
      * @param stackTrace The stack trace string to parse
-     * @return String in format "ClassName.MethodName"
+     * @return The frame text before the line/column suffix, retaining the stack's
+     *         own 'Class.' prefix (for example 'Class.AccountService.update'), or
+     *         an empty string when no suitable frame is found
      */
     public static String getOperation(String stackTrace) {
         if (String.isBlank(stackTrace)) return '';
@@ -430,10 +486,10 @@ public with sharing class TritonHelper {
             
             // Line format is typically: Class.Method: line n, column m
             String trimmedLine = line.trim();
-            
-            // Skip Triton-related entries
-            if (trimmedLine.contains('Triton')) continue;
-            
+
+            // Skip the Triton framework's own entries
+            if (isTritonFrame(trimmedLine)) continue;
+
             // Extract the Class.Method part (everything before the first colon)
             Integer colonIndex = trimmedLine.indexOf(':');
             if (colonIndex == -1) continue;

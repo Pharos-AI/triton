@@ -444,6 +444,76 @@ private class TritonTest {
     }
 
     @IsTest
+    private static void test_is_triton_frame() {
+        // Framework frames, including inner-class and namespaced forms.
+        System.assertEquals(true, TritonHelper.isTritonFrame('Class.Triton.log: line 292, column 1'));
+        System.assertEquals(true, TritonHelper.isTritonFrame('Class.TritonHelper.getCurrentStackTrace: line 209, column 1'));
+        System.assertEquals(true, TritonHelper.isTritonFrame('Class.TritonHelper.Config.isLogAllowed: line 750, column 1'));
+        System.assertEquals(true, TritonHelper.isTritonFrame('Class.myns.TritonBuilder.build: line 10, column 1'));
+
+        // Application code whose name merely contains 'Triton' must survive.
+        System.assertEquals(false, TritonHelper.isTritonFrame('Class.TritonWrapper.doWork: line 5, column 1'),
+            'A customer class containing the word Triton is not a framework frame');
+        System.assertEquals(false, TritonHelper.isTritonFrame('Class.TritonTest.test_x: line 5, column 1'),
+            'Triton test classes are application code from the framework point of view');
+        System.assertEquals(false, TritonHelper.isTritonFrame('Class.MyClass.Triton: line 5, column 1'),
+            'A method named after a framework class is not a framework frame');
+
+        // Non-class frames are always caller code.
+        System.assertEquals(false, TritonHelper.isTritonFrame('Trigger.AccountTrigger: line 7, column 1'));
+        System.assertEquals(false, TritonHelper.isTritonFrame('AnonymousBlock: line 1, column 1'));
+        System.assertEquals(false, TritonHelper.isTritonFrame(''));
+        System.assertEquals(false, TritonHelper.isTritonFrame(null));
+    }
+
+    @IsTest
+    private static void test_filter_stack_trace_keeps_lookalike_classes() {
+        String trace = 'Class.TritonHelper.getCurrentStackTrace: line 209, column 1\n'
+            + 'Class.Triton.log: line 292, column 1\n'
+            + 'Class.TritonWrapper.doWork: line 5, column 1\n'
+            + 'Class.AccountService.update: line 42, column 1';
+
+        String filtered = TritonHelper.filterStackTrace(trace);
+
+        System.assert(!filtered.contains('TritonHelper'), 'Framework frames must be filtered out');
+        System.assert(!filtered.contains('Class.Triton.log'), 'Framework frames must be filtered out');
+        System.assert(filtered.contains('TritonWrapper'),
+            'An application class named TritonWrapper must be preserved');
+        System.assert(filtered.contains('AccountService'), 'Application frames must be preserved');
+    }
+
+    @IsTest
+    private static void test_get_operation_skips_only_framework_frames() {
+        String trace = 'Class.TritonHelper.getCurrentStackTrace: line 209, column 1\n'
+            + 'Class.Triton.log: line 292, column 1\n'
+            + 'Class.TritonWrapper.doWork: line 5, column 1\n'
+            + 'Class.AccountService.update: line 42, column 1';
+
+        System.assertEquals('Class.TritonWrapper.doWork', TritonHelper.getOperation(trace),
+            'The topmost non-framework frame wins, even when its class name contains Triton');
+    }
+
+    @IsTest
+    private static void test_resolve_stack_trace_and_operation_populates_apex_name() {
+        // The component used for log level matching comes from the Apex Name,
+        // which Triton.log() must resolve BEFORE the level check when a
+        // component-scoped level exists.
+        TritonBuilder builder = Triton.makeBuilder()
+            .type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('resolve me');
+
+        System.assertEquals(null, builder.build().pharos__Stacktrace__c,
+            'Stacktrace should be unset before resolution');
+
+        builder.resolveStackTraceAndOperation();
+
+        pharos__Log__c log = builder.build();
+        System.assertNotEquals(null, log.pharos__Stacktrace__c,
+            'resolveStackTraceAndOperation must capture the stacktrace ahead of the level check');
+        System.assert(log.pharos__Apex_Name__c.contains('TritonTest'),
+            'The operation must resolve to the calling class, not to a framework frame. Got: ' + log.pharos__Apex_Name__c);
+    }
+
+    @IsTest
     private static void test_get_component_name() {
         // Flow API name takes precedence.
         pharos__Log__c flowLog = new pharos__Log__c(pharos__Flow_API_Name__c = 'My_Flow', pharos__Apex_Name__c = 'Some.Apex');
