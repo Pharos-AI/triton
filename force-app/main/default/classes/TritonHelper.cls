@@ -840,11 +840,12 @@ public with sharing class TritonHelper {
     * Flows are identified by their API name; Apex/LWC by the class/component
     * portion of the Apex Name (the text before the first '.').
     *
-    * Note: this runs during the log level check, before prepareForLogging derives
-    * the operation from the stack trace. The component is therefore only available
-    * when it is known at log() time -- LWC logs, Flow logs, or Apex logs with an
-    * explicit operation. Apex logs relying on stack-trace-derived naming will have
-    * a blank component here and are not matched by component-scoped levels.
+    * Stack-trace-derived Apex Names keep the frame's leading 'Class.' prefix
+    * (for example 'Class.AccountService.updateAccounts'), which is the format
+    * persisted on the log record. That prefix is stripped here so the component
+    * resolves to the class name rather than the literal 'Class'. LWC names
+    * ('myComponent.Proxy.method') and explicitly supplied operations have no
+    * prefix and are unaffected.
     * @param log -- Pharos log record being evaluated
     * @return the component name, or null/blank when it cannot be determined
     */
@@ -854,6 +855,11 @@ public with sharing class TritonHelper {
 
         String apexName = log.pharos__Apex_Name__c;
         if (String.isBlank(apexName)) return apexName;
+
+        if (apexName.startsWith(CLASS_FRAME_PREFIX)) {
+            apexName = apexName.substringAfter(CLASS_FRAME_PREFIX);
+        }
+
         Integer dotIndex = apexName.indexOf('.');
         return dotIndex == -1 ? apexName : apexName.substring(0, dotIndex);
     }

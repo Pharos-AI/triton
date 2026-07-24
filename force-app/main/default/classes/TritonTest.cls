@@ -267,6 +267,11 @@ private class TritonTest {
         System.assertEquals(UserInfo.getUserId(), logs.get(1).pharos__User_Id__c);
     }
 
+    // --- Specificity-based resolution -------------------------------------
+    // The most specific rule targeting a log decides its level and overrides
+    // every less specific rule, in both directions: a narrow rule can lower
+    // verbosity below a broad one, not only raise it above it.
+
     @IsTest
     private static void test_specificity_narrow_component_silences_verbose_global() {
         TritonTestFactory.assertNoLogs();
@@ -514,10 +519,44 @@ private class TritonTest {
     }
 
     @IsTest
+    private static void test_component_level_matches_stack_trace_derived_apex_name() {
+        TritonTestFactory.assertNoLogs();
+
+        // A component-scoped rule must apply to an Apex log that never sets
+        // .operation() explicitly -- the component is derived from the stack
+        // trace before the level check runs. This test class is the component:
+        // it is application code from the framework's point of view, so its
+        // frames survive filtering.
+        Log_Level__mdt componentLevel = new Log_Level__mdt();
+        componentLevel.Level__c = TritonTypes.Level.ERROR.name();
+        componentLevel.Component_Name__c = 'TritonTest';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ componentLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('implicit component').details('details').level(TritonTypes.Level.DEBUG));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()],
+            'Component-scoped levels must match Apex logs whose component is derived from the stack trace');
+    }
+
+    @IsTest
     private static void test_get_component_name() {
         // Flow API name takes precedence.
         pharos__Log__c flowLog = new pharos__Log__c(pharos__Flow_API_Name__c = 'My_Flow', pharos__Apex_Name__c = 'Some.Apex');
         System.assertEquals('My_Flow', TritonHelper.getComponentName(flowLog));
+
+        // Stack-trace-derived Apex Names keep the frame's 'Class.' prefix; the
+        // component is the class, not the literal 'Class'.
+        pharos__Log__c framedLog = new pharos__Log__c(pharos__Apex_Name__c = 'Class.AccountService.updateAccounts');
+        System.assertEquals('AccountService', TritonHelper.getComponentName(framedLog),
+            'The Class. prefix must be stripped before resolving the component');
+
+        // LWC names carry no prefix.
+        pharos__Log__c lwcLog = new pharos__Log__c(pharos__Apex_Name__c = 'orderBuilder.Proxy.next');
+        System.assertEquals('orderBuilder', TritonHelper.getComponentName(lwcLog));
 
         // Apex name: class portion before the first dot.
         pharos__Log__c apexLog = new pharos__Log__c(pharos__Apex_Name__c = 'MyClass.myMethod');
