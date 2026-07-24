@@ -610,9 +610,16 @@ public with sharing class TritonHelper {
 
         /**
          * Raw Log_Level__mdt records. @TestVisible so tests supply their own.
+         *
+         * Tests start from an empty set rather than the org's records: log level
+         * metadata is deployed configuration, so inheriting it would make every
+         * test that logs pass or fail depending on which levels happen to exist
+         * in the target org. Tests that exercise filtering assign their own rules.
          */
         @TestVisible
-        Log_Level__mdt[] logLevelsMdt = Log_Level__mdt.getAll().values();
+        Log_Level__mdt[] logLevelsMdt = Test.isRunningTest()
+            ? new Log_Level__mdt[]{}
+            : Log_Level__mdt.getAll().values();
 
         /**
          * Cached, parsed Log_Level__mdt rules used to decide whether a log is
