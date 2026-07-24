@@ -268,6 +268,182 @@ private class TritonTest {
     }
 
     @IsTest
+    private static void test_specificity_narrow_component_silences_verbose_global() {
+        TritonTestFactory.assertNoLogs();
+
+        // Global default logs everything, but one noisy component is pinned to
+        // ERROR. A DEBUG log from that component must be dropped.
+        Log_Level__mdt globalLevel = new Log_Level__mdt();
+        globalLevel.Level__c = TritonTypes.Level.FINEST.name();
+
+        Log_Level__mdt componentLevel = new Log_Level__mdt();
+        componentLevel.Level__c = TritonTypes.Level.ERROR.name();
+        componentLevel.Component_Name__c = 'NoisyBatch';
+
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ globalLevel, componentLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('noise').details('details').operation('NoisyBatch.run').level(TritonTypes.Level.DEBUG));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()],
+            'The component-scoped ERROR rule is more specific than the global FINEST rule and must suppress the DEBUG log');
+    }
+
+    @IsTest
+    private static void test_specificity_narrow_area_tightens_broader_category() {
+        TritonTestFactory.assertNoLogs();
+
+        // Category-wide rule allows FINE, but one area is tightened to INFO.
+        Log_Level__mdt categoryLevel = new Log_Level__mdt();
+        categoryLevel.Level__c = TritonTypes.Level.FINE.name();
+        categoryLevel.Category__c = TritonTypes.Category.Event.name();
+
+        Log_Level__mdt areaLevel = new Log_Level__mdt();
+        areaLevel.Level__c = TritonTypes.Level.INFO.name();
+        areaLevel.Category__c = TritonTypes.Category.Event.name();
+        areaLevel.Area__c = TritonTypes.Area.Community.name();
+
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ categoryLevel, areaLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        // DEBUG is above the tightened INFO ceiling for this area -> dropped.
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('tightened').details('details').level(TritonTypes.Level.DEBUG));
+        // The same level in a different area still falls under the FINE rule -> kept.
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.OpportunityManagement)
+            .summary('untightened').details('details').level(TritonTypes.Level.DEBUG));
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [SELECT pharos__Summary__c FROM pharos__Log__c
+            WHERE pharos__Category__c = :TritonTypes.Category.Event.name()];
+        System.assertEquals(1, logs.size(), 'Only the log outside the tightened area should persist');
+        System.assertEquals('untightened', logs.get(0).pharos__Summary__c);
+    }
+
+    @IsTest
+    private static void test_specificity_user_rule_outranks_category_type_area() {
+        TritonTestFactory.assertNoLogs();
+
+        // A user-scoped rule outranks a rule naming category + type + area,
+        // so the user rule's level decides -- here silencing the log.
+        Log_Level__mdt ctaLevel = new Log_Level__mdt();
+        ctaLevel.Level__c = TritonTypes.Level.FINEST.name();
+        ctaLevel.Category__c = TritonTypes.Category.Event.name();
+        ctaLevel.Type__c = TritonTypes.Type.Backend.name();
+        ctaLevel.Area__c = TritonTypes.Area.Community.name();
+
+        Log_Level__mdt userLevel = new Log_Level__mdt();
+        userLevel.Level__c = TritonTypes.Level.WARNING.name();
+        userLevel.User_Id__c = UserInfo.getUserId();
+
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ ctaLevel, userLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('user scoped').details('details').userId(UserInfo.getUserId()).level(TritonTypes.Level.INFO));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()],
+            'The user-scoped rule is the most specific match and its WARNING ceiling must suppress the INFO log');
+    }
+
+    @IsTest
+    private static void test_specificity_narrow_rule_still_raises_verbosity() {
+        TritonTestFactory.assertNoLogs();
+
+        // Specificity works in both directions: a narrow rule above a quiet
+        // global default must still raise verbosity for its scope.
+        Log_Level__mdt globalLevel = new Log_Level__mdt();
+        globalLevel.Level__c = TritonTypes.Level.ERROR.name();
+
+        Log_Level__mdt userLevel = new Log_Level__mdt();
+        userLevel.Level__c = TritonTypes.Level.FINEST.name();
+        userLevel.User_Id__c = UserInfo.getUserId();
+
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ globalLevel, userLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('debug me').details('details').userId(UserInfo.getUserId()).level(TritonTypes.Level.FINE));
+        Test.stopTest();
+
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
+    }
+
+    @IsTest
+    private static void test_specificity_tie_breaks_to_most_restrictive() {
+        TritonTestFactory.assertNoLogs();
+
+        // Two rules with an identical field set (equally specific) both target
+        // the log. The more restrictive level wins so config order cannot
+        // change the outcome.
+        Log_Level__mdt verbose = new Log_Level__mdt();
+        verbose.Level__c = TritonTypes.Level.FINEST.name();
+        verbose.Category__c = TritonTypes.Category.Event.name();
+
+        Log_Level__mdt restrictive = new Log_Level__mdt();
+        restrictive.Level__c = TritonTypes.Level.WARNING.name();
+        restrictive.Category__c = TritonTypes.Category.Event.name();
+
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ verbose, restrictive };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('tie').details('details').level(TritonTypes.Level.INFO));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()],
+            'Equally specific rules must resolve to the most restrictive level regardless of order');
+    }
+
+    @IsTest
+    private static void test_has_component_scoped_levels() {
+        // No component rules -> the stack trace must not be resolved early.
+        Log_Level__mdt plain = new Log_Level__mdt();
+        plain.Level__c = TritonTypes.Level.DEBUG.name();
+        plain.Category__c = TritonTypes.Category.Event.name();
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ plain };
+        TritonHelper.Config.logLevels = null;
+        System.assertEquals(false, TritonHelper.Config.hasComponentScopedLevels(),
+            'No rule names a component, so early operation resolution must stay off');
+
+        // At least one component rule -> early resolution is required.
+        Log_Level__mdt componentLevel = new Log_Level__mdt();
+        componentLevel.Level__c = TritonTypes.Level.DEBUG.name();
+        componentLevel.Component_Name__c = 'SomeClass';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ plain, componentLevel };
+        TritonHelper.Config.logLevels = null;
+        System.assertEquals(true, TritonHelper.Config.hasComponentScopedLevels(),
+            'A component-scoped rule requires the operation to be resolved before the level check');
+    }
+
+    @IsTest
+    private static void test_resolve_stack_trace_and_operation_is_idempotent() {
+        // prepareForLogging calls the same resolution again after the level
+        // check, so an explicit stacktrace must never be overwritten and the
+        // cost must not be paid twice.
+        TritonBuilder builder = Triton.makeBuilder()
+            .type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('preset')
+            .stackTrace('MyClass.myMethod: line 1, column 1').operation('MyClass.myMethod');
+
+        builder.resolveStackTraceAndOperation();
+        builder.resolveStackTraceAndOperation();
+
+        pharos__Log__c log = builder.build();
+        System.assertEquals('MyClass.myMethod: line 1, column 1', log.pharos__Stacktrace__c,
+            'An explicitly supplied stacktrace must be preserved');
+        System.assertEquals('MyClass.myMethod', log.pharos__Apex_Name__c,
+            'An explicitly supplied operation must be preserved');
+    }
+
+    @IsTest
     private static void test_get_component_name() {
         // Flow API name takes precedence.
         pharos__Log__c flowLog = new pharos__Log__c(pharos__Flow_API_Name__c = 'My_Flow', pharos__Apex_Name__c = 'Some.Apex');

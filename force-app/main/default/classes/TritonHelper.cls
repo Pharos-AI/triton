@@ -624,13 +624,34 @@ public with sharing class TritonHelper {
             get {
                 if (logLevels == null) {
                     logLevels = new List<LogLevelRule>();
+                    componentScopedLevelsExist = false;
                     for (Log_Level__mdt ll : logLevelsMdt) {
-                        logLevels.add(new LogLevelRule(ll));
+                        LogLevelRule rule = new LogLevelRule(ll);
+                        logLevels.add(rule);
+                        componentScopedLevelsExist = componentScopedLevelsExist || rule.component != null;
                     }
                 }
                 return logLevels;
             }
             set;
+        }
+
+        /**
+         * Whether any parsed rule is component-scoped. Computed once alongside
+         * logLevels rather than rescanned per log.
+         */
+        private Boolean componentScopedLevelsExist = null;
+
+        /**
+         * True when at least one configured level is scoped to a component.
+         * Resolving a log's component requires deriving the operation from the
+         * stack trace, which is comparatively expensive; this lets callers pay
+         * that cost only when a component-scoped rule could actually match.
+         */
+        public Boolean hasComponentScopedLevels() {
+            // Touch the getter so the flag is populated on first use.
+            if (logLevels.isEmpty()) return false;
+            return componentScopedLevelsExist == true;
         }
 
         /**
@@ -702,9 +723,23 @@ public with sharing class TritonHelper {
         * (null) attributes act as wildcards, so a record can scope a level as broadly
         * (a global default) or as narrowly (a single user or component) as needed.
         *
-        * A log is allowed when either no configured level targets it, or at least one
-        * targeting level is verbose enough (its level is greater than or equal to the
-        * log's level).
+        * Rules are resolved by specificity, not additively: among all rules that
+        * target the log, the single most specific one decides, and it overrides
+        * every less specific rule in both directions. A narrow rule can therefore
+        * lower verbosity below a broader rule, not only raise it above -- which is
+        * what makes it possible to silence one noisy component or user while a
+        * permissive global default stays in place.
+        *
+        * Specificity is ranked by which attributes a rule names, from narrowest to
+        * broadest scope: User Id > Component Name > Area > Type > Category. Each
+        * attribute contributes a distinct weight, so any rule naming a User Id
+        * outranks any rule that does not, and the ordering is total -- no two
+        * different attribute combinations can tie. Rules that name the exact same
+        * attributes are equally specific; those resolve to the most restrictive
+        * (least verbose) level so that metadata order never changes the outcome.
+        *
+        * When no configured level targets the log at all, the log is allowed
+        * through by default.
         * @param log -- Pharos log record to be saved
         */
         public Boolean isLogAllowed(pharos__Log__c log) {
@@ -714,15 +749,26 @@ public with sharing class TritonHelper {
             String logComponent = getComponentName(log);
             TritonTypes.Level currentLevel = TritonTypes.Level.valueOf(log.Log_Level__c);
 
-            Boolean anyLevelTargetsLog = false;
+            TritonTypes.Level effectiveLevel = null;
+            Integer bestSpecificity = -1;
             for (LogLevelRule rule : logLevels) {
                 if (!rule.targets(log, logUserId, logComponent)) continue;
-                anyLevelTargetsLog = true;
-                if (compareLevel(rule.level, currentLevel)) return true;
+
+                if (rule.specificity > bestSpecificity) {
+                    // A strictly more specific rule replaces whatever we had.
+                    bestSpecificity = rule.specificity;
+                    effectiveLevel = rule.level;
+                } else if (rule.specificity == bestSpecificity && rule.level.ordinal() < effectiveLevel.ordinal()) {
+                    // Equally specific: keep the most restrictive level so that
+                    // the outcome does not depend on metadata ordering.
+                    effectiveLevel = rule.level;
+                }
             }
 
             // No configured level targets this log -- allow it through by default.
-            return !anyLevelTargetsLog;
+            if (effectiveLevel == null) return true;
+
+            return compareLevel(effectiveLevel, currentLevel);
         }
     }
 
@@ -762,6 +808,20 @@ public with sharing class TritonHelper {
     }
 
     /**
+    * Log level specificity weights, ordered from the narrowest scope to the
+    * broadest: a User Id targets one person, a Component one class/flow/LWC,
+    * while a Category covers an entire technology. Using distinct powers of two
+    * makes a rule's score a bit set, so the ordering is total and any rule naming
+    * a narrower attribute outranks every rule that does not -- for example a
+    * User Id rule (16) beats Category + Type + Area (1 + 2 + 4 = 7).
+    */
+    private static final Integer LEVEL_WEIGHT_USER_ID = 16;
+    private static final Integer LEVEL_WEIGHT_COMPONENT = 8;
+    private static final Integer LEVEL_WEIGHT_AREA = 4;
+    private static final Integer LEVEL_WEIGHT_TYPE = 2;
+    private static final Integer LEVEL_WEIGHT_CATEGORY = 1;
+
+    /**
     * In-memory representation of a Log_Level__mdt record, parsed once and cached
     * so that log level checks avoid re-reading and re-parsing metadata per log.
     */
@@ -773,6 +833,13 @@ public with sharing class TritonHelper {
         private final String component;
         private final TritonTypes.Level level;
 
+        /**
+        * How narrowly this rule is scoped. Higher wins when several rules target
+        * the same log. Computed once at parse time to keep the check allocation
+        * free on the hot path.
+        */
+        private final Integer specificity;
+
         private LogLevelRule(Log_Level__mdt mdt) {
             this.category = mdt.Category__c;
             this.type = mdt.Type__c;
@@ -780,6 +847,12 @@ public with sharing class TritonHelper {
             this.userId = normalizeUserId(mdt.User_Id__c);
             this.component = mdt.Component_Name__c;
             this.level = TritonTypes.Level.valueOf(mdt.Level__c);
+            this.specificity =
+                (this.userId != null ? LEVEL_WEIGHT_USER_ID : 0) +
+                (this.component != null ? LEVEL_WEIGHT_COMPONENT : 0) +
+                (this.area != null ? LEVEL_WEIGHT_AREA : 0) +
+                (this.type != null ? LEVEL_WEIGHT_TYPE : 0) +
+                (this.category != null ? LEVEL_WEIGHT_CATEGORY : 0);
         }
 
         /**

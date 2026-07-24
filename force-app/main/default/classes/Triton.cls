@@ -283,6 +283,14 @@ global with sharing class Triton {
             return;
         }
 
+        // Component-scoped log levels match on the Apex Name, which is otherwise
+        // only derived from the stacktrace later, in prepareForLogging -- too late
+        // for the check below. Resolve it up front only when a component-scoped
+        // level exists, so orgs without one never pay for the stacktrace.
+        if (TritonHelper.Config.hasComponentScopedLevels()) {
+            builder.resolveStackTraceAndOperation();
+        }
+
         pharos__Log__c log = builder.build();
 
         if (!TritonHelper.Config.isLogAllowed(log)) {

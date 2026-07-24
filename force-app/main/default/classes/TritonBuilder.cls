@@ -749,16 +749,20 @@ public with sharing class TritonBuilder {
     }
 
     /**
-    * Prepares the builder for logging by auto-enriching with runtime context.
-    * Called by Triton.log() to add stacktrace, operation, tracepoint, and limits.
-    * @param transactionId -- Transaction ID to associate with this log
+    * Captures the stacktrace and derives the operation from it when neither was
+    * supplied explicitly. Idempotent: once a stacktrace is present this is a
+    * no-op, so it is safe to call before the log level check and again from
+    * prepareForLogging.
+    *
+    * Triton.log() calls this ahead of the log level check when component-scoped
+    * log levels are configured, because matching on component name requires the
+    * Apex Name to already be resolved. Throwing and filtering a stacktrace is
+    * comparatively expensive, which is why the early call is gated rather than
+    * unconditional.
+    * @see TritonHelper.Config.hasComponentScopedLevels
     * @return this builder instance
     */
-    public TritonBuilder prepareForLogging(String transactionId) {
-        // Set transaction ID
-        this.transactionId(transactionId);
-
-        // Auto-capture stacktrace if not provided
+    public TritonBuilder resolveStackTraceAndOperation() {
         pharos__Log__c tempLog = this.builder.build();
         if(String.isBlank(tempLog.pharos__Stacktrace__c)) {
             String stackTrace = TritonHelper.getCurrentStackTrace();
@@ -769,6 +773,20 @@ public with sharing class TritonBuilder {
                 this.operation(TritonHelper.getOperation(stackTrace));
             }
         }
+        return this;
+    }
+
+    /**
+    * Prepares the builder for logging by auto-enriching with runtime context.
+    * Called by Triton.log() to add stacktrace, operation, tracepoint, and limits.
+    * @param transactionId -- Transaction ID to associate with this log
+    * @return this builder instance
+    */
+    public TritonBuilder prepareForLogging(String transactionId) {
+        // Set transaction ID
+        this.transactionId(transactionId);
+
+        resolveStackTraceAndOperation();
 
         // Add tracepoint and limits
         this.tracePoint().limitInfo();
