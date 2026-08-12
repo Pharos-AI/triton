@@ -805,7 +805,13 @@ public with sharing class TritonBuilder {
     */
     public pharos__Log__c build() {
         ensureSpanIds();
-        pharos__Log__c log = this.builder.build();
+        // Defensive shallow clone: the underlying managed builder returns the
+        // same sObject instance from every build(). Without a clone, reusing a
+        // TritonBuilder across multiple log() calls makes every buffered record
+        // alias the latest build — later logs silently overwrite earlier ones.
+        // Shallow suffices (pharos__Log__c is a flat record) and is negligible
+        // next to builder construction.
+        pharos__Log__c log = this.builder.build().clone(false, false, false, false);
 
         // Default category to Apex when not explicitly set
         if(String.isNotBlank(categoryValue)) {
