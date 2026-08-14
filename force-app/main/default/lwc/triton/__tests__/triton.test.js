@@ -830,6 +830,33 @@ describe('SpanContext', () => {
     expect(parent).toBe('stable-parent');
   });
 
+  test('log parents skip the span id of a mark that is still open', () => {
+    // startMark() pushes its span id onto the stack but only publishes the
+    // record in endMark(). Parenting a log on that id points it at a span that
+    // has not been emitted — and never will be if the mark does not close.
+    const bound = triton.bindToComponent('c-test');
+    triton.spanContext.reset('root');
+    triton.spanContext.push('closed-work-span');
+    bound.startPerformanceMark('slow-thing');
+
+    const openMarkSpanId = triton.spanContext.current();
+    expect(triton.performance.isActiveMarkSpanId(openMarkSpanId)).toBe(true);
+
+    const builder = triton.refreshBuilder(new TritonBuilder());
+
+    expect(builder.parentSpanId).toHaveBeenCalledWith('closed-work-span');
+    expect(builder.parentSpanId).not.toHaveBeenCalledWith(openMarkSpanId);
+  });
+
+  test('log parents use the stack top when no mark is open', () => {
+    triton.spanContext.reset('root');
+    triton.spanContext.push('closed-work-span');
+
+    const builder = triton.refreshBuilder(new TritonBuilder());
+
+    expect(builder.parentSpanId).toHaveBeenCalledWith('closed-work-span');
+  });
+
   test('enableSpanPersistence should enable sessionStorage', () => {
     triton.enableSpanPersistence();
     triton.spanContext.push('persisted-span');
