@@ -279,20 +279,10 @@ export default class Triton {
     }
 
     /**
-     * Resolves the parent span id for a new log, skipping the span ids of marks
-     * that are still open.
-     *
-     * startMark() pushes its span id onto the context stack immediately but only
-     * publishes the record in endMark(). Taking the stack top as-is therefore
-     * points every log built meanwhile at a span that has not been emitted — and
-     * if the mark never closes (component unmounted, navigation, an exception
-     * between start and end) it never will be, leaving those logs parented to
-     * nothing. Measured on a live E-Bikes purchase: 60 LWC spans referencing
-     * three span ids that were absent from the trace, 30 of them under one.
-     *
-     * Skipping open marks nests such logs one level higher instead — under the
-     * mark's own parent. Flatter than intended, but a real ancestor rather than
-     * a dangling reference.
+     * Resolves the parent span id for a new log, skipping marks that are still
+     * open: startMark() pushes a span id but endMark() publishes the record, so
+     * the stack top can name a span that has not been emitted yet — or never
+     * will be, if the mark does not close.
      * @private
      * @returns {string|null}
      */
