@@ -7,9 +7,12 @@
               "Bash(gh pr view*)", "Bash(gh pr diff*)"],
     "deny":  ["Bash(git push*)", "Bash(gh pr merge*)", "Bash(gh pr create*)",
               "Bash(op *)",
-              "Bash(sf project deploy start*)", "Bash(sf apex run*)",
+              "Bash(sf project deploy*)", "Bash(sf project delete*)",
+              "Bash(sf apex run*)",
               "Bash(sf data create*)", "Bash(sf data update*)",
               "Bash(sf data delete*)", "Bash(sf data upsert*)",
-              "Bash(cci flow run*)", "Bash(cci task run*)"]
+              "Bash(sf package*)", "Bash(sf data bulk*)",
+              "Bash(sf org create*)", "Bash(sf org delete*)",
+              "Bash(cci *)", "Bash(sfdx *)", "Bash(gh api*)"]
   }
 }
