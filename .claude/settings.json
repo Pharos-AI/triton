@@ -6,6 +6,10 @@
               "Bash(git status*)", "Bash(git diff*)",
               "Bash(gh pr view*)", "Bash(gh pr diff*)"],
     "deny":  ["Bash(git push*)", "Bash(gh pr merge*)", "Bash(gh pr create*)",
-              "Bash(op *)"]
+              "Bash(op *)",
+              "Bash(sf project deploy start*)", "Bash(sf apex run*)",
+              "Bash(sf data create*)", "Bash(sf data update*)",
+              "Bash(sf data delete*)", "Bash(sf data upsert*)",
+              "Bash(cci flow run*)", "Bash(cci task run*)"]
   }
 }
