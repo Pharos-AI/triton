@@ -4,7 +4,7 @@
               "Bash(sf org list*)", "Bash(sf org display*)", "Bash(sf data query*)",
               "Bash(sf project retrieve start*)", "Bash(npm test*)",
               "Bash(git status*)", "Bash(git diff*)",
-              "Bash(gh pr view*)", "Bash(gh pr diff*)"],
+              "Bash(gh pr view*)", "Bash(gh pr diff*)", "Bash(gh api*)"],
     "deny":  ["Bash(git push*)", "Bash(gh pr merge*)", "Bash(gh pr create*)",
               "Bash(op *)",
               "Bash(sf project deploy*)", "Bash(sf project delete*)",
@@ -13,6 +13,6 @@
               "Bash(sf data delete*)", "Bash(sf data upsert*)",
               "Bash(sf package*)", "Bash(sf data bulk*)",
               "Bash(sf org create*)", "Bash(sf org delete*)",
-              "Bash(cci *)", "Bash(sfdx *)", "Bash(gh api*)"]
+              "Bash(cci *)", "Bash(sfdx *)"]
   }
 }
