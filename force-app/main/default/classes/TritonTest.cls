@@ -713,6 +713,44 @@ private class TritonTest {
         System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
     }
 
+    /**
+     * Deprecated 'Integration' category is a sanctioned input (LOG-2927):
+     * mapped case-insensitively to the LWC context category,
+     * without the invalid-category note.
+     */
+    @IsTest
+    private static void test_save_component_log_integration_category_maps_to_lwc() {
+        TritonTestFactory.assertNoLogs();
+
+        Test.startTest();
+        List<TritonLwc.ComponentLog> componentLogs = new List<TritonLwc.ComponentLog>();
+        for (String categoryValue : new List<String>{'Integration', 'integration'}) {
+            TritonLwc.ComponentLog componentLog = new TritonLwc.ComponentLog();
+            componentLog.category = categoryValue;
+            componentLog.type = 'test type';
+            componentLog.area = TritonTypes.Area.LWC.name();
+            componentLog.level = TritonTypes.Level.ERROR.name();
+            componentLog.summary = 'integration category mapping: ' + categoryValue;
+            componentLog.details = 'test details';
+            TritonLwc.Component component = new TritonLwc.Component();
+            component.name = 'TestComponent';
+            component.function = 'testFunction';
+            componentLog.componentInfo = component;
+            componentLogs.add(componentLog);
+        }
+        TritonLwc.saveComponentLogs(componentLogs);
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Details__c FROM pharos__Log__c];
+        System.assertEquals(2, logs.size(), 'Expected both component logs to be created');
+        for (pharos__Log__c log : logs) {
+            System.assertEquals(TritonTypes.Category.LWC.name(), log.pharos__Category__c,
+                'Deprecated Integration category should map to LWC, but was: ' + log.pharos__Category__c);
+            System.assert(log.pharos__Details__c == null || !log.pharos__Details__c.contains('Invalid Log Category'),
+                'Sanctioned Integration mapping must not append the invalid-category note');
+        }
+    }
+
     @IsTest
     private static void test_lwc_runtime_info() {
         TritonTestFactory.assertNoLogs();
