@@ -86,8 +86,8 @@ private class TritonFlowTest {
     }
 
     /**
-     * LOG-2921: a user-scoped rule must target flow logs — the builder stamps the
-     * running user at emission time, before isLogAllowed runs.
+     * A user-scoped rule targets flow logs: the user is defaulted at build time,
+     * before isLogAllowed runs.
      */
     @IsTest
     private static void test_flow_log_carries_running_user_at_filter_time() {
@@ -112,8 +112,7 @@ private class TritonFlowTest {
     }
 
     /**
-     * LOG-2921: the optional flowVersion input maps to pharos__Flow_Version__c,
-     * matching the plain-name + separate-version convention of native flow logs.
+     * The optional flowVersion input maps to pharos__Flow_Version__c.
      */
     @IsTest
     private static void test_flow_version_passthrough() {
@@ -143,8 +142,8 @@ private class TritonFlowTest {
     }
 
     /**
-     * LOG-2921: an unparsable flowVersion leaves the field null and appends a
-     * note to details, mirroring the invalid-level handling.
+     * An unparsable flowVersion leaves the field null and appends a note to
+     * details, mirroring the invalid-level handling.
      */
     @IsTest
     private static void test_flow_version_unparsable_noted_in_details() {

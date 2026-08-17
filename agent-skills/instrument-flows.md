@@ -132,7 +132,7 @@ Each logging point is a single `<actionCalls>` element referencing the `TritonFl
 
 Every log action must include the three required inputs (`area`, `summary`, `interviewGUID`). The sections below list the additional per-location inputs.
 
-Pass the plain API name in `flowApiName` and the version separately in `flowVersion` (omit it when unknown). Version-suffixed names like `My_Flow-4` are a legacy artifact — the log-level engine tolerates them, but new instrumentation must not emit them.
+Pass the plain API name in `flowApiName` and the version separately in `flowVersion` (omit it when unknown). Never emit version-suffixed names like `My_Flow-4` — they will not match component-scoped log levels.
 
 ### 3a — Flow entry logging
 

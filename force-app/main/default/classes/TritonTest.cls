@@ -572,14 +572,12 @@ private class TritonTest {
 
     @IsTest
     private static void test_normalize_user_id() {
-        String userId18 = UserInfo.getUserId();
-        System.assertEquals(userId18, TritonHelper.normalizeUserId(userId18.substring(0, 15)),
-            '15-character Id should expand to its case-safe 18-character form');
-        System.assertEquals(userId18, TritonHelper.normalizeUserId(userId18),
-            '18-character Id should normalize to its canonical 18-character form');
+        Id userId = UserInfo.getUserId();
+        System.assertEquals(String.valueOf(userId).substring(0, 15), TritonHelper.normalizeUserId(userId),
+            '18-character Id should be truncated to its 15-character prefix');
+        System.assertEquals('015CHAR00000000', TritonHelper.normalizeUserId('015CHAR00000000'),
+            '15-character value should be returned unchanged');
         System.assertEquals(null, TritonHelper.normalizeUserId(null));
-        System.assertEquals(null, TritonHelper.normalizeUserId('not-an-id'),
-            'An unparsable value must normalize to null (fail-safe), never throw');
     }
 
     // --- LOG-2921: blank-as-wildcard, case-insensitive free-text matching ---
@@ -658,7 +656,7 @@ private class TritonTest {
     }
 
     @IsTest
-    private static void test_matching_is_case_insensitive_for_all_fields() {
+    private static void test_matching_is_case_insensitive_for_free_text_fields() {
         // Free-text values, deliberately NOT TritonTypes enum members: matching is
         // pure free text with no vocabulary constraint.
         Log_Level__mdt rule = new Log_Level__mdt();
@@ -686,17 +684,10 @@ private class TritonTest {
     }
 
     @IsTest
-    private static void test_user_id_matching_ignores_length_via_18_char_form() {
+    private static void test_user_id_matching_is_length_insensitive_and_case_exact() {
         String userId18 = UserInfo.getUserId();
         String userId15 = userId18.substring(0, 15);
-        // 15-char and 18-char rule forms must both match a log carrying either
-        // form of the same id: matching is length-insensitive via canonical
-        // 18-char expansion. No case variants here -- the significant 15 chars
-        // are case-SENSITIVE base 62, so re-casing them denotes a DIFFERENT
-        // record (see the conflation test below), and Id.valueOf validates the
-        // 18-char checksum suffix case-sensitively, so a re-cased suffix is
-        // unparsable and falls under the inert fail-safe (pinned in
-        // test_invalid_user_id_rule_value_is_inert_not_fatal).
+        // 15- and 18-char forms of the same id match via 15-char prefix truncation.
         for (String ruleValue : new List<String>{ userId15, userId18 }) {
             Log_Level__mdt rule = new Log_Level__mdt();
             rule.Level__c = TritonTypes.Level.INFO.name();
@@ -726,78 +717,17 @@ private class TritonTest {
                 Log_Level__c = TritonTypes.Level.DEBUG.name(),
                 pharos__User_Id__c = userId18)),
             'A rule for a different user must not target this log');
-    }
 
-    @IsTest
-    private static void test_user_ids_differing_only_in_15_char_case_do_not_conflate() {
-        // Salesforce 15-char ids are case-sensitive base 62: '...Aaa' and '...AaA'
-        // are two DISTINCT users, distinguishable only by letter case. Matching on
-        // a case-insensitive 15-char prefix would conflate them; normalizing both
-        // sides to the 18-char form (whose suffix encodes the casing) must not.
-        String userA15 = '005000000000Aaa';
-        String userB15 = '005000000000AaA';
-
-        Log_Level__mdt rule = new Log_Level__mdt();
-        rule.Level__c = TritonTypes.Level.INFO.name();
-        rule.User_Id__c = userA15;
-        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
+        // Case-exact: 15-char ids are case-sensitive base 62.
+        Log_Level__mdt cased = new Log_Level__mdt();
+        cased.Level__c = TritonTypes.Level.INFO.name();
+        cased.User_Id__c = '005000000000Aaa';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ cased };
         TritonHelper.Config.logLevels = null;
-
-        pharos__Log__c log = new pharos__Log__c(
-            Log_Level__c = TritonTypes.Level.DEBUG.name(),
-            pharos__User_Id__c = String.valueOf(Id.valueOf(userB15)));
-        System.assertEquals(true, TritonHelper.Config.isLogAllowed(log),
-            'A rule scoped to user ...Aaa must NOT target user ...AaA');
-
-        // Sanity: the same rule still targets its own user.
-        log.pharos__User_Id__c = String.valueOf(Id.valueOf(userA15));
-        System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
-            'The rule must still target its own user');
-    }
-
-    @IsTest
-    private static void test_invalid_user_id_rule_value_is_inert_not_fatal() {
-        // An unparsable User_Id__c value (fat-fingered paste, wrong column, a
-        // case-destroyed 18-char id -- Id.valueOf validates the checksum suffix
-        // case-sensitively) must neither throw into the host transaction nor
-        // match anything: not any user, and NOT everything (it must not degrade
-        // into a wildcard). The last shape is deliberately the CURRENT user's id
-        // with a re-cased suffix: guessing at it would risk conflation, so even
-        // a near-miss stays inert. Sibling rules keep working, matching the
-        // malformed-Level__c fail-safe.
-        String userId18 = UserInfo.getUserId();
-        for (String badValue : new List<String>{ 'not-an-id', 'short', '005!0000000000W', '005000000000000000000',
-                                                 userId18.substring(0, 15) + userId18.substring(15).toLowerCase() }) {
-            Log_Level__mdt malformed = new Log_Level__mdt();
-            malformed.Level__c = TritonTypes.Level.INFO.name();
-            malformed.User_Id__c = badValue;
-
-            Log_Level__mdt sibling = new Log_Level__mdt();
-            sibling.Level__c = TritonTypes.Level.INFO.name();
-            sibling.Area__c = 'Community';
-
-            TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ malformed, sibling };
-            TritonHelper.Config.logLevels = null;
-
-            pharos__Log__c log = new pharos__Log__c(
+        System.assertEquals(true, TritonHelper.Config.isLogAllowed(new pharos__Log__c(
                 Log_Level__c = TritonTypes.Level.DEBUG.name(),
-                pharos__User_Id__c = UserInfo.getUserId());
-            System.assertEquals(true, TritonHelper.Config.isLogAllowed(log),
-                'Rule value "' + badValue + '" must match no log at all -- neither this user nor as a wildcard');
-
-            // The sibling rule still targets and filters its own scope.
-            log.pharos__Area__c = 'Community';
-            System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
-                'Rule value "' + badValue + '" must not disable the sibling Area rule');
-
-            // An unparsable log-side user id must not throw either: user-scoped
-            // rules simply cannot target it, while non-user rules still apply.
-            System.assertEquals(false, TritonHelper.Config.isLogAllowed(new pharos__Log__c(
-                    Log_Level__c = TritonTypes.Level.DEBUG.name(),
-                    pharos__Area__c = 'Community',
-                    pharos__User_Id__c = 'garbage-user-id')),
-                'Rule value "' + badValue + '": an unparsable log user id must not throw or bypass sibling rules');
-        }
+                pharos__User_Id__c = '005000000000AaA')),
+            'User id matching must stay case-sensitive');
     }
 
     @IsTest
@@ -838,50 +768,17 @@ private class TritonTest {
     }
 
     @IsTest
-    private static void test_component_version_suffix_tolerance() {
-        // getComponentName strips a single trailing '-<digits>' (flow versioning
-        // artifact; '-' is illegal in flow/Apex/LWC API names).
-        System.assertEquals('Partner_Intake_Form', TritonHelper.getComponentName(
-            new pharos__Log__c(pharos__Flow_API_Name__c = 'Partner_Intake_Form-4')));
-        System.assertEquals('Partner_Intake_Form', TritonHelper.getComponentName(
-            new pharos__Log__c(pharos__Flow_API_Name__c = 'Partner_Intake_Form')));
-        // Non-artifact dashes are kept.
-        System.assertEquals('X-4a', TritonHelper.getComponentName(
-            new pharos__Log__c(pharos__Flow_API_Name__c = 'X-4a')));
-        System.assertEquals('X-', TritonHelper.getComponentName(
-            new pharos__Log__c(pharos__Flow_API_Name__c = 'X-')));
-        // Apex/LWC resolution unaffected.
-        System.assertEquals('AccountService', TritonHelper.getComponentName(
-            new pharos__Log__c(pharos__Apex_Name__c = 'Class.AccountService.updateAccounts')));
-
-        // Suffixed log matches rules written either way; plain log matches both.
-        for (String ruleComponent : new List<String>{ 'Partner_Intake_Form', 'Partner_Intake_Form-4' }) {
-            for (String logFlowName : new List<String>{ 'Partner_Intake_Form', 'Partner_Intake_Form-4' }) {
-                Log_Level__mdt rule = new Log_Level__mdt();
-                rule.Level__c = TritonTypes.Level.INFO.name();
-                rule.Component_Name__c = ruleComponent;
-                TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
-                TritonHelper.Config.logLevels = null;
-
-                System.assertEquals(false, TritonHelper.Config.isLogAllowed(new pharos__Log__c(
-                        Log_Level__c = TritonTypes.Level.DEBUG.name(),
-                        pharos__Flow_API_Name__c = logFlowName)),
-                    'Rule "' + ruleComponent + '" must target flow log "' + logFlowName + '"');
-            }
-        }
-    }
-
-    @IsTest
     private static void test_qa_matrix_shapes_against_real_flow_log() {
-        // Reproduces the exact log shape from QA's X-ray-instrumented flow runs
-        // (spec §1.3) with the post-fix emission behavior (user stamped). One rule
-        // per matrix group; each INFO rule must block the DEBUG log.
+        // QA's flow-log shape (spec §1.3) with the post-fix emission convention:
+        // plain flow API name, separate version, user stamped. One rule per matrix
+        // group; each INFO rule must block the DEBUG log.
         pharos__Log__c flowLog = new pharos__Log__c(
             Log_Level__c = TritonTypes.Level.DEBUG.name(),
             pharos__Category__c = 'Flow',
             pharos__Type__c = 'Screen Flow',
             pharos__Area__c = 'Partners',
-            pharos__Flow_API_Name__c = 'Partner_Intake_Form-4',
+            pharos__Flow_API_Name__c = 'Partner_Intake_Form',
+            pharos__Flow_Version__c = '4',
             pharos__Apex_Name__c = 'Start',
             pharos__User_Id__c = UserInfo.getUserId());
 

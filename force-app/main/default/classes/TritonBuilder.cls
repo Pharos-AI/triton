@@ -138,14 +138,6 @@ public with sharing class TritonBuilder {
     public TritonBuilder() {
         this.builder = pharos.LogBuilder.getInstance();
         initBuilder();
-        // Emission-time user stamping (LOG-2921): the log must carry its user when
-        // isLogAllowed runs, not only after pharos.Logger.flushInternal fills the
-        // field at flush time (fill-when-null, so this value survives untouched).
-        // An explicit .userId(...) call overrides by re-setting the attribute.
-        // Deliberately NOT in initBuilder(): cloneBuilder() re-runs initBuilder()
-        // after copying the source's fields, and a stamp there would clobber an
-        // explicitly-set user id.
-        this.builder.attribute(USER_ID, UserInfo.getUserId());
     }
 
     private void initBuilder() {
@@ -520,11 +512,9 @@ public with sharing class TritonBuilder {
     }
 
     /**
-    * Set flow version for the log. Native flow error logs store the plain flow
-    * API name with the version in this separate field; instrumented flow logs
-    * follow the same convention (LOG-2921). The managed field is Text, so the
-    * numeric version is stored in its canonical string form -- the same shape
-    * the managed package's own flow error parsing writes.
+    * Set flow version for the log, following the native flow error log convention
+    * (plain API name + separate version). The managed field is Text, so the
+    * numeric version is stored in its canonical string form.
     * @param version -- flow version number
     * @return this builder instance
     */
@@ -835,6 +825,12 @@ public with sharing class TritonBuilder {
             log.pharos__Category__c = categoryValue;
         } else if(String.isBlank(log.pharos__Category__c)) {
             log.pharos__Category__c = TritonTypes.Category.Apex.name();
+        }
+
+        // Default to the running user when not explicitly set, so user-scoped
+        // log level rules can match at filter time (before the flush-time fill)
+        if(String.isBlank(log.pharos__User_Id__c)) {
+            log.pharos__User_Id__c = UserInfo.getUserId();
         }
 
         // Auto-carryover: if summary was truncated, append full text to details
