@@ -10,3 +10,10 @@ force-app/main/.DS_Store
 force-app/main/default/.DS_Store
 force-app/.DS_Store
 .DS_Store
+
+# Claude Code shared-rule symlinks and agent settings — local-disk only.
+# .claude/commands/ (the /pharos:* instrumentation skills) stays tracked.
+.claude/rules/*.md
+.claude/agents/
+.claude/ship-org.sh
+.claude/settings.json
