@@ -689,7 +689,16 @@ public with sharing class TritonHelper {
                     logLevels = new List<LogLevelRule>();
                     componentScopedLevelsExist = false;
                     for (Log_Level__mdt ll : logLevelsMdt) {
-                        LogLevelRule rule = new LogLevelRule(ll);
+                        LogLevelRule rule;
+                        try {
+                            rule = new LogLevelRule(ll);
+                        } catch (Exception e) {
+                            // Fail-safe (matching isLoggingDisabled): a malformed row
+                            // (blank or unknown Level__c) becomes inert instead of
+                            // throwing into the host transaction and disabling all
+                            // filtering.
+                            continue;
+                        }
                         logLevels.add(rule);
                         componentScopedLevelsExist = componentScopedLevelsExist || rule.component != null;
                     }
@@ -808,9 +817,16 @@ public with sharing class TritonHelper {
         public Boolean isLogAllowed(pharos__Log__c log) {
             if (String.isBlank(log.Log_Level__c) || logLevels.isEmpty()) return true;
 
+            TritonTypes.Level currentLevel;
+            try {
+                currentLevel = TritonTypes.Level.valueOf(log.Log_Level__c);
+            } catch (Exception e) {
+                // Fail open: an unparsable log level must never drop the log.
+                return true;
+            }
+
             String logUserId = normalizeUserId(log.pharos__User_Id__c);
             String logComponent = getComponentName(log);
-            TritonTypes.Level currentLevel = TritonTypes.Level.valueOf(log.Log_Level__c);
 
             TritonTypes.Level effectiveLevel = null;
             Integer bestSpecificity = -1;
@@ -846,12 +862,16 @@ public with sharing class TritonHelper {
     * resolves to the class name rather than the literal 'Class'. LWC names
     * ('myComponent.Proxy.method') and explicitly supplied operations have no
     * prefix and are unaffected.
+    *
+    * Flow names may carry a legacy '-<version>' suffix (previously baked into
+    * flowApiName by X-ray instrumentation); that suffix is stripped for matching
+    * -- see stripVersionSuffix.
     * @param log -- Pharos log record being evaluated
     * @return the component name, or null/blank when it cannot be determined
     */
     @TestVisible
     private static String getComponentName(pharos__Log__c log) {
-        if (String.isNotBlank(log.pharos__Flow_API_Name__c)) return log.pharos__Flow_API_Name__c;
+        if (String.isNotBlank(log.pharos__Flow_API_Name__c)) return stripVersionSuffix(log.pharos__Flow_API_Name__c);
 
         String apexName = log.pharos__Apex_Name__c;
         if (String.isBlank(apexName)) return apexName;
@@ -861,19 +881,68 @@ public with sharing class TritonHelper {
         }
 
         Integer dotIndex = apexName.indexOf('.');
-        return dotIndex == -1 ? apexName : apexName.substring(0, dotIndex);
+        return stripVersionSuffix(dotIndex == -1 ? apexName : apexName.substring(0, dotIndex));
     }
 
     /**
-    * Salesforce Ids are 18 characters in Apex, but Log Level metadata stores the
-    * 15-character form. Matching is performed on the case-sensitive 15-character
-    * prefix so both representations line up.
+    * Normalizes a user Id to its case-safe 18-character form. Log Level metadata
+    * typically stores the 15-character form (case-SENSITIVE base 62) while log
+    * records carry the 18-character form; Id.valueOf expands the former to the
+    * latter, whose checksum suffix encodes the letter casing. Comparing the
+    * 18-character forms therefore lines both representations up without ever
+    * conflating two distinct users whose 15-character ids differ only in case.
+    * Fail-safe: an unparsable value normalizes to null rather than throwing.
+    * Id.valueOf accepts only well-formed ids (18-char values must carry their
+    * canonical checksum suffix), so a case-destroyed 18-char id is unparsable
+    * by design -- guessing at its casing would risk exactly the conflation
+    * this normalization exists to prevent.
+    * Callers that must distinguish blank (wildcard) from unparsable -- the rule
+    * parser -- compare against the raw value (see LogLevelRule).
     * @param userId -- a 15 or 18 character user Id (or null)
-    * @return the 15-character prefix, or the original value when shorter/blank
+    * @return the canonical 18-character Id string, or null when blank/unparsable
     */
     @TestVisible
     private static String normalizeUserId(String userId) {
-        return String.isNotBlank(userId) && userId.length() > 15 ? userId.substring(0, 15) : userId;
+        if (String.isBlank(userId)) return null;
+        try {
+            return String.valueOf(Id.valueOf(userId.trim()));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+    * Normalizes a Log_Level__mdt scope field to the documented blank-as-wildcard
+    * contract. Rows can arrive with null OR empty/whitespace values depending on
+    * how they were created (the console writes null; other tooling may write ''),
+    * and a non-null blank would otherwise count as a real value -- inflating
+    * specificity, breaking targeting, and falsely marking rules component-scoped.
+    * @param value -- raw rule field value
+    * @return null when blank, otherwise the trimmed value
+    */
+    @TestVisible
+    private static String normalizeRuleValue(String value) {
+        return String.isBlank(value) ? null : value.trim();
+    }
+
+    /**
+    * Strips a single trailing '-<digits>' from a component name. The dash is
+    * illegal in flow API names, Apex class names, and LWC component names, so a
+    * trailing '-N' can only be a flow-versioning artifact (the convention X-ray
+    * instrumentation used to bake into flowApiName). Applied to both sides of
+    * component matching so rules written with either form keep matching logs
+    * emitted with either form.
+    * @param name -- component name from a log or rule (post-normalization)
+    * @return the name without its version suffix, or unchanged when no suffix
+    */
+    @TestVisible
+    private static String stripVersionSuffix(String name) {
+        if (String.isBlank(name)) return name;
+        Integer dash = name.lastIndexOf('-');
+        if (dash <= 0) return name;
+        String suffix = name.substring(dash + 1);
+        // ''.isNumeric() is false, so a trailing bare '-' is kept.
+        return suffix.isNumeric() ? name.substring(0, dash) : name;
     }
 
     /**
@@ -903,6 +972,14 @@ public with sharing class TritonHelper {
         private final TritonTypes.Level level;
 
         /**
+        * True when User_Id__c held a non-blank value that is not a parsable Id.
+        * normalizeUserId turns such a value into null, which alone would read as
+        * "unspecified" and silently widen the rule to every user; this flag keeps
+        * the rule inert instead (fail-safe, matching malformed Level__c handling).
+        */
+        private final Boolean userIdUnmatchable;
+
+        /**
         * How narrowly this rule is scoped. Higher wins when several rules target
         * the same log. Computed once at parse time to keep the check allocation
         * free on the hot path.
@@ -910,11 +987,13 @@ public with sharing class TritonHelper {
         private final Integer specificity;
 
         private LogLevelRule(Log_Level__mdt mdt) {
-            this.category = mdt.Category__c;
-            this.type = mdt.Type__c;
-            this.area = mdt.Area__c;
-            this.userId = normalizeUserId(mdt.User_Id__c);
-            this.component = mdt.Component_Name__c;
+            this.category = normalizeRuleValue(mdt.Category__c);
+            this.type = normalizeRuleValue(mdt.Type__c);
+            this.area = normalizeRuleValue(mdt.Area__c);
+            String rawUserId = normalizeRuleValue(mdt.User_Id__c);
+            this.userId = normalizeUserId(rawUserId);
+            this.userIdUnmatchable = rawUserId != null && this.userId == null;
+            this.component = stripVersionSuffix(normalizeRuleValue(mdt.Component_Name__c));
             this.level = TritonTypes.Level.valueOf(mdt.Level__c);
             this.specificity =
                 (this.userId != null ? LEVEL_WEIGHT_USER_ID : 0) +
@@ -929,17 +1008,24 @@ public with sharing class TritonHelper {
         * Null (unspecified) rule attributes are treated as wildcards.
         */
         private Boolean targets(pharos__Log__c log, String logUserId, String logComponent) {
-            return matches(category, log.pharos__Category__c)
+            return !userIdUnmatchable
+                && matches(category, log.pharos__Category__c)
                 && matches(type, log.pharos__Type__c)
                 && matches(area, log.pharos__Area__c)
                 && matches(userId, logUserId)
                 && matches(component, logComponent);
         }
 
-        // String.equals is case-sensitive and null-safe, preserving the
-        // case-sensitivity required for 15-character Salesforce Ids.
+        // Case-insensitive, null-safe free-text comparison. Rule values are
+        // authored by admins in the console with no vocabulary constraint, so
+        // matching must be forgiving on case. User Ids are compared on their
+        // canonical 18-character forms (see normalizeUserId), where the
+        // checksum suffix encodes the letter casing of the significant 15
+        // chars -- so for user ids the case-insensitive compare degenerates
+        // to exact equality and cannot conflate two distinct users whose
+        // 15-char ids differ only in case.
         private Boolean matches(String ruleValue, String logValue) {
-            return ruleValue == null || ruleValue.equals(logValue);
+            return ruleValue == null || ruleValue.equalsIgnoreCase(logValue);
         }
     }
 }

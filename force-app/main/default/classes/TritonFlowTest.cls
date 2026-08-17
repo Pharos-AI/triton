@@ -86,6 +86,88 @@ private class TritonFlowTest {
     }
 
     /**
+     * LOG-2921: a user-scoped rule must target flow logs — the builder stamps the
+     * running user at emission time, before isLogAllowed runs.
+     */
+    @IsTest
+    private static void test_flow_log_carries_running_user_at_filter_time() {
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
+
+        Log_Level__mdt userLevel = new Log_Level__mdt();
+        userLevel.Level__c = TritonTypes.Level.DEBUG.name();
+        userLevel.User_Id__c = UserInfo.getUserId();
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ userLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        TritonFlow.FlowLog blocked = TritonTestFactory.makeFlowLog('user-scoped blocked');
+        blocked.level = 'FINE';
+        TritonFlow.log(new List<TritonFlow.FlowLog>{ blocked });
+        TritonTestFactory.flushCachedFlowLogs();
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Summary__c = 'user-scoped blocked'],
+            'The user-scoped DEBUG ceiling must suppress a FINE flow log');
+    }
+
+    /**
+     * LOG-2921: the optional flowVersion input maps to pharos__Flow_Version__c,
+     * matching the plain-name + separate-version convention of native flow logs.
+     */
+    @IsTest
+    private static void test_flow_version_passthrough() {
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
+
+        TritonFlow.FlowLog withVersion = TritonTestFactory.makeFlowLog('with version');
+        withVersion.flowApiName = 'My_Flow';
+        withVersion.flowVersion = '4';
+
+        TritonFlow.FlowLog withoutVersion = TritonTestFactory.makeFlowLog('without version');
+        withoutVersion.flowApiName = 'My_Flow';
+
+        Test.startTest();
+        TritonFlow.log(new List<TritonFlow.FlowLog>{ withVersion, withoutVersion });
+        TritonTestFactory.flushCachedFlowLogs();
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [SELECT pharos__Summary__c, pharos__Flow_Version__c
+            FROM pharos__Log__c WHERE pharos__Summary__c IN ('with version', 'without version')
+            ORDER BY pharos__Summary__c];
+        System.assertEquals(2, logs.size(), 'Both logs must persist');
+        System.assertEquals('4', logs.get(0).pharos__Flow_Version__c,
+            'flowVersion input must map to pharos__Flow_Version__c (Text field, canonical numeric string)');
+        System.assertEquals(null, logs.get(1).pharos__Flow_Version__c,
+            'Omitted flowVersion must leave the field null');
+    }
+
+    /**
+     * LOG-2921: an unparsable flowVersion leaves the field null and appends a
+     * note to details, mirroring the invalid-level handling.
+     */
+    @IsTest
+    private static void test_flow_version_unparsable_noted_in_details() {
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
+
+        TritonFlow.FlowLog bad = TritonTestFactory.makeFlowLog('bad version');
+        bad.flowVersion = 'four';
+
+        Test.startTest();
+        TritonFlow.log(new List<TritonFlow.FlowLog>{ bad });
+        TritonTestFactory.flushCachedFlowLogs();
+        Test.stopTest();
+
+        pharos__Log__c log = [SELECT pharos__Flow_Version__c, pharos__Details__c
+            FROM pharos__Log__c WHERE pharos__Summary__c = 'bad version'];
+        System.assertEquals(null, log.pharos__Flow_Version__c,
+            'An unparsable flowVersion must leave the field null');
+        System.assert(log.pharos__Details__c.contains('four'),
+            'The unparsable value must be noted in details (mirrors invalid-level handling). Got: ' + log.pharos__Details__c);
+    }
+
+    /**
      * Stacktrace is passed through to the output and persisted.
      */
     @IsTest

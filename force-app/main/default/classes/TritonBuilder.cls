@@ -28,6 +28,7 @@ public with sharing class TritonBuilder {
     public static final String STACKTRACE_PARSE_RESULT = 'pharos__Stacktrace_Parse_Result__c';
     public static final String USER_ID = 'pharos__User_Id__c';
     public static final String FLOW_API_NAME = 'pharos__Flow_API_Name__c';
+    public static final String FLOW_VERSION = 'pharos__Flow_Version__c';
     public static final String DO_NOT_CREATE_ISSUE = 'pharos__Do_Not_Create_Issue__c';
     public static final String REQUEST_ID = 'pharos__Request_Id_External__c';
     public static final String SPAN_ID = 'Span_Id__c';
@@ -137,6 +138,14 @@ public with sharing class TritonBuilder {
     public TritonBuilder() {
         this.builder = pharos.LogBuilder.getInstance();
         initBuilder();
+        // Emission-time user stamping (LOG-2921): the log must carry its user when
+        // isLogAllowed runs, not only after pharos.Logger.flushInternal fills the
+        // field at flush time (fill-when-null, so this value survives untouched).
+        // An explicit .userId(...) call overrides by re-setting the attribute.
+        // Deliberately NOT in initBuilder(): cloneBuilder() re-runs initBuilder()
+        // after copying the source's fields, and a stamp there would clobber an
+        // explicitly-set user id.
+        this.builder.attribute(USER_ID, UserInfo.getUserId());
     }
 
     private void initBuilder() {
@@ -507,6 +516,20 @@ public with sharing class TritonBuilder {
     */
     public TritonBuilder flowApiName(String apiName) {
         this.builder.attribute(FLOW_API_NAME, apiName);
+        return this;
+    }
+
+    /**
+    * Set flow version for the log. Native flow error logs store the plain flow
+    * API name with the version in this separate field; instrumented flow logs
+    * follow the same convention (LOG-2921). The managed field is Text, so the
+    * numeric version is stored in its canonical string form -- the same shape
+    * the managed package's own flow error parsing writes.
+    * @param version -- flow version number
+    * @return this builder instance
+    */
+    public TritonBuilder flowVersion(Decimal version) {
+        this.builder.attribute(FLOW_VERSION, version == null ? null : String.valueOf(version));
         return this;
     }
 
