@@ -37,7 +37,7 @@ If the output contains `"status": "error"` or no default org is set → stop and
 From the skill arguments:
 - **File path** — the `.cls` or `.trigger` file to instrument (required). If not provided, ask: "Which Apex class or trigger file do you want to instrument? (provide the path)"
 - **`--area`** — the business/functional area for these logs. **Infer this from the code and keep it consistent with related code** (Step 2) — it is the primary key for grouping and searching in Pharos. `.area()` takes the `TritonTypes.Area` enum or a **String**; enum values like `OpportunityManagement`/`Accounts` are illustrative examples, not a required mapping. If `--area` is given, use it verbatim.
-- **`--type`** — technical classification. Default: `Backend`. `.type()` takes the `TritonTypes.Type` enum or a **String**; values like `Backend`, `BackendCall`, `DMLResult` are examples — infer what fits the code rather than forcing a mapping. (For callouts, classify as `Category.Integration` + a call type such as `BackendCall`.)
+- **`--type`** — technical classification. Default: `Backend`. `.type()` takes the `TritonTypes.Type` enum or a **String**; values like `Backend`, `BackendCall`, `DMLResult` are examples — infer what fits the code rather than forcing a mapping. (For callouts, keep the default `Apex` category, classify with a call type such as `BackendCall`, and always attach `.integrationPayload(req, res)`.)
 - **`--deploy`** — flag; if present, deploy after instrumentation. Otherwise ask at the end.
 
 ## Step 2 — Read and analyze the target file (structure first)
@@ -201,7 +201,7 @@ Triton.log(
 
 ### 3e — Callout / integration logging
 
-Attach the HTTP payload with `integrationPayload(req, res)` and classify as `Category.Integration` + `Type.BackendCall`:
+Attach the HTTP payload with `integrationPayload(req, res)`, keep the default `Apex` category, and classify as `Type.BackendCall`:
 
 ```apex
 HttpResponse res;
@@ -210,7 +210,6 @@ try {
     if (res.getStatusCode() < 200 || res.getStatusCode() >= 300) {
         Triton.logNow(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Integration)
                 .type(TritonTypes.Type.BackendCall)
                 .area(TritonTypes.Area.<area>)
                 .summary('Callout failed: ' + res.getStatus())
@@ -222,7 +221,6 @@ try {
 } catch (Exception e) {
     Triton.logNow(
         Triton.makeBuilder()
-            .category(TritonTypes.Category.Integration)
             .area(TritonTypes.Area.<area>)
             .exception(e)
             .integrationPayload(req, res)
@@ -363,5 +361,5 @@ Parse the JSON output:
 - Never add logging inside test methods or `@isTest` classes.
 - Never flush inside for/while loops.
 - Do not manually add stack trace, operation, or limit info — `Triton.log()` adds them automatically.
-- **Area gets special attention**: infer it from the code and reuse the Area already used by related code so a feature's logs group together. Area/Type enum values are examples, not a required mapping — use `.area(String)`/`.type(String)` when they fit better. Category should stay standard (`Apex`, or `Integration` for callouts).
+- **Area gets special attention**: infer it from the code and reuse the Area already used by related code so a feature's logs group together. Area/Type enum values are examples, not a required mapping — use `.area(String)`/`.type(String)` when they fit better. Category should stay standard (`Apex` — including callouts, which are distinguished by `integrationPayload` + a call type, not by category).
 - Never log PII (SSN, password, card numbers) — if detected, add `// TODO: sanitize before logging` and use a placeholder summary.
