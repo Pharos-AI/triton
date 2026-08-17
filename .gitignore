@@ -15,4 +15,5 @@ force-app/.DS_Store
 # .claude/commands/ (the /pharos:* instrumentation skills) stays tracked.
 .claude/rules/*.md
 .claude/agents/
+.claude/ship-org.sh
 .claude/settings.json
