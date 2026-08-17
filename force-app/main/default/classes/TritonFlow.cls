@@ -84,11 +84,14 @@ global with sharing class TritonFlow {
         }
         
         TritonTypes.Category category = TritonTypes.Category.Flow;
-        try {
-            category = TritonTypes.Category.valueOf(flowLog.category);
-        } catch (Exception e) {
-            if(String.isNotBlank(flowLog.category)) {
-                flowDetails += Triton.SPACE_SEP + TritonHelper.formatMessage(INVALID_CATEGORY, flowLog.category);
+        // LOG-2927: deprecated 'Integration' category is accepted and maps to the context default (Flow)
+        if (!'Integration'.equalsIgnoreCase(flowLog.category)) {
+            try {
+                category = TritonTypes.Category.valueOf(flowLog.category);
+            } catch (Exception e) {
+                if(String.isNotBlank(flowLog.category)) {
+                    flowDetails += Triton.SPACE_SEP + TritonHelper.formatMessage(INVALID_CATEGORY, flowLog.category);
+                }
             }
         }
         
