@@ -11,12 +11,14 @@
 @IsTest
 private class TritonTest {
 
-    private static void assertCreatedIntegrationLog() {
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Hash__c, pharos__Summary__c FROM pharos__Log__c ORDER BY CreatedDate];
+    private static void assertCreatedIntegrationPayloadLogs() {
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Hash__c, pharos__Summary__c, pharos__Stacktrace_Parse_Result__c FROM pharos__Log__c ORDER BY CreatedDate];
         System.assertEquals(2, logs.size(), 'Expected exactly 2 logs, found: ' + logs.size());
         for(Integer i = 0; i < logs.size(); i++) {
-            System.assertEquals(TritonTypes.Category.Integration.name(), logs.get(i).pharos__Category__c,
-                'Log ' + i + ' (' + logs.get(i).pharos__Summary__c + ') should be Integration category, but was: ' + logs.get(i).pharos__Category__c);
+            System.assertEquals(TritonTypes.Category.Apex.name(), logs.get(i).pharos__Category__c,
+                'Log ' + i + ' (' + logs.get(i).pharos__Summary__c + ') should be Apex category, but was: ' + logs.get(i).pharos__Category__c);
+            System.assertNotEquals(null, logs.get(i).pharos__Stacktrace_Parse_Result__c,
+                'Log ' + i + ' should carry the integration payload');
         }
         System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
         System.assertNotEquals(null, logs.get(1).pharos__Hash__c);
@@ -657,7 +659,7 @@ private class TritonTest {
         testHttpRequest();
         Test.stopTest();
 
-        assertCreatedIntegrationLog();
+        assertCreatedIntegrationPayloadLogs();
     }
 
     @IsTest
@@ -671,12 +673,14 @@ private class TritonTest {
         req.httpMethod = 'GET';
         RestContext.request = req;
         RestContext.response = res;
-        Triton.logNow(Triton.makeBuilder().category(TritonTypes.Category.Integration).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('test summary').details('test details').integrationPayload(req, res).error());
+        Triton.logNow(Triton.makeBuilder().type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('test summary').details('test details').integrationPayload(req, res).error());
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c, pharos__Category__c, pharos__Stacktrace_Parse_Result__c FROM pharos__Log__c];
         System.assertEquals(1, logs.size());
         System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
+        System.assertEquals(TritonTypes.Category.Apex.name(), logs.get(0).pharos__Category__c, 'Integration payload log should default to Apex category');
+        System.assertNotEquals(null, logs.get(0).pharos__Stacktrace_Parse_Result__c, 'Integration payload should be preserved');
         System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
     }
 
@@ -1168,10 +1172,10 @@ private class TritonTest {
         try {
             res = h.send(req);
             if (res.getStatusCode() != 200 || res.getStatusCode() != 201) {
-                Triton.logNow(Triton.makeBuilder().category(TritonTypes.Category.Integration).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('test integration').details('test error details').integrationPayload(req, res).error());
+                Triton.logNow(Triton.makeBuilder().type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('test integration').details('test error details').integrationPayload(req, res).error());
             }
         } catch (Exception e) {
-            Triton.logNow(Triton.makeBuilder().category(TritonTypes.Category.Integration).area(TritonTypes.Area.Community).exception(e).integrationPayload(req, res));
+            Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Community).exception(e).integrationPayload(req, res));
         }
     }
 
@@ -1857,7 +1861,6 @@ private class TritonTest {
         } catch(Exception e) {
             Triton.logNow(
                 Triton.makeBuilder()
-                    .category(TritonTypes.Category.Integration)
                     .area(TritonTypes.Area.Community)
                     .exception(e)
                     .integrationPayload(restReq, restRes)
@@ -1875,7 +1878,6 @@ private class TritonTest {
 
         Triton.logNow(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Integration)
                 .type(TritonTypes.Type.Backend)
                 .area(TritonTypes.Area.Community)
                 .summary('HTTP Error')
@@ -1887,23 +1889,32 @@ private class TritonTest {
         Test.stopTest();
         
         List<pharos__Log__c> logs = [
-            SELECT Id, 
+            SELECT Id,
                    pharos__Category__c,
                    pharos__Type__c,
+                   pharos__Summary__c,
                    pharos__Stacktrace_Parse_Result__c
-            FROM pharos__Log__c 
+            FROM pharos__Log__c
             ORDER BY CreatedDate
         ];
-        
+
         System.assertEquals(3, logs.size(), 'Should have created event and integration error logs');
-        
-        // Verify integration logs have parsed request/response data
+
+        // Verify integration-payload logs default to Apex category and carry parsed request/response data
+        Integer payloadLogs = 0;
         for(pharos__Log__c log : logs) {
-            if(log.pharos__Category__c == TritonTypes.Category.Integration.name()) {
-                System.assertNotEquals(null, log.pharos__Stacktrace_Parse_Result__c, 
-                    'Integration log should have parsed request/response data');
+            if(log.pharos__Summary__c == 'Test Event') {
+                System.assertEquals(TritonTypes.Category.Event.name(), log.pharos__Category__c,
+                    'Event log should keep its explicit Event category');
+                continue;
             }
+            payloadLogs++;
+            System.assertEquals(TritonTypes.Category.Apex.name(), log.pharos__Category__c,
+                'Integration payload log should default to Apex category');
+            System.assertNotEquals(null, log.pharos__Stacktrace_Parse_Result__c,
+                'Integration payload log should carry parsed request/response data');
         }
+        System.assertEquals(2, payloadLogs, 'Both integration error logs should carry parsed request/response data');
     }
 
     @IsTest
@@ -2418,11 +2429,11 @@ private class TritonTest {
     @IsTest
     static void test_default_category_not_overridden() {
         pharos__Log__c log = Triton.makeBuilder()
-            .category(TritonTypes.Category.Integration)
+            .category(TritonTypes.Category.Event)
             .summary('test')
             .error()
             .build();
-        System.assertEquals(TritonTypes.Category.Integration.name(), log.pharos__Category__c, 'Explicit category should not be overridden');
+        System.assertEquals(TritonTypes.Category.Event.name(), log.pharos__Category__c, 'Explicit category should not be overridden');
     }
 
     @IsTest
@@ -2436,7 +2447,7 @@ private class TritonTest {
     @IsTest
     static void test_builder_clone() {
         TritonBuilder original = Triton.makeBuilder()
-            .category(TritonTypes.Category.Integration)
+            .category(TritonTypes.Category.Event)
             .type(TritonTypes.Type.Backend)
             .area(TritonTypes.Area.Community)
             .level(TritonTypes.Level.WARNING)
@@ -2446,7 +2457,7 @@ private class TritonTest {
         TritonBuilder cloned = original.cloneBuilder();
         pharos__Log__c clonedLog = cloned.build();
 
-        System.assertEquals(TritonTypes.Category.Integration.name(), clonedLog.pharos__Category__c,
+        System.assertEquals(TritonTypes.Category.Event.name(), clonedLog.pharos__Category__c,
             'Cloned builder should preserve category');
         System.assertEquals(TritonTypes.Type.Backend.name(), clonedLog.pharos__Type__c,
             'Cloned builder should preserve type');
