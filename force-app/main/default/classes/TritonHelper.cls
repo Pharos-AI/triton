@@ -805,8 +805,28 @@ public with sharing class TritonHelper {
         * through by default.
         * @param log -- Pharos log record to be saved
         */
+        /**
+         * Memoized isLogAllowed verdicts. Rule matching is deterministic for a
+         * given (level, category, type, area, user, apex/flow name) tuple, and
+         * high-volume callers ask the same question hundreds of times per
+         * transaction. Disabled in tests, which reconfigure logLevels mid-run.
+         */
+        private Map<String, Boolean> logAllowedVerdicts = new Map<String, Boolean>();
+        private final Integer VERDICT_CACHE_MAX = 1000;
+
         public Boolean isLogAllowed(pharos__Log__c log) {
             if (String.isBlank(log.Log_Level__c) || logLevels.isEmpty()) return true;
+
+            Boolean cacheable = !Test.isRunningTest();
+            String verdictKey = null;
+            if (cacheable) {
+                verdictKey = log.Log_Level__c + '|' + log.pharos__Category__c + '|' +
+                    log.pharos__Type__c + '|' + log.pharos__Area__c + '|' +
+                    log.pharos__User_Id__c + '|' + log.pharos__Apex_Name__c + '|' +
+                    log.pharos__Flow_API_Name__c;
+                Boolean cached = logAllowedVerdicts.get(verdictKey);
+                if (cached != null) return cached;
+            }
 
             String logUserId = normalizeUserId(log.pharos__User_Id__c);
             String logComponent = getComponentName(log);
@@ -829,9 +849,13 @@ public with sharing class TritonHelper {
             }
 
             // No configured level targets this log -- allow it through by default.
-            if (effectiveLevel == null) return true;
-
-            return compareLevel(effectiveLevel, currentLevel);
+            Boolean verdict = effectiveLevel == null
+                ? true
+                : compareLevel(effectiveLevel, currentLevel);
+            if (cacheable && logAllowedVerdicts.size() < VERDICT_CACHE_MAX) {
+                logAllowedVerdicts.put(verdictKey, verdict);
+            }
+            return verdict;
         }
     }
 

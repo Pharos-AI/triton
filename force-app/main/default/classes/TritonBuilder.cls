@@ -115,7 +115,7 @@ public with sharing class TritonBuilder {
     private String currentParentSpanId;
 
     public TritonBuilder cloneBuilder() {
-        pharos__Log__c clonedLog = this.builder.build().clone(false, true, false, false);
+        pharos__Log__c clonedLog = this.builder.build().clone(false, false, false, false);
         TritonBuilder cloned = new TritonBuilder();
         
         // Only iterate POPULATED fields (10-20, not all 50-100)
@@ -805,7 +805,13 @@ public with sharing class TritonBuilder {
     */
     public pharos__Log__c build() {
         ensureSpanIds();
-        pharos__Log__c log = this.builder.build();
+        // Defensive clone: the underlying managed builder returns the same
+        // sObject instance on every build(). Without a clone, reusing a
+        // TritonBuilder across multiple log() calls makes every buffered
+        // record alias the latest build — later spans silently overwrite
+        // earlier ones. A native clone is ~negligible next to builder
+        // construction and makes builder reuse safe by design.
+        pharos__Log__c log = this.builder.build().clone(false, false, false, false);
 
         // Default category to Apex when not explicitly set
         if(String.isNotBlank(categoryValue)) {
