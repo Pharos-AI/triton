@@ -310,6 +310,95 @@ global with sharing class Triton {
         flushTop();
     }
 
+    /* ---------------------------------------------------------------------
+     * Performance marks — Apex mirror of the LWC library's startMark/endMark.
+     * startMark pushes a span onto the context stack; endMark pops it and
+     * logs the timing. Nested marks parent to the enclosing mark, so a
+     * cascade of marks renders as a nested span tree.
+     * --------------------------------------------------------------------- */
+
+    /** Active marks by name (mirrors the LWC performance tracker). */
+    private static Map<String, MarkData> activeMarks = new Map<String, MarkData>();
+
+    /** Span-context stack: the innermost open mark is the current parent. */
+    private static List<String> markSpanStack = new List<String>();
+
+    private class MarkData {
+        private String name;
+        private String spanId;
+        private String parentSpanId;
+        private Long startTime;
+    }
+
+    /**
+     * Starts a performance mark: generates a span id, parents it to the
+     * innermost open mark (span-context stack, as in the LWC library) and
+     * pushes it. No log is emitted until endMark.
+     * @param markName mark name, e.g. 'AccountHandler.BEFORE_UPDATE'
+     * @return the mark name, for symmetry with the LWC API
+     */
+    public static String startMark(String markName) {
+        MarkData mark = new MarkData();
+        mark.name = markName;
+        mark.spanId = TritonHelper.generateUUID4();
+        mark.parentSpanId = markSpanStack.isEmpty()
+            ? null
+            : markSpanStack[markSpanStack.size() - 1];
+        mark.startTime = System.currentTimeMillis();
+        markSpanStack.add(mark.spanId);
+        activeMarks.put(markName, mark);
+        return markName;
+    }
+
+    /**
+     * Ends a performance mark: pops its span from the context stack and logs
+     * the timing as a FINE Performance span (volume-gated by Log_Level rules,
+     * so production stays quiet until a component is dialed up). Unknown mark
+     * names are ignored, mirroring the LWC library's warn-and-return.
+     * @param markName mark name used in startMark
+     */
+    public static void endMark(String markName) {
+        MarkData mark = activeMarks.remove(markName);
+        if (mark == null) {
+            return;
+        }
+        Long duration = System.currentTimeMillis() - mark.startTime;
+        // Pop this mark's span id — searched from the top so out-of-order
+        // ends stay safe, like spanContext.pop(spanId) in the LWC library.
+        for (Integer i = markSpanStack.size() - 1; i >= 0; i--) {
+            if (markSpanStack[i] == mark.spanId) {
+                markSpanStack.remove(i);
+                break;
+            }
+        }
+        TritonBuilder b = makeBuilder()
+            .type(TritonTypes.Type.Performance)
+            .summary('Performance: ' + mark.name)
+            .details('Duration: ' + duration + 'ms')
+            .duration(duration)
+            .action(mark.name)
+            .spanId(mark.spanId);
+        if (mark.parentSpanId != null) {
+            b.parentSpanId(mark.parentSpanId);
+        }
+        fine(b);
+    }
+
+    /**
+     * Convenience over startMark for tracing a method body: call at the top
+     * of the method, pair with methodExit at every return path (or in a
+     * finally block).
+     * @return the mark name, for symmetry with the LWC API
+     */
+    public static String methodEntry(String className, String methodName) {
+        return startMark(className + '.' + methodName);
+    }
+
+    /** Ends a method mark opened by methodEntry and logs its timing. */
+    public static void methodExit(String className, String methodName) {
+        endMark(className + '.' + methodName);
+    }
+
     public static void error(TritonBuilder builder) { log(builder.error()); }
     public static void warning(TritonBuilder builder) { log(builder.warning()); }
     public static void info(TritonBuilder builder) { log(builder.info()); }

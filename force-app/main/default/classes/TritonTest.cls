@@ -69,6 +69,107 @@ private class TritonTest {
         System.assertEquals(0, [SELECT count() FROM pharos__Log__c where pharos__Category__c=:TritonTypes.Category.Event.name()]);
     }
 
+    @IsTest
+    private static void test_start_end_mark_emits_nested_spans() {
+        Triton.startMark('outerMark');
+        Triton.startMark('innerMark');
+        Triton.endMark('innerMark');
+        Triton.endMark('outerMark');
+
+        List<pharos__Log__c> logs = Triton.drain();
+        System.assertEquals(2, logs.size(), 'each ended mark logs one span');
+
+        pharos__Log__c innerLog = logs[0];  // inner ends first
+        pharos__Log__c outerLog = logs[1];
+        System.assertEquals('innerMark', innerLog.Action__c, 'action carries the mark name');
+        System.assertEquals((String) outerLog.get('Span_Id__c'), (String) innerLog.get('Parent_Span_Id__c'),
+            'nested mark parents to the enclosing mark');
+        System.assertEquals(null, outerLog.get('Parent_Span_Id__c'),
+            'root mark has no parent — the pipeline roots it on the request');
+        System.assert(innerLog.pharos__Summary__c.startsWith('Performance:'),
+            'mirrors the LWC performance-mark summary');
+        System.assert(innerLog.pharos__Duration__c >= 0, 'duration is captured');
+        System.assertEquals(TritonTypes.Level.FINE.name(), innerLog.Log_Level__c,
+            'marks are FINE so Log_Level rules gate the volume');
+    }
+
+    @IsTest
+    private static void test_method_entry_exit_wrap_marks() {
+        Triton.methodEntry('SampleHelper', 'calculateTotals');
+        Triton.methodExit('SampleHelper', 'calculateTotals');
+        List<pharos__Log__c> logs = Triton.drain();
+        System.assertEquals(1, logs.size(), 'exit logs one span');
+        System.assertEquals('SampleHelper.calculateTotals', logs[0].Action__c,
+            'mark name is class.method');
+    }
+
+    @IsTest
+    private static void test_end_mark_unknown_name_is_noop() {
+        Triton.endMark('never-started');
+        System.assertEquals(0, Triton.drain().size(), 'unknown mark must not log');
+
+        // The stack must stay consistent after a noop end: a new root mark
+        // still has no parent.
+        Triton.startMark('afterNoop');
+        Triton.endMark('afterNoop');
+        List<pharos__Log__c> logs = Triton.drain();
+        System.assertEquals(1, logs.size());
+        System.assertEquals(null, logs[0].get('Parent_Span_Id__c'),
+            'stack is empty after balanced marks');
+    }
+
+    @IsTest
+    private static void test_builder_build_returns_independent_records() {
+        TritonBuilder b = Triton.makeBuilder();
+        pharos__Log__c first = b.summary('first build').build();
+        pharos__Log__c second = b.summary('second build').build();
+        // The managed builder returns the same sObject instance per build();
+        // without the defensive clone both records would read 'second build'.
+        System.assertEquals('first build', first.pharos__Summary__c,
+            'reused builder must not alias earlier builds');
+        System.assertEquals('second build', second.pharos__Summary__c);
+    }
+
+    @IsTest
+    private static void test_builder_clone_is_independent_of_origin() {
+        TritonBuilder origin = Triton.makeBuilder().summary('origin summary');
+        TritonBuilder cloned = origin.cloneBuilder();
+        cloned.summary('clone changed');
+        System.assertEquals('origin summary', origin.build().pharos__Summary__c,
+            'mutating a clone must not leak into the origin builder');
+        System.assertEquals('clone changed', cloned.build().pharos__Summary__c);
+    }
+
+    @IsTest
+    private static void test_log_level_verdict_cache_memoizes() {
+        setupLogLevelsMap();
+        TritonHelper.Config.verdictCacheEnabledInTests = true;
+
+        pharos__Log__c log = new pharos__Log__c(
+            Log_Level__c = TritonTypes.Level.FINEST.name(),
+            pharos__Category__c = TritonTypes.Category.Event.name(),
+            pharos__Area__c = TritonTypes.Area.Community.name());
+        System.assertEquals(true, TritonHelper.Config.isLogAllowed(log),
+            'FINEST is allowed by the Event+Community FINEST rule');
+
+        // Tighten the rules so the same log would now be denied; the cached
+        // verdict must win — that staleness is the proof of memoization.
+        Log_Level__mdt tightened = new Log_Level__mdt();
+        tightened.Level__c = TritonTypes.Level.DEBUG.name();
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ tightened };
+        TritonHelper.Config.logLevels = null;
+        System.assertEquals(true, TritonHelper.Config.isLogAllowed(log),
+            'cached verdict should be returned for an identical log tuple');
+
+        // A different tuple misses the cache and sees the tightened rules.
+        pharos__Log__c other = new pharos__Log__c(
+            Log_Level__c = TritonTypes.Level.FINEST.name(),
+            pharos__Category__c = TritonTypes.Category.Event.name(),
+            pharos__Area__c = TritonTypes.Area.Accounts.name());
+        System.assertEquals(false, TritonHelper.Config.isLogAllowed(other),
+            'uncached tuple must evaluate against the current rules');
+    }
+
     private static void setupLogLevelsMap() {
         Log_Level__mdt globalLevel = new Log_Level__mdt();
         globalLevel.Level__c = TritonTypes.Level.DEBUG.name();

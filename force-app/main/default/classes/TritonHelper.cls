@@ -814,10 +814,14 @@ public with sharing class TritonHelper {
         private Map<String, Boolean> logAllowedVerdicts = new Map<String, Boolean>();
         private final Integer VERDICT_CACHE_MAX = 1000;
 
+        /** Lets tests exercise the cache, which is otherwise test-disabled. */
+        @TestVisible
+        private Boolean verdictCacheEnabledInTests = false;
+
         public Boolean isLogAllowed(pharos__Log__c log) {
             if (String.isBlank(log.Log_Level__c) || logLevels.isEmpty()) return true;
 
-            Boolean cacheable = !Test.isRunningTest();
+            Boolean cacheable = verdictCacheEnabledInTests || !Test.isRunningTest();
             String verdictKey = null;
             if (cacheable) {
                 verdictKey = log.Log_Level__c + '|' + log.pharos__Category__c + '|' +
