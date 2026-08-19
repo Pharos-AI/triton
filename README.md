@@ -15,6 +15,7 @@ Pharos Triton is the foundation of the Pharos observability ecosystem, offering 
 - **Buffered Logging**: Optimized DML operations through log buffering with automatic flushing
 - **Structured Data**: Categorized logs with standardized severity levels, functional areas, and types
 - **Performance Metrics**: Automatic capture of execution times and resource consumption
+- **Nested Spans**: Timed marks that nest, so a trace shows the shape of a request instead of a flat list of logs
 - **Runtime Context**: Comprehensive environment information for both server and client contexts
 - **Error Handling**: Detailed exception capturing with automatic stack trace analysis
 - **Configurable Filtering**: Dynamic log level configuration through Custom Metadata
@@ -43,6 +44,32 @@ To get started with Pharos Triton:
    - `Triton` for Apex code
    - `TritonFlow` invocable actions for Flows and Process Builder
    - `triton.js` Lightning web component for LWC and Aura
+
+## Performance Marks (Apex)
+
+A mark is a timed span. Opening one emits a `Performance started: <name>` record and closing it emits the matching `Performance: <name>` record with the duration — and **every log emitted in between is automatically parented to the mark**, so an Apex trace nests instead of collapsing into siblings under one request node.
+
+```apex
+Triton.startMark();          // named '<ClassName>.<methodName>' from the stack trace
+try {
+    // the measured work
+} finally {
+    Triton.endMark();
+}
+```
+
+| Method | Purpose |
+|--------|---------|
+| `Triton.startMark()` | Opens a mark named from the stack trace. Returns the name. |
+| `Triton.startMark(String)` | Opens a mark with an explicit name, for spans that are not method names. |
+| `Triton.endMark()` | Closes the innermost open mark. |
+| `Triton.endMark(String)` | Closes the newest open mark with that name (out-of-order closes, loops, recursion). |
+| `Triton.startTriggerMark()` | Opens a mark named `<Handler>.<BEFORE_UPDATE>` in a trigger handler. |
+| `Triton.clearMarks()` | Discards open marks and resets the span stack. Called automatically by `startTransaction()`. |
+
+Marks emit at `FINE` and are buffered — no mark method ever flushes. Verbosity is controlled by `Log_Level__mdt`, and a mark filtered out by a rule stays transparent: logs inside it nest under the nearest surviving ancestor.
+
+> **Note for existing dashboards:** inside a mark, a log's `Span_Id__c` is its own span id rather than the request id. Queries that used `Span_Id__c` to mean "this log belongs to request X" should read `pharos__Request_Id_External__c` instead. Code that never opens a mark is unaffected — its span fields are unchanged.
 
 ## Access Control
 

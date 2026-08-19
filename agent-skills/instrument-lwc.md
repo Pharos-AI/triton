@@ -308,18 +308,20 @@ disconnectedCallback() {
 }
 ```
 
-**Custom marks** — for a notable client-side stretch the higher-level helpers don't model (data shaping, debounce window, animation). **Always pair start/end, and end in `finally`** so an exception can't leave a dangling mark:
+**Custom marks** — for a notable client-side stretch the higher-level helpers don't model (data shaping, debounce window, animation). **Always pair start/end, and end in `finally`** so an exception can't leave a dangling mark. This is the same concept as Apex's `Triton.startMark()` / `Triton.endMark()` (see `instrument-apex.md`, §3c) — one span idiom across both tiers, differing today only in the method names:
 
 ```javascript
 this.triton.startPerformanceMark('shape-results');
 try {
     this.rows = this.transform(raw);   // the timed stretch
 } finally {
-    this.triton.endPerformanceMark('shape-results');   // emits one TYPE.PERFORMANCE log
+    this.triton.endPerformanceMark('shape-results');   // emits a TYPE.PERFORMANCE log carrying the duration
 }
 ```
 
 Don't stack a mark on top of a `timeBackendCall`/`timeUserInteraction` that already covers the same span.
+
+> **Cross-tier note.** On the Apex side a mark emits a **pair** of records — `Performance started: <name>` when it opens and `Performance: <name>` with the duration when it closes — so a span exists in the trace while it is still running and everything logged inside it can be parented to it. The LWC marks gain the same pairing with the paired-record change; the summary prefixes are identical on both tiers.
 
 #### Category 3 — Deep (`--perf deep`)
 
@@ -390,7 +392,7 @@ Parse result:
 - **Scale per-log data to level (§3i):** ERROR/WARNING/INFO serialize state/inputs into `.details()` + `.relatedObjects([...])`; DEBUG uses named values only; FINE/FINER/FINEST stay terse. The PII carve-out always wins over "attach maximum data."
 - **Performance instrumentation is tiered by `--perf` (§3k), default `essential`:** Category 1 (`timeBackendCall`/`timeUserInteraction`) always; Category 2 (`trackComponentLifecycle`/custom marks) at `standard`+; Category 3 (`trackComponentRender`) at `deep` only. All profiling helpers require `bindToComponent()` and emit at **INFO** (level not settable) — control prod noise with `Type`-scoped `Log_Level__mdt` rules, not level.
 - **Never leave `--perf deep` render tracking unguarded in prod:** it emits at INFO and is high-frequency — always surface the `Type=ComponentRender → WARNING` `Log_Level__mdt` note in the diff.
-- Pair every `startPerformanceMark` with an `endPerformanceMark` in a `finally`; never wrap a span already covered by `timeBackendCall`/`timeUserInteraction`.
+- Pair every `startPerformanceMark` with an `endPerformanceMark` in a `finally`; never wrap a span already covered by `timeBackendCall`/`timeUserInteraction`. The Apex equivalent is `Triton.startMark()` / `Triton.endMark()` — reuse the same span boundaries when instrumenting both tiers of one feature.
 - Prefer `timeBackendCall(name, fn).execute()` for imperative Apex calls.
 - Use `logNow` for errors (immediate), `log` for debug/info (buffered).
 - Never change the component's `@api` properties, event dispatching, or public interface.
