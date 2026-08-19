@@ -28,11 +28,13 @@ private class TritonMarkTest {
     /**
      * Share of the CPU limit the org's worst-case mark volume is allowed to consume.
      *
-     * 50% is a 5,000ms ceiling against a measured 2,671-2,782ms -- roughly 1.8x headroom.
-     * The measured spread is only ~4% in a quiet org, but Apex CPU accounting swings much
-     * wider under org load or a concurrent deploy, and a tighter ceiling would make this
-     * the flakiest assert in the suite. The assertion keeps its meaning at 50%: 217 marks
-     * still leave most of the budget to the business logic they are measuring.
+     * 50% is a 5,000ms ceiling. Back-to-back runs in a quiet org land at 2,723-2,826ms,
+     * a spread of only ~4% -- but the same build measured 3,105ms on a run that overlapped
+     * a deploy, which is 12% above that whole range. Apex CPU accounting swings much wider
+     * under org load than a quiet-org sample suggests, and a tighter ceiling would make
+     * this the flakiest assert in the suite: 40% left the observed outlier only 1.29x of
+     * headroom. The assertion keeps its meaning at 50% -- 217 marks still leave most of
+     * the budget to the business logic they are measuring.
      */
     private static final Integer CPU_BUDGET_NUMERATOR = 50;
 
