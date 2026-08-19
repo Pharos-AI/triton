@@ -461,11 +461,24 @@ global with sharing class Triton {
     */
     public static String startTriggerMark() {
         String stackTrace = TritonHelper.getCurrentStackTrace();
-        String markName = deriveMarkName(stackTrace);
-        if (Trigger.isExecuting && Trigger.operationType != null) {
-            markName = markName.substringBefore('.') + '.' + Trigger.operationType.name();
-        }
-        return openMark(markName, stackTrace);
+        String derivedName = deriveMarkName(stackTrace);
+        return openMark(
+            triggerMarkName(derivedName, Trigger.isExecuting ? Trigger.operationType : null),
+            stackTrace);
+    }
+
+    /**
+    * Combines a derived name with a trigger context: the handler class from the
+    * stack trace, the operation from the trigger. Split out from startTriggerMark
+    * because Trigger.operationType cannot be simulated in a test.
+    * @param derivedName -- name derived from the stack trace ('MyHandler.run')
+    * @param operation -- the trigger operation, or null outside trigger context
+    * @return '<Handler>.<OPERATION>' in trigger context, the derived name otherwise
+    */
+    @TestVisible
+    private static String triggerMarkName(String derivedName, System.TriggerOperation operation) {
+        if (operation == null) return derivedName;
+        return derivedName.substringBefore('.') + '.' + operation.name();
     }
 
     /**
