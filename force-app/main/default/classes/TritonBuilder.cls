@@ -799,7 +799,13 @@ public with sharing class TritonBuilder {
             this.spanId(TritonHelper.generateUUID4());
         }
         if (String.isBlank(this.currentParentSpanId)) {
-            this.parentSpanId(Triton.ambientParentSpanId());
+            // Left unset rather than set to null when there is no ambient parent, so the
+            // field is simply absent instead of explicitly empty -- as Triton.markBuilder
+            // does for the paired mark records.
+            String ambientParent = Triton.ambientParentSpanId();
+            if (String.isNotBlank(ambientParent)) {
+                this.parentSpanId(ambientParent);
+            }
         }
     }
 

@@ -493,17 +493,23 @@ global with sharing class Triton {
 
     /**
     * The innermost span id on the span stack, or null when it is empty. Internal.
+    * Test-visible rather than public: the raw stack accessor the mark tests assert
+    * against, with no production caller of its own.
     * @return the current span id
     */
-    public static String currentSpanId() {
+    @TestVisible
+    private static String currentSpanId() {
         return spans.current();
     }
 
     /**
-    * Parent for a span opening at the current stack position: the enclosing mark, or
-    * -- outermost, where the stack holds only its request-id root -- TRANSACTION_ID,
-    * which the span converter resolves onto the transaction span it synthesises. Null
-    * with no transaction, so the converter falls back to the request root itself.
+    * Parent for a span opening at the current stack position. Internal, but public
+    * rather than @TestVisible: TritonBuilder resolves ordinary logs through it.
+    *
+    * Resolves to the enclosing mark, or -- outermost, where the stack holds only its
+    * request-id root -- TRANSACTION_ID, which the span converter resolves onto the
+    * transaction span it synthesises. Null with no transaction, so the converter falls
+    * back to the request root itself.
     * The request id is never returned: the converter reaches the request span only by
     * hashing, so a request id used as a parent names a span nothing carries.
     * @return the ambient parent span id, or null
