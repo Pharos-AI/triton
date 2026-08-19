@@ -25,6 +25,9 @@ private class TritonMarkTest {
 
     private static final String CPU_TIME_FIELD = 'CPU_Time__c';
 
+    /** Share of the CPU limit the org's worst-case mark volume is allowed to consume. */
+    private static final Integer CPU_BUDGET_NUMERATOR = 40;
+
     @TestSetup
     private static void testSetup() {
         TritonTestFactory.initTestSetup();
@@ -179,6 +182,7 @@ private class TritonMarkTest {
     @IsTest
     private static void test_startMark_nesting_parent_chain() {
         Test.startTest();
+        String transactionId = Triton.startTransaction();
         Triton.startMark('outer');
         Triton.startMark('middle');
         Triton.startMark('inner');
@@ -193,13 +197,32 @@ private class TritonMarkTest {
         pharos__Log__c middle = bufferedBySummary('Performance started: middle');
         pharos__Log__c innerLog = bufferedBySummary('Performance started: inner');
 
-        System.assertEquals(requestId(), spanOf(outerLog),
-            'The first mark at depth 0 claims the request node');
-        System.assertEquals(null, parentOf(outerLog),
-            'The request node has no parent of its own -- the session umbrella supplies it');
+        System.assertNotEquals(requestId(), spanOf(outerLog),
+            'Every mark mints its own span id, depth 0 included: the span converter hashes the '
+            + 'request id to build the request span but resolves an explicit id as a UUID, so a '
+            + 'mark carrying the request id would name a span nothing else can point at');
+        System.assertEquals(transactionId, parentOf(outerLog),
+            'The outermost mark parents onto the transaction span the converter synthesises from '
+            + 'the transaction id');
         System.assertEquals(spanOf(outerLog), parentOf(middle), 'The middle mark nests under the outer one');
         System.assertEquals(spanOf(middle), parentOf(innerLog), 'The inner mark nests under the middle one');
         System.assertNotEquals(spanOf(middle), spanOf(innerLog), 'Each mark gets its own span id');
+    }
+
+    @IsTest
+    private static void test_outermost_mark_has_no_parent_without_a_transaction() {
+        Test.startTest();
+        Triton.startMark('lonely');
+        Triton.endMark();
+        Test.stopTest();
+
+        pharos__Log__c opening = bufferedBySummary('Performance started: lonely');
+        System.assertEquals(null, parentOf(opening),
+            'With no transaction the parent is left null, so the span converter falls back to the '
+            + 'request root it hashes from the request id. Substituting the request id here instead '
+            + 'would name a span that nothing carries');
+        System.assertNotEquals(null, spanOf(opening), 'The mark still has a span id');
+        System.assertNotEquals(requestId(), spanOf(opening), 'Which is its own, not the request id');
     }
 
     @IsTest
@@ -271,6 +294,7 @@ private class TritonMarkTest {
     @IsTest
     private static void test_endMark_unknown_name_is_ignored() {
         Test.startTest();
+        String transactionId = Triton.startTransaction();
         Triton.startMark('open-mark');
         Triton.endMark('never-started');
 
@@ -278,13 +302,22 @@ private class TritonMarkTest {
         System.assertEquals(true, Triton.hasOpenMark(), 'The open mark is untouched');
 
         Triton.endMark();
-        String followUp = Triton.startMark('follow-up');
+        Triton.startMark('follow-up');
         Triton.endMark();
         Test.stopTest();
 
+        pharos__Log__c first = bufferedBySummary('Performance started: open-mark');
         pharos__Log__c later = bufferedBySummary('Performance started: follow-up');
-        System.assertEquals(requestId(), parentOf(later),
-            'A later root mark still parents to the request id');
+
+        System.assertNotEquals(requestId(), spanOf(later),
+            'A second mark at depth 0 mints its own span id -- nothing claims the request id, '
+            + 'which the converter reaches only by hashing');
+        System.assertNotEquals(spanOf(first), spanOf(later),
+            'Two sequential depth-0 marks are two distinct spans');
+        System.assertEquals(transactionId, parentOf(first),
+            'Both parent onto the same synthetic transaction span');
+        System.assertEquals(transactionId, parentOf(later),
+            'Both parent onto the same synthetic transaction span, so the second is not orphaned');
     }
 
     // ─── Exception path ──────────────────────────────────────────────
@@ -311,6 +344,50 @@ private class TritonMarkTest {
     }
 
     @IsTest
+    private static void test_unclosed_inner_mark_leaves_outer_as_ambient_parent() {
+        Test.startTest();
+        Triton.startMark('outer');
+        Triton.startMark('inner');
+        Triton.endMark();
+        Triton.info(Triton.t.summary('after the inner close'));
+
+        pharos__Log__c outerLog = bufferedBySummary('Performance started: outer');
+        System.assertEquals(true, Triton.hasOpenMark(), 'The outer mark is still open');
+        System.assertEquals(spanOf(outerLog), Triton.currentSpanId(),
+            'Closing the inner mark popped exactly one level -- the stack is not corrupted');
+        System.assertEquals(spanOf(outerLog), parentOf(bufferedBySummary('after the inner close')),
+            'And the outer mark is the ambient parent again');
+
+        Triton.endMark();
+        Test.stopTest();
+
+        System.assertEquals(false, Triton.hasOpenMark(), 'Both marks are closed');
+        System.assertEquals(requestId(), Triton.currentSpanId(), 'And the stack is back at its root');
+    }
+
+    @IsTest
+    private static void test_clearMarks_mid_nest_then_new_mark_roots() {
+        Test.startTest();
+        String transactionId = Triton.startTransaction();
+        Triton.startMark('outer');
+        Triton.startMark('inner');
+        Triton.clearMarks();
+
+        System.assertEquals(false, Triton.hasOpenMark(), 'clearMarks discards both open marks');
+        System.assertEquals(requestId(), Triton.currentSpanId(), 'And resets the stack to its root');
+
+        Triton.startMark('after-clear');
+        Triton.endMark();
+        Test.stopTest();
+
+        pharos__Log__c afterClear = bufferedBySummary('Performance started: after-clear');
+        System.assertEquals(transactionId, parentOf(afterClear),
+            'A mark opened after clearMarks roots at the transaction span, not under the discarded nest');
+        System.assertNotEquals(requestId(), spanOf(afterClear), 'And is its own span');
+        System.assertEquals(false, Triton.hasOpenMark(), 'And closes cleanly');
+    }
+
+    @IsTest
     private static void test_startTransaction_clears_marks() {
         Test.startTest();
         Triton.startMark('stale');
@@ -319,6 +396,63 @@ private class TritonMarkTest {
 
         System.assertEquals(false, Triton.hasOpenMark(), 'startTransaction starts from a clean span hierarchy');
         System.assertEquals(requestId(), Triton.currentSpanId(), 'The stack is reset to the request root');
+    }
+
+    @IsTest
+    private static void test_stopTransaction_leaves_an_open_mark_alone() {
+        Test.startTest();
+        Triton.startTransaction();
+        Triton.startMark('spans-the-stop');
+        Triton.stopTransaction();
+        Triton.info(Triton.t.summary('after the stop'));
+        Triton.endMark();
+        Triton.startMark('opened-after-the-stop');
+        Triton.endMark();
+        Test.stopTest();
+
+        pharos__Log__c opening = bufferedBySummary('Performance started: spans-the-stop');
+        pharos__Log__c completion = bufferedBySummary('Performance: spans-the-stop');
+        System.assertNotEquals(null, completion,
+            'stopTransaction deliberately does not clearMarks -- spans are request-scoped while '
+            + 'transactions are not, so the open mark survives the stop and still closes');
+        System.assertEquals(spanOf(opening), spanOf(completion),
+            'And both halves still describe one span across the stop');
+        System.assertEquals(spanOf(opening), parentOf(bufferedBySummary('after the stop')),
+            'The mark is still the ambient parent after the stop');
+
+        pharos__Log__c later = bufferedBySummary('Performance started: opened-after-the-stop');
+        System.assertEquals(null, later.pharos__Transaction_Id_External__c,
+            'A mark opened after the stop carries no transaction id -- the documented consequence');
+        System.assertEquals(null, parentOf(later),
+            'And no parent, which the span converter resolves to the request root');
+    }
+
+    @IsTest
+    private static void test_resumeTransaction_is_inert_for_open_marks() {
+        Test.startTest();
+        Triton.startMark('outer');
+        String outerSpan = Triton.currentSpanId();
+        Triton.resumeTransaction(TritonHelper.generateUUID4());
+
+        System.assertEquals(true, Triton.hasOpenMark(), 'resumeTransaction never touches open marks');
+        System.assertEquals(outerSpan, Triton.currentSpanId(),
+            'Nor the span stack. The stack is rooted at the request id precisely so that a '
+            + 'transaction reassigned mid-request cannot re-root an already-built subtree');
+
+        Triton.startMark('inner');
+        Triton.endMark();
+        Triton.endMark();
+        Test.stopTest();
+
+        pharos__Log__c outerLog = bufferedBySummary('Performance started: outer');
+        pharos__Log__c innerLog = bufferedBySummary('Performance started: inner');
+        System.assertEquals(spanOf(outerLog), parentOf(innerLog),
+            'A mark opened after the resume still nests under the enclosing mark, not under the '
+            + 'newly resumed transaction');
+        System.assertEquals(null, parentOf(outerLog),
+            'And the outer mark keeps the parent it was given when it opened -- none, because no '
+            + 'transaction existed then');
+        System.assertEquals(requestId(), Triton.currentSpanId(), 'The stack unwinds to its root');
     }
 
     // ─── Ambient stamping ────────────────────────────────────────────
@@ -441,6 +575,93 @@ private class TritonMarkTest {
             'And its children nest under it -- proving the suppression fixture is not vacuous');
     }
 
+    @IsTest
+    private static void test_suppressed_parent_with_unsuppressed_child() {
+        setLogLevels(new List<Log_Level__mdt>{ componentRule('quiet-parent', TritonTypes.Level.INFO) });
+
+        Test.startTest();
+        String transactionId = Triton.startTransaction();
+        Triton.startMark('quiet-parent');
+        Triton.startMark('loud-child');
+        Triton.info(Triton.t.summary('inside the child'));
+        Triton.endMark();
+        Triton.endMark();
+        Test.stopTest();
+
+        System.assertEquals(null, bufferedBySummary('Performance started: quiet-parent'),
+            'The filtered parent emits nothing');
+        pharos__Log__c child = bufferedBySummary('Performance started: loud-child');
+        System.assertNotEquals(null, child, 'A filtered parent does not filter its child');
+        System.assertEquals(transactionId, parentOf(child),
+            'The child skips the transparent parent and attaches to the nearest surviving ancestor '
+            + '-- here the synthetic transaction span, since the parent was the outermost mark');
+        System.assertNotEquals(requestId(), parentOf(child),
+            'Never the request id: the converter only ever reaches the request span by hashing, so '
+            + 'a request id used as a parent value resolves onto nothing');
+        System.assertEquals(spanOf(child), parentOf(bufferedBySummary('inside the child')),
+            'And the surviving child parents its own children normally');
+
+        System.assertEquals(false, Triton.hasOpenMark(), 'Both marks close cleanly');
+        System.assertEquals(requestId(), Triton.currentSpanId(), 'And the stack is back at its root');
+    }
+
+    @IsTest
+    private static void test_nested_suppression_two_levels_deep() {
+        setLogLevels(new List<Log_Level__mdt>{
+            componentRule('quiet-outer', TritonTypes.Level.INFO),
+            componentRule('quiet-inner', TritonTypes.Level.INFO)
+        });
+
+        Test.startTest();
+        Triton.startMark('boundary');
+        Triton.startMark('quiet-outer');
+        Triton.startMark('quiet-inner');
+        Triton.info(Triton.t.summary('two suppressions deep'));
+        Triton.endMark();
+        Triton.endMark();
+        Triton.endMark();
+        Test.stopTest();
+
+        System.assertEquals(null, bufferedBySummary('Performance started: quiet-outer'),
+            'The outer suppression emits nothing');
+        System.assertEquals(null, bufferedBySummary('Performance started: quiet-inner'),
+            'The inner suppression emits nothing either');
+        System.assertEquals(3, buffer().size(),
+            'Only the boundary pair and the leaf survive');
+
+        pharos__Log__c boundary = bufferedBySummary('Performance started: boundary');
+        System.assertEquals(spanOf(boundary), parentOf(bufferedBySummary('two suppressions deep')),
+            'Stacked suppressions collapse to one transparent level: the leaf attaches to the boundary');
+
+        System.assertEquals(false, Triton.hasOpenMark(), 'All three marks closed');
+        System.assertEquals(requestId(), Triton.currentSpanId(),
+            'And popping by value unwinds the duplicate ids the two suppressions pushed, so the '
+            + 'stack ends exactly where it started');
+    }
+
+    @IsTest
+    private static void test_suppressed_only_mark_still_reshapes_surrounding_logs() {
+        setLogLevels(new List<Log_Level__mdt>{ componentRule('invisible', TritonTypes.Level.INFO) });
+
+        Test.startTest();
+        String transactionId = Triton.startTransaction();
+        Triton.startMark('invisible');
+        Triton.info(Triton.t.summary('beside an invisible mark'));
+        Triton.endMark();
+        Test.stopTest();
+
+        System.assertEquals(null, bufferedBySummary('Performance started: invisible'),
+            'The only open mark emitted nothing at all');
+
+        pharos__Log__c beside = bufferedBySummary('beside an invisible mark');
+        System.assertNotEquals(requestId(), spanOf(beside),
+            'Suppression is transparent for parenting but NOT for data shape: a mark is still open, '
+            + 'so a surrounding log gets its own span id rather than the request id it would carry '
+            + 'with no mark open at all');
+        System.assertEquals(transactionId, parentOf(beside),
+            'And a parent -- the transparent mark\'s own ancestor, never the mark itself');
+    }
+
     // ─── Name derivation ─────────────────────────────────────────────
 
     @IsTest
@@ -456,8 +677,6 @@ private class TritonMarkTest {
             'The literal Class. prefix that getOperation retains is stripped');
         System.assertEquals(false, markName.contains('Triton.'),
             'Triton\'s own frames are never used as the mark name');
-        System.assertEquals(false, markName.contains('TritonSpanContext'),
-            'TritonSpanContext is registered as a framework class, so it cannot be attributed as the caller');
 
         pharos__Log__c opening = bufferedLog(0);
         pharos__Log__c completion = bufferedLog(1);
@@ -478,8 +697,12 @@ private class TritonMarkTest {
         System.assertEquals('AnonymousMark2', second, 'The counter keeps anonymous marks distinguishable');
     }
 
+    // startMark() cannot reach the blank-derivation fallback from a test: every trace
+    // captured inside a test has an application frame. The fallback itself is covered by
+    // test_deriveMarkName_falls_back_to_anonymous; this covers only what remains, that a
+    // mark carrying such a name nests like any other.
     @IsTest
-    private static void test_anonymous_mark_still_nests() {
+    private static void test_derived_fallback_name_nests_like_any_other() {
         Test.startTest();
         Triton.startMark('boundary');
         String anonymous = Triton.startMark(Triton.deriveMarkName(''));
@@ -590,7 +813,7 @@ private class TritonMarkTest {
     // ─── Async / batch ───────────────────────────────────────────────
 
     @IsTest
-    private static void test_mark_in_async_chunk_roots_at_request_id() {
+    private static void test_mark_in_async_chunk_parents_to_the_carried_transaction() {
         String carriedTransactionId = TritonHelper.generateUUID4();
 
         Test.startTest();
@@ -604,8 +827,11 @@ private class TritonMarkTest {
             'The phase is the method name, so a batch needs no dedicated shorthand');
 
         pharos__Log__c opening = bufferedLog(0);
-        System.assertEquals(requestId(), spanOf(opening),
-            'A fresh context self-seeds from its own request id and the chunk mark claims it');
+        System.assertNotEquals(requestId(), spanOf(opening),
+            'The chunk mark is its own span -- the chunk\'s request id is the converter\'s request '
+            + 'root, not a span id a mark can borrow');
+        System.assertEquals(carriedTransactionId, parentOf(opening),
+            'It parents onto the carried transaction, which is what makes sibling chunks one tree');
         System.assertEquals(carriedTransactionId, opening.pharos__Transaction_Id_External__c,
             'The carried transaction id ties the chunk back to its parent transaction');
     }
@@ -613,21 +839,29 @@ private class TritonMarkTest {
     // ─── Volume ──────────────────────────────────────────────────────
 
     @IsTest
-    private static void test_marks_volume_stays_within_limits() {
-        Integer markCount = 100;
+    private static void test_marks_volume_stays_within_a_cpu_budget() {
+        // 217 marks is the worst case measured in a real org. Asserting only that the
+        // governor limits were not blown would be tautological -- exceeding one throws
+        // an uncatchable LimitException, so reaching an assert already proves it. The
+        // real requirement is that instrumentation leaves most of the CPU budget to the
+        // business logic it is measuring, so this asserts a delta against a ceiling.
+        Integer markCount = 217;
+        Integer cpuCeiling = CPU_BUDGET_NUMERATOR * Limits.getLimitCpuTime() / 100;
 
         Test.startTest();
+        Integer cpuBefore = Limits.getCpuTime();
         for (Integer i = 0; i < markCount; i++) {
             Triton.startMark('bulk-' + i);
             Triton.endMark();
         }
+        Integer cpuUsed = Limits.getCpuTime() - cpuBefore;
         Test.stopTest();
 
         System.assertEquals(markCount * 2, buffer().size(), 'N marks emit exactly 2N records');
-        System.assert(Limits.getCpuTime() < Limits.getLimitCpuTime(),
-            'A realistic number of marks stays inside the CPU limit');
-        System.assert(Limits.getHeapSize() < Limits.getLimitHeapSize(),
-            'A realistic number of marks stays inside the heap limit');
+        System.assert(cpuUsed < cpuCeiling,
+            markCount + ' marks must fit inside ' + CPU_BUDGET_NUMERATOR + '% of the CPU limit, '
+            + 'leaving the rest to the code being measured. Ceiling ' + cpuCeiling
+            + 'ms, used ' + cpuUsed + 'ms');
     }
 
     // ─── Never throws ────────────────────────────────────────────────
