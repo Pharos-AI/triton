@@ -9,22 +9,13 @@
  */
 
 /**
- * Tracks span hierarchy with an in-memory stack.
+ * Tracks span hierarchy with an in-memory stack. A direct Apex port of the LWC
+ * SpanContext class (lwc/triton/triton.js), keeping its method names and semantics so
+ * that a behaviour difference shows up as a diff rather than hiding in prose.
  *
- * A direct Apex port of the LWC SpanContext class (lwc/triton/triton.js), with the
- * same method names and semantics so that a reader of one understands the other and
- * any behaviour difference shows up as a diff rather than hiding in prose.
- *
- * Deliberate divergences from the LWC original:
- * - No sessionStorage persistence tier. Apex has no session storage, and the Platform
- *   Cache equivalent is intentionally out of scope: a cache round-trip per mark would
- *   dominate the cost of the thing being measured, and a cache miss would produce a
- *   silently wrong hierarchy rather than an obviously flat one.
- * - pop() returns whether anything was removed, so a caller can self-heal.
- *
- * Instances are cheap and independent: Triton holds exactly one for the current
- * execution context, and any future context (a batch chunk, a queueable) can hold
- * its own.
+ * Divergences: no sessionStorage tier (a Platform Cache equivalent would cost a
+ * round-trip per mark and turn a cache miss into a silently wrong hierarchy), and
+ * pop() reports whether anything was removed so a caller can self-heal.
  *
  * @see Triton.startMark
  */
@@ -104,13 +95,5 @@ public with sharing class TritonSpanContext {
     */
     public void clear() {
         this.stack = new List<String>();
-    }
-
-    /**
-    * Returns how many span ids are on the stack.
-    * @return the stack depth
-    */
-    public Integer depth() {
-        return this.stack.size();
     }
 }

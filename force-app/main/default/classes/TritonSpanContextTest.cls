@@ -101,14 +101,4 @@ private class TritonSpanContextTest {
         ctx.setStack(null);
         System.assertEquals(true, ctx.getStack().isEmpty(), 'setStack(null) yields an empty stack, never null');
     }
-
-    @IsTest
-    private static void test_depth() {
-        TritonSpanContext ctx = new TritonSpanContext();
-        System.assertEquals(0, ctx.depth(), 'A new context is empty');
-
-        ctx.push('a');
-        ctx.push('b');
-        System.assertEquals(2, ctx.depth(), 'Depth counts the entries on the stack');
-    }
 }

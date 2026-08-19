@@ -101,19 +101,15 @@ global with sharing class Triton {
      */
     public static String TRANSACTION_ID;
 
-    /**
-     * Literal prefix Apex puts in front of every class frame in a stack trace, and
-     * which TritonHelper.getOperation retains. Stripped from derived mark names so a
-     * span is named 'MyClass.myMethod' rather than 'Class.MyClass.myMethod'.
-     */
+    /** Literal prefix Apex puts in front of every class frame in a stack trace. */
     private static final String CLASS_FRAME_PREFIX = 'Class.';
 
     /** Name given to a mark whose name cannot be derived from the stack trace. */
     private static final String ANONYMOUS_MARK_NAME = 'AnonymousMark';
 
     /**
-     * Summary prefixes for the two halves of a mark. They are matched verbatim by the
-     * span converter and are identical to the ones the LWC logger emits.
+     * Summary prefixes for a mark's two halves, matched verbatim by the span converter
+     * and identical to the ones the LWC logger emits.
      */
     private static final String MARK_STARTED_PREFIX = 'Performance started: ';
     private static final String MARK_COMPLETED_PREFIX = 'Performance: ';
@@ -121,13 +117,9 @@ global with sharing class Triton {
     private static final String MARK_DURATION_SUFFIX = 'ms';
 
     /**
-     * Span stack for the current execution context, seeded with the request id.
-     *
-     * The request id rather than the transaction id, deliberately: it is already what
-     * ensureSpanIds stamps today, it never changes mid-request (resumeTransaction can
-     * reassign the transaction id partway through, which would silently re-root an
-     * already-built subtree), and it exists in every execution context including
-     * batch and future, where a transaction may never have been started.
+     * Span stack for the current execution context, rooted at the request id -- which,
+     * unlike TRANSACTION_ID, cannot change mid-request and re-root a built subtree.
+     * The root is a sentinel, never a parent value: see ambientParentSpanId.
      */
     private static TritonSpanContext spans {
         get {
@@ -141,33 +133,24 @@ global with sharing class Triton {
     }
 
     /**
-     * Open marks, innermost last. A list keyed by position rather than a map keyed by
-     * name: two same-named marks (a loop, a recursive call) are then two distinct
-     * spans, and neither can orphan the other.
+     * Open marks, innermost last. Keyed by position, not by name, so two same-named
+     * marks (a loop, a recursion) are two distinct spans and neither orphans the other.
      */
     private static List<Mark> openMarks = new List<Mark>();
-
-    /**
-     * Whether a mark has already claimed the request node in this execution context.
-     * Claiming happens at most once so that two boundaries cannot share a span id.
-     */
-    private static Boolean requestNodeClaimed = false;
 
     /** Occurrence counter behind the anonymous mark name fallback. */
     private static Integer anonymousMarkCounter = 0;
 
     /**
-     * A single open mark. Everything both paired records need is captured once, when
-     * the mark opens, so the two halves cannot disagree and neither has to re-derive
-     * a name or re-capture a stack trace.
+     * A single open mark. Everything both paired records need is captured once, at
+     * open, so the two halves cannot disagree and neither re-derives or re-captures.
      */
     private class Mark {
         String name;
         String stackTrace;
         String spanId;
         String parentSpanId;
-        // What was actually pushed onto the span stack: the mark's own span id, or the
-        // enclosing span when the opening record was filtered out (see openMark).
+        // What was pushed: this mark's span id, or the enclosing span when suppressed.
         String stackedSpanId;
         Long startedAt;
         Boolean suppressed = false;
@@ -315,6 +298,12 @@ global with sharing class Triton {
      * Stops a transaction
      * Resets the current transaction Id
      * Use this method to marking tracking logs with the current transaction Id
+     *
+     * Deliberately does NOT call clearMarks(): spans are request-scoped while
+     * transactions are not, so this leaves the span hierarchy intact. Consequence: a
+     * mark opened afterwards carries a null pharos__Transaction_Id_External__c and, at
+     * the outermost level, a null parent -- which the converter resolves to the
+     * request root.
      */
     public static void stopTransaction() {
         TRANSACTION_ID = null;
@@ -358,14 +347,11 @@ global with sharing class Triton {
     }
 
     /**
-    * Adds a log to the buffer and reports whether it was buffered.
-    *
-    * The body of log(), with the outcome returned rather than discarded. Marks need
-    * to know whether their opening record survived the log level check: a mark whose
-    * record was filtered out must not push a span id that no record will ever carry.
+    * Adds a log to the buffer and reports whether it was buffered: the body of log(),
+    * with the outcome returned rather than discarded. A mark whose opening record was
+    * filtered out must not push a span id that no record will carry.
     * @param builder TritonBuilder instance containing log details
-    * @return true when the log was buffered, false when logging is disabled or the
-    *         configured log level filtered the record out
+    * @return true when the log was buffered, false when it was filtered out
     */
     private static Boolean doLog(TritonBuilder builder) {
         if (TritonHelper.Config.isLoggingDisabled()) {
@@ -406,32 +392,18 @@ global with sharing class Triton {
      * Performance marks.
      * ---------------------------
      *
-     * A mark is a timed span. Opening one emits a "Performance started" record right
-     * away and pushes the mark's span id, so every log emitted until the mark closes
-     * is ambiently parented to it (see TritonBuilder.prepareForLogging). Closing one
-     * emits the matching "Performance" record carrying the duration. Both halves
-     * share a span id, so the pair describes a single span.
-     *
-     * The canonical idiom names nothing -- the name is derived from the stack trace:
-     *
-     *   Triton.startMark();
-     *   try {
-     *       // work being measured
-     *   } finally {
-     *       Triton.endMark();
-     *   }
-     *
-     * Marks are buffered like any other log: no mark method ever flushes, because
-     * flushing is a program-visible action that belongs to the caller.
+     * A mark is a timed span: opening one emits a 'Performance started' record and
+     * pushes its span id, so everything logged until it closes nests under it;
+     * closing one emits the matching 'Performance' record carrying the duration. No
+     * mark method ever flushes. For the try/finally idiom and when to reach for a
+     * mark at all, see agent-skills/instrument-apex.md, step 3c.
      */
 
     /**
     * Opens a mark whose name is derived from the stack trace ('MyClass.myMethod').
-    * The trace is captured once here and reused three ways -- to derive the name and
-    * as the stacktrace of both paired records -- so a mark pair costs a single stack
-    * capture rather than three.
-    * @return the mark name, which can be passed to endMark(String) for an
-    *         out-of-order close
+    * The trace is captured once and reused three ways -- the name and both records'
+    * stacktrace -- so a pair costs one capture rather than three.
+    * @return the mark name, passable to endMark(String) for an out-of-order close
     */
     public static String startMark() {
         String stackTrace = TritonHelper.getCurrentStackTrace();
@@ -440,9 +412,8 @@ global with sharing class Triton {
 
     /**
     * Opens a mark with an explicit name, for spans whose meaningful name is not a
-    * method name ('nightly-reconcile', 'chunk-3-of-40'). A blank name falls back to
-    * derivation. This is not a performance shortcut: the stack trace is captured
-    * either way, because both paired records carry it.
+    * method name ('nightly-reconcile'). A blank name falls back to derivation. Not a
+    * performance shortcut: both records carry the trace, so it is captured either way.
     * @param markName -- name for the mark
     * @return the mark name actually used
     */
@@ -452,11 +423,9 @@ global with sharing class Triton {
     }
 
     /**
-    * Opens a mark named '<Handler>.<TriggerOperation>'. The trigger context is the
-    * one piece of naming information a stack trace cannot carry -- BEFORE_UPDATE and
-    * AFTER_UPDATE run the same method from the same frame, so a derived name alone
-    * would collapse two distinct spans into one. Outside trigger context this
-    * behaves exactly like startMark().
+    * Opens a mark named '<Handler>.<TriggerOperation>'. The trigger context is the one
+    * naming fact a trace cannot carry: BEFORE_UPDATE and AFTER_UPDATE run the same
+    * method from the same frame. Outside trigger context this is exactly startMark().
     * @return the mark name
     */
     public static String startTriggerMark() {
@@ -468,8 +437,7 @@ global with sharing class Triton {
     }
 
     /**
-    * Combines a derived name with a trigger context: the handler class from the
-    * stack trace, the operation from the trigger. Split out from startTriggerMark
+    * Combines a derived name with a trigger context. Split out from startTriggerMark
     * because Trigger.operationType cannot be simulated in a test.
     * @param derivedName -- name derived from the stack trace ('MyHandler.run')
     * @param operation -- the trigger operation, or null outside trigger context
@@ -482,8 +450,8 @@ global with sharing class Triton {
     }
 
     /**
-    * Closes the innermost open mark, whatever it is called. A no-op when no mark is
-    * open: instrumentation never throws into business logic.
+    * Closes the innermost open mark. A no-op when none is open: instrumentation must
+    * never throw into business logic.
     */
     public static void endMark() {
         if (openMarks.isEmpty()) return;
@@ -491,8 +459,8 @@ global with sharing class Triton {
     }
 
     /**
-    * Closes the newest open mark with the given name, so a loop or a recursive call
-    * closes its own span rather than an outer one. An unknown name is ignored.
+    * Closes the newest open mark with that name, so a loop or a recursion closes its
+    * own span. An unknown name is ignored.
     * @param markName -- name returned by startMark
     */
     public static void endMark(String markName) {
@@ -506,11 +474,9 @@ global with sharing class Triton {
     }
 
     /**
-    * Discards all open marks and resets the span stack to the request root.
-    * Called automatically by startTransaction(). Exposed so a caller can deliberately
-    * recover a known-good state -- it is not needed at the start of a batch chunk, a
-    * queueable or a future, because a fresh execution context already starts with
-    * empty statics and re-seeds itself from that context's own request id.
+    * Discards all open marks and resets the span stack to the request root. Called
+    * automatically by startTransaction(). Exposed for deliberate recovery only: an
+    * async context already starts with empty statics and re-seeds itself.
     */
     public static void clearMarks() {
         openMarks.clear();
@@ -518,9 +484,7 @@ global with sharing class Triton {
     }
 
     /**
-    * True when at least one mark is open.
-    * Internal: TritonBuilder uses this to decide whether ambient span stamping
-    * applies. Not part of the supported API surface and deliberately not global.
+    * True when at least one mark is open. Internal; deliberately not global.
     * @return whether a mark is currently open
     */
     public static Boolean hasOpenMark() {
@@ -528,9 +492,7 @@ global with sharing class Triton {
     }
 
     /**
-    * The innermost span id on the span stack, or null when the stack is empty.
-    * Internal: TritonBuilder uses this for ambient parenting. Not part of the
-    * supported API surface and deliberately not global.
+    * The innermost span id on the span stack, or null when it is empty. Internal.
     * @return the current span id
     */
     public static String currentSpanId() {
@@ -538,8 +500,25 @@ global with sharing class Triton {
     }
 
     /**
-    * Opens a mark: mints its span id, emits the opening record, and pushes the span
-    * so that everything logged until the mark closes nests under it.
+    * Parent for a span opening at the current stack position: the enclosing mark, or
+    * -- outermost, where the stack holds only its request-id root -- TRANSACTION_ID,
+    * which the span converter resolves onto the transaction span it synthesises. Null
+    * with no transaction, so the converter falls back to the request root itself.
+    * The request id is never returned: the converter reaches the request span only by
+    * hashing, so a request id used as a parent names a span nothing carries.
+    * @return the ambient parent span id, or null
+    */
+    public static String ambientParentSpanId() {
+        String enclosing = spans.current();
+        if (String.isNotBlank(enclosing) && !enclosing.equals(requestId())) {
+            return enclosing;
+        }
+        return String.isBlank(TRANSACTION_ID) ? null : TRANSACTION_ID;
+    }
+
+    /**
+    * Opens a mark: mints its span id, emits the opening record, and pushes the span so
+    * everything logged until it closes nests under it.
     * @param markName -- resolved mark name, shared by both paired records
     * @param stackTrace -- trace captured by the caller, set on both paired records
     * @return the mark name
@@ -549,23 +528,11 @@ global with sharing class Triton {
         mark.name = markName;
         mark.stackTrace = stackTrace;
         mark.startedAt = System.currentTimeMillis();
-        mark.parentSpanId = spans.current();
+        mark.spanId = TritonHelper.generateUUID4();
+        mark.parentSpanId = ambientParentSpanId();
 
-        // Structural request-node claiming: the first mark opened at stack depth 0 is
-        // the request node itself, so marks opened later in the request nest under the
-        // named boundary instead of under a generic wrapper. Claimed at most once per
-        // request, so two boundaries can never end up sharing one span id.
-        if (!requestNodeClaimed && openMarks.isEmpty() && spans.depth() <= 1) {
-            mark.spanId = requestId();
-            mark.parentSpanId = spans.parent();
-            requestNodeClaimed = true;
-        } else {
-            mark.spanId = TritonHelper.generateUUID4();
-        }
-
-        // A mark filtered out by Log_Level__mdt must be transparent rather than a
-        // phantom parent: push the enclosing span, so logs inside it nest under the
-        // nearest surviving ancestor.
+        // A mark filtered out by Log_Level__mdt must be transparent, not a phantom
+        // parent: push the enclosing span so its children nest under it instead.
         mark.suppressed = !doLog(markBuilder(mark)
                                     .summary(MARK_STARTED_PREFIX + markName)
                                     .withoutLimitInfo());
@@ -577,16 +544,14 @@ global with sharing class Triton {
     }
 
     /**
-    * Closes the mark at the given position: pops its span and emits the completion
-    * record with the elapsed time.
+    * Closes the mark at the given position: pops its span, emits the completion record.
     * @param index -- position of the mark in the open mark list
     */
     private static void closeMark(Integer index) {
         Mark mark = openMarks.remove(index);
         spans.pop(mark.stackedSpanId);
 
-        // The opening record never made it past the log level check, so a completion
-        // record would be a span with only half a pair.
+        // The opening record was filtered out, so a completion record would be half a pair.
         if (mark.suppressed) return;
 
         Long elapsedMs = System.currentTimeMillis() - mark.startedAt;
@@ -597,12 +562,10 @@ global with sharing class Triton {
     }
 
     /**
-    * Builds the half of a paired mark record that both halves share. Built from the
-    * template, so an entry point's template Area survives onto its marks; Type and
-    * Action are set unconditionally because they are the span converter's contract.
-    * The stacktrace and operation are set explicitly from the values captured when
-    * the mark opened, which short-circuits the stack capture in
-    * TritonBuilder.resolveStackTraceAndOperation for both records.
+    * Builds the fields both halves of a mark pair share. From the template, so an
+    * entry point's Area survives onto its marks; Type and Action are the converter's
+    * contract. Setting the captured stacktrace and operation here short-circuits
+    * TritonBuilder.resolveStackTraceAndOperation on both records.
     * @param mark -- the mark being reported
     * @return a builder carrying the mark's shared fields
     */
@@ -614,16 +577,14 @@ global with sharing class Triton {
             .stackTrace(mark.stackTrace)
             .spanId(mark.spanId)
             .level(TritonTypes.Level.FINE);
-        // Left unset rather than set to null when the mark is the request node itself,
-        // so the field is simply absent instead of explicitly empty.
+        // Left unset rather than set to null when there is no ambient parent, so the
+        // field is simply absent instead of explicitly empty.
         return String.isBlank(mark.parentSpanId) ? builder : builder.parentSpanId(mark.parentSpanId);
     }
 
     /**
     * Derives a mark name from a stack trace: the topmost application frame, minus the
-    * literal 'Class.' prefix Apex puts on every frame and which getOperation retains.
-    * Falls back to a request-scoped anonymous name when no application frame is
-    * available, so a span is still nested and identifiable rather than nameless.
+    * 'Class.' prefix getOperation retains. Falls back to a counted anonymous name.
     * @param stackTrace -- trace captured at the call site
     * @return the derived mark name, never blank
     */
@@ -639,10 +600,7 @@ global with sharing class Triton {
         return ANONYMOUS_MARK_NAME + anonymousMarkCounter;
     }
 
-    /**
-    * The current request id -- the root of the span tree for this execution context.
-    * @return the request id
-    */
+    /** The request id -- the root sentinel of this execution context's span stack. */
     private static String requestId() {
         return System.Request.getCurrent().getRequestId();
     }

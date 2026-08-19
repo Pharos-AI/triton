@@ -214,6 +214,9 @@ public with sharing class TritonHelper {
         'TritonFlowFlushBatch',
         'TritonHelper',
         'TritonLwc',
+        // Defensive, as the comment above asks: TritonSpanContext never logs, and a
+        // mark's trace is captured before any call into it, so no test can reach a
+        // trace where this entry is what removes a frame.
         'TritonSpanContext',
         'TritonTypes'
     };
