@@ -101,21 +101,6 @@ global with sharing class Triton {
      */
     public static String TRANSACTION_ID;
 
-    /** Literal prefix Apex puts in front of every class frame in a stack trace. */
-    private static final String CLASS_FRAME_PREFIX = 'Class.';
-
-    /** Name given to a mark whose name cannot be derived from the stack trace. */
-    private static final String ANONYMOUS_MARK_NAME = 'AnonymousMark';
-
-    /**
-     * Summary prefixes for a mark's two halves, matched verbatim by the span converter
-     * and identical to the ones the LWC logger emits.
-     */
-    private static final String MARK_STARTED_PREFIX = 'Performance started: ';
-    private static final String MARK_COMPLETED_PREFIX = 'Performance: ';
-    private static final String MARK_DURATION_PREFIX = 'Duration: ';
-    private static final String MARK_DURATION_SUFFIX = 'ms';
-
     /**
      * Span stack for the current execution context, rooted at the request id -- which,
      * unlike TRANSACTION_ID, cannot change mid-request and re-root a built subtree.
@@ -125,7 +110,7 @@ global with sharing class Triton {
         get {
             if (spans == null) {
                 spans = new TritonSpanContext();
-                spans.reset(requestId());
+                spans.reset(TritonHelper.requestId());
             }
             return spans;
         }
@@ -137,9 +122,6 @@ global with sharing class Triton {
      * marks (a loop, a recursion) are two distinct spans and neither orphans the other.
      */
     private static List<Mark> openMarks = new List<Mark>();
-
-    /** Occurrence counter behind the anonymous mark name fallback. */
-    private static Integer anonymousMarkCounter = 0;
 
     /**
      * A single open mark. Everything both paired records need is captured once, at
@@ -407,7 +389,7 @@ global with sharing class Triton {
     */
     public static String startMark() {
         String stackTrace = TritonHelper.getCurrentStackTrace();
-        return openMark(deriveMarkName(stackTrace), stackTrace);
+        return openMark(TritonHelper.deriveMarkName(stackTrace), stackTrace);
     }
 
     /**
@@ -419,7 +401,7 @@ global with sharing class Triton {
     */
     public static String startMark(String markName) {
         String stackTrace = TritonHelper.getCurrentStackTrace();
-        return openMark(String.isBlank(markName) ? deriveMarkName(stackTrace) : markName, stackTrace);
+        return openMark(String.isBlank(markName) ? TritonHelper.deriveMarkName(stackTrace) : markName, stackTrace);
     }
 
     /**
@@ -430,7 +412,7 @@ global with sharing class Triton {
     */
     public static String startTriggerMark() {
         String stackTrace = TritonHelper.getCurrentStackTrace();
-        String derivedName = deriveMarkName(stackTrace);
+        String derivedName = TritonHelper.deriveMarkName(stackTrace);
         return openMark(
             triggerMarkName(derivedName, Trigger.isExecuting ? Trigger.operationType : null),
             stackTrace);
@@ -480,7 +462,7 @@ global with sharing class Triton {
     */
     public static void clearMarks() {
         openMarks.clear();
-        spans.reset(requestId());
+        spans.reset(TritonHelper.requestId());
     }
 
     /**
@@ -516,7 +498,7 @@ global with sharing class Triton {
     */
     public static String ambientParentSpanId() {
         String enclosing = spans.current();
-        if (String.isNotBlank(enclosing) && !enclosing.equals(requestId())) {
+        if (String.isNotBlank(enclosing) && !enclosing.equals(TritonHelper.requestId())) {
             return enclosing;
         }
         return String.isBlank(TRANSACTION_ID) ? null : TRANSACTION_ID;
@@ -540,7 +522,7 @@ global with sharing class Triton {
         // A mark filtered out by Log_Level__mdt must be transparent, not a phantom
         // parent: push the enclosing span so its children nest under it instead.
         mark.suppressed = !doLog(markBuilder(mark)
-                                    .summary(MARK_STARTED_PREFIX + markName)
+                                    .summary(TritonHelper.MARK_STARTED_PREFIX + markName)
                                     .withoutLimitInfo());
         mark.stackedSpanId = mark.suppressed ? spans.current() : mark.spanId;
         spans.push(mark.stackedSpanId);
@@ -562,8 +544,8 @@ global with sharing class Triton {
 
         Long elapsedMs = System.currentTimeMillis() - mark.startedAt;
         doLog(markBuilder(mark)
-                .summary(MARK_COMPLETED_PREFIX + mark.name)
-                .details(MARK_DURATION_PREFIX + elapsedMs + MARK_DURATION_SUFFIX)
+                .summary(TritonHelper.MARK_COMPLETED_PREFIX + mark.name)
+                .details(TritonHelper.MARK_DURATION_PREFIX + elapsedMs + TritonHelper.MARK_DURATION_SUFFIX)
                 .duration(Decimal.valueOf(elapsedMs)));
     }
 
@@ -586,29 +568,6 @@ global with sharing class Triton {
         // Left unset rather than set to null when there is no ambient parent, so the
         // field is simply absent instead of explicitly empty.
         return String.isBlank(mark.parentSpanId) ? builder : builder.parentSpanId(mark.parentSpanId);
-    }
-
-    /**
-    * Derives a mark name from a stack trace: the topmost application frame, minus the
-    * 'Class.' prefix getOperation retains. Falls back to a counted anonymous name.
-    * @param stackTrace -- trace captured at the call site
-    * @return the derived mark name, never blank
-    */
-    @TestVisible
-    private static String deriveMarkName(String stackTrace) {
-        String operation = TritonHelper.getOperation(stackTrace);
-        if (String.isNotBlank(operation) && operation.startsWith(CLASS_FRAME_PREFIX)) {
-            operation = operation.substringAfter(CLASS_FRAME_PREFIX);
-        }
-        if (String.isNotBlank(operation)) return operation;
-
-        anonymousMarkCounter++;
-        return ANONYMOUS_MARK_NAME + anonymousMarkCounter;
-    }
-
-    /** The request id -- the root sentinel of this execution context's span stack. */
-    private static String requestId() {
-        return System.Request.getCurrent().getRequestId();
     }
 
     public static void error(TritonBuilder builder) { log(builder.error()); }

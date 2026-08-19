@@ -756,8 +756,7 @@ public with sharing class TritonBuilder {
     */
     private void ensureSpanIds() {
         if (String.isBlank(this.currentSpanId)) {
-            String requestId = System.Request.getCurrent().getRequestId();
-            this.builder.attribute(SPAN_ID, requestId);
+            this.builder.attribute(SPAN_ID, TritonHelper.requestId());
         }
     }
 

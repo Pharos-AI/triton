@@ -714,8 +714,8 @@ private class TritonMarkTest {
 
     @IsTest
     private static void test_deriveMarkName_falls_back_to_anonymous() {
-        String first = Triton.deriveMarkName('');
-        String second = Triton.deriveMarkName('no frames here');
+        String first = TritonHelper.deriveMarkName('');
+        String second = TritonHelper.deriveMarkName('no frames here');
 
         System.assertEquals('AnonymousMark1', first, 'A blank derivation falls back to a counted anonymous name');
         System.assertEquals('AnonymousMark2', second, 'The counter keeps anonymous marks distinguishable');
@@ -729,7 +729,7 @@ private class TritonMarkTest {
     private static void test_derived_fallback_name_nests_like_any_other() {
         Test.startTest();
         Triton.startMark('boundary');
-        String anonymous = Triton.startMark(Triton.deriveMarkName(''));
+        String anonymous = Triton.startMark(TritonHelper.deriveMarkName(''));
         Triton.endMark();
         Triton.endMark();
         Test.stopTest();
