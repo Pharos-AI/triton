@@ -201,13 +201,12 @@ try {
 - `Triton.endMark(markName)` — closes a specific mark when it legitimately closes out of order (`startMark` returns the name). The newest mark with that name is the one that closes, so loops and recursion are safe.
 - `Triton.startTriggerMark()` — in a trigger handler. Names the span `<Handler>.<BEFORE_UPDATE>`; the trigger context is the one thing a stack trace cannot carry.
 - `Triton.clearMarks()` — deliberate recovery to a known-good state. Not needed in a batch chunk, a queueable or a future: a fresh execution context already starts clean.
-- **A request boundary is just `Triton.startMark()` at the top of the entry point** — the first mark opened in a request claims the request node, so everything opened later nests under it. There is no boundary-specific method.
+- **A request boundary is just `Triton.startMark()` at the top of the entry point** — the outermost mark attaches to the transaction, so everything opened later nests under it. There is no boundary-specific method.
 - **A batch phase is two existing calls**: `Triton.resumeTransaction(carriedId)` (when a transaction id is carried) then `Triton.startMark()`, which derives `MyBatch.execute` for free.
 - Marks are **buffered like any other log and never flush** — keep your existing flush points (Step 3f).
 - Marks emit at **FINE**. Dial a class up or down with a `Log_Level__mdt` rule, not with a call-site argument. A mark filtered out by a rule stays transparent: logs inside it nest under the nearest surviving ancestor.
 
 Manual timing as shown above remains correct for a **one-off** duration on a single log — a mark is what you want when the stretch should appear as a span with everything inside it attached.
-
 
 ### 3d — DML result logging
 

@@ -69,7 +69,7 @@ try {
 
 Marks emit at `FINE` and are buffered — no mark method ever flushes. Verbosity is controlled by `Log_Level__mdt`, and a mark filtered out by a rule stays transparent: logs inside it nest under the nearest surviving ancestor.
 
-> **Note for existing dashboards:** inside a mark, a log's `Span_Id__c` is its own span id rather than the request id. Queries that used `Span_Id__c` to mean "this log belongs to request X" should read `pharos__Request_Id_External__c` instead. Code that never opens a mark is unaffected — its span fields are unchanged.
+> **Note for existing dashboards:** inside a mark, a log's `Span_Id__c` is its own span id rather than the request id. Queries that used `Span_Id__c` to mean "this log belongs to request X" should read `pharos__Request_Id_External__c` instead. Code that never opens a mark is unaffected — its span fields are unchanged. A mark filtered out by `Log_Level__mdt` is still an open mark, so it is transparent for *parenting* but not for data shape: logs around it get their own span id rather than the request id, exactly as they would inside a mark that emitted.
 
 ## Access Control
 
