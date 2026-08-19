@@ -635,10 +635,38 @@ describe('PerformanceTracker', () => {
     const initialLogCount = triton.logs.length;
     
     boundTriton.startPerformanceMark(markName);
+    // The opening record ships immediately, so the span exists while the mark
+    // is open and logs written meanwhile have a real parent to nest under.
+    expect(triton.logs.length).toBe(initialLogCount + 1);
+
     boundTriton.endPerformanceMark(markName);
     
-    // Should create a performance log
-    expect(triton.logs.length).toBe(initialLogCount + 1);
+    // Two records, one span: the backend pairs them by span id, the same way it
+    // pairs "Backend call started/completed".
+    expect(triton.logs.length).toBe(initialLogCount + 2);
+    const [opening, completion] = triton.logs.slice(-2);
+    expect(opening.summary).toHaveBeenCalledWith(
+      expect.stringContaining('Performance started:')
+    );
+    expect(opening.spanId.mock.calls[0][0]).toBe(completion.spanId.mock.calls[0][0]);
+    expect(completion.duration).toHaveBeenCalled();
+  });
+
+  test('an open mark is already a real span for logs written under it', () => {
+    // Before the opening record existed, a log written while the mark was open
+    // named a span that had not been emitted — and never would be if the mark
+    // stayed open. Measured on a live purchase trace: 60 LWC spans pointing at
+    // three span ids that were absent from it, 30 under a single one.
+    const initialLogCount = triton.logs.length;
+
+    boundTriton.startPerformanceMark('slow-thing');
+    const openMarkSpanId = triton.spanContext.current();
+
+    boundTriton.log(boundTriton.info(TYPE.FRONTEND, AREA.OTHER).summary('work'));
+
+    const [opening, work] = triton.logs.slice(initialLogCount);
+    expect(opening.spanId).toHaveBeenCalledWith(openMarkSpanId);
+    expect(work.parentSpanId).toHaveBeenCalledWith(openMarkSpanId);
   });
 
   test('should warn when ending non-existent mark', () => {
@@ -699,7 +727,8 @@ describe('PerformanceTracker', () => {
     boundTriton.endPerformanceMark('mark1');
     boundTriton2.endPerformanceMark('mark2');
     
-    expect(triton.logs.length).toBe(initialLogCount + 2);
+    // Two marks, each an opening record plus a completion.
+    expect(triton.logs.length).toBe(initialLogCount + 4);
   });
 
   test('should create component data for unknown components', () => {

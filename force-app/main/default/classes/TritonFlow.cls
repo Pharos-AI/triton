@@ -23,6 +23,7 @@
 global with sharing class TritonFlow {
     private static final String INVALID_LOG_LEVEL = 'Unable to locate log level: {0}. Default INFO level will be used.';
     private static final String INVALID_CATEGORY = 'Unable to locate category: {0}. Default Flow category will be used.';
+    private static final String INVALID_FLOW_VERSION = 'Unable to parse flow version: {0}. Flow Version will not be set.';
     
     /**
      * @description
@@ -92,6 +93,15 @@ global with sharing class TritonFlow {
             }
         }
         
+        Decimal flowVersion;
+        if (String.isNotBlank(flowLog.flowVersion)) {
+            try {
+                flowVersion = Decimal.valueOf(flowLog.flowVersion.trim());
+            } catch (Exception e) {
+                flowDetails += Triton.SPACE_SEP + TritonHelper.formatMessage(INVALID_FLOW_VERSION, flowLog.flowVersion);
+            }
+        }
+
         //resume or start transaction if one isn't already in progress
         if(String.isNotBlank(flowLog.transactionId)) {
             Triton.resumeTransaction(flowLog.transactionId);
@@ -118,6 +128,10 @@ global with sharing class TritonFlow {
                                     .pendingJobs(true)
                                     .totalActiveSession(true))
                 .level(level);
+
+        if (flowVersion != null) {
+            builder.flowVersion(flowVersion);
+        }
 
         // if the log level is ERROR, create an issue
         if(level == TritonTypes.Level.ERROR) {
@@ -162,6 +176,8 @@ global with sharing class TritonFlow {
         global String interviewGUID;
         @InvocableVariable(Required=false Label='Flow API Name')
         global String flowApiName;
+        @InvocableVariable(Required=false Label='Flow Version')
+        global String flowVersion;
         @InvocableVariable(Required=false Label='Level')
         global String level;
         @InvocableVariable(Required=false Label='Transaction ID')
