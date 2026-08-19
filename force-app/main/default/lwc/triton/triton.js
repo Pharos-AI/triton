@@ -631,6 +631,22 @@ class PerformanceTracker {
             parentSpanId: parentSpanId
         });
 
+        // Publish the opening record straight away, under the same span id the
+        // completion will carry. Without it the span only appears when endMark()
+        // runs, so every log written meanwhile is parented to a span that does
+        // not exist yet — and never will, if the mark is left open by an
+        // unmounted component, a navigation or an exception. The backend pairs
+        // the two by span id and collapses them into one span, the way it
+        // already does for "Backend call started/completed".
+        tritonInstance.log(
+            tritonInstance.makeBuilder()
+                .type(TYPE.PERFORMANCE)
+                .summary(`Performance started: ${tritonInstance._componentId || 'unknown'} - ${markName}`)
+                .action(markName)
+                .spanId(spanId)
+                .parentSpanId(parentSpanId)
+        );
+
         return markName;
     }
 
