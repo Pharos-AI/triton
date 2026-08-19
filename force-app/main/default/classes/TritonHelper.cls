@@ -214,6 +214,7 @@ public with sharing class TritonHelper {
         'TritonFlowFlushBatch',
         'TritonHelper',
         'TritonLwc',
+        'TritonSpanContext',
         'TritonTypes'
     };
 

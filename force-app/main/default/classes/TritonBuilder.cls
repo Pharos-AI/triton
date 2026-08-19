@@ -777,6 +777,30 @@ public with sharing class TritonBuilder {
     }
 
     /**
+    * Stamps ambient span context onto a log emitted inside an open mark: its own
+    * span id, parented to the innermost mark. This is what gives Apex logs a
+    * hierarchy instead of a flat list of siblings under one request node.
+    *
+    * Explicitly set values always win. TritonLwc forwards the browser's span ids
+    * straight through, and overwriting them would sever every LWC to Apex trace.
+    *
+    * Outside any mark this is a no-op, so a log emitted by code that never calls
+    * startMark keeps exactly the span fields it has today: the request id as the
+    * span id, and no parent.
+    * @see Triton.startMark
+    */
+    private void ensureSpanContext() {
+        if (!Triton.hasOpenMark()) return;
+
+        if (String.isBlank(this.currentSpanId)) {
+            this.spanId(TritonHelper.generateUUID4());
+        }
+        if (String.isBlank(this.currentParentSpanId)) {
+            this.parentSpanId(Triton.currentSpanId());
+        }
+    }
+
+    /**
     * Prepares the builder for logging by auto-enriching with runtime context.
     * Called by Triton.log() to add stacktrace, operation, tracepoint, and limits.
     * @param transactionId -- Transaction ID to associate with this log
@@ -787,6 +811,8 @@ public with sharing class TritonBuilder {
         this.transactionId(transactionId);
 
         resolveStackTraceAndOperation();
+
+        ensureSpanContext();
 
         // Add tracepoint and limits
         this.tracePoint().limitInfo();
