@@ -321,7 +321,7 @@ try {
 
 Don't stack a mark on top of a `timeBackendCall`/`timeUserInteraction` that already covers the same span.
 
-> **Cross-tier note.** On the Apex side a mark emits a **pair** of records — `Performance started: <name>` when it opens and `Performance: <name>` with the duration when it closes — so a span exists in the trace while it is still running and everything logged inside it can be parented to it. The LWC marks gain the same pairing with the paired-record change; the summary prefixes are identical on both tiers.
+> **Cross-tier note.** On the Apex side a mark emits a **pair** of records — `Performance started: <name>` when it opens and `Performance: <name>` with the duration when it closes — so a span exists in the trace while it is still running and everything logged inside it can be parented to it. The LWC marks emit the same pair; the summary prefixes are identical on both tiers.
 
 #### Category 3 — Deep (`--perf deep`)
 
