@@ -25,8 +25,16 @@ private class TritonMarkTest {
 
     private static final String CPU_TIME_FIELD = 'CPU_Time__c';
 
-    /** Share of the CPU limit the org's worst-case mark volume is allowed to consume. */
-    private static final Integer CPU_BUDGET_NUMERATOR = 40;
+    /**
+     * Share of the CPU limit the org's worst-case mark volume is allowed to consume.
+     *
+     * 50% is a 5,000ms ceiling against a measured 2,671-2,782ms -- roughly 1.8x headroom.
+     * The measured spread is only ~4% in a quiet org, but Apex CPU accounting swings much
+     * wider under org load or a concurrent deploy, and a tighter ceiling would make this
+     * the flakiest assert in the suite. The assertion keeps its meaning at 50%: 217 marks
+     * still leave most of the budget to the business logic they are measuring.
+     */
+    private static final Integer CPU_BUDGET_NUMERATOR = 50;
 
     @TestSetup
     private static void testSetup() {
@@ -612,12 +620,17 @@ private class TritonMarkTest {
             componentRule('quiet-inner', TritonTypes.Level.INFO)
         });
 
+        // No surviving mark stands above the suppressed pair: quiet-outer is itself the
+        // outermost mark, so both suppressions push the span stack's request-id root and
+        // spans.current() never names a real span. That is exactly the case the
+        // ambientParentSpanId translation exists for, so it must be tested at depth 0 --
+        // a surviving boundary mark above these two would supply a genuine parent span
+        // id and the translation would never fire.
         Test.startTest();
-        Triton.startMark('boundary');
+        String transactionId = Triton.startTransaction();
         Triton.startMark('quiet-outer');
         Triton.startMark('quiet-inner');
         Triton.info(Triton.t.summary('two suppressions deep'));
-        Triton.endMark();
         Triton.endMark();
         Triton.endMark();
         Test.stopTest();
@@ -626,14 +639,19 @@ private class TritonMarkTest {
             'The outer suppression emits nothing');
         System.assertEquals(null, bufferedBySummary('Performance started: quiet-inner'),
             'The inner suppression emits nothing either');
-        System.assertEquals(3, buffer().size(),
-            'Only the boundary pair and the leaf survive');
+        System.assertEquals(1, buffer().size(),
+            'Neither suppressed pair leaves a record, so the leaf is the only log buffered');
 
-        pharos__Log__c boundary = bufferedBySummary('Performance started: boundary');
-        System.assertEquals(spanOf(boundary), parentOf(bufferedBySummary('two suppressions deep')),
-            'Stacked suppressions collapse to one transparent level: the leaf attaches to the boundary');
+        String leafParent = parentOf(bufferedBySummary('two suppressions deep'));
+        System.assertEquals(transactionId, leafParent,
+            'Stacked suppressions at depth 0 collapse past both marks to the transaction span, '
+            + 'which the converter synthesises for every transaction id');
+        System.assertNotEquals(requestId(), leafParent,
+            'And never to the request id the two suppressions actually stacked: the converter '
+            + 'reaches the request span only by hashing, so a request id used as a parent value '
+            + 'names a span nothing in the trace carries');
 
-        System.assertEquals(false, Triton.hasOpenMark(), 'All three marks closed');
+        System.assertEquals(false, Triton.hasOpenMark(), 'Both marks closed');
         System.assertEquals(requestId(), Triton.currentSpanId(),
             'And popping by value unwinds the duplicate ids the two suppressions pushed, so the '
             + 'stack ends exactly where it started');
@@ -677,6 +695,10 @@ private class TritonMarkTest {
             'The literal Class. prefix that getOperation retains is stripped');
         System.assertEquals(false, markName.contains('Triton.'),
             'Triton\'s own frames are never used as the mark name');
+        System.assertEquals(false, markName.contains('TritonSpanContext'),
+            'Nor TritonSpanContext, whose TRITON_FRAMEWORK_CLASSES registration is what keeps a '
+            + 'span-stack frame from being attributed as the caller. Not caught by the assert '
+            + 'above: TritonSpanContext has no dot after Triton, so it does not contain "Triton."');
 
         pharos__Log__c opening = bufferedLog(0);
         pharos__Log__c completion = bufferedLog(1);
