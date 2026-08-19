@@ -689,7 +689,14 @@ public with sharing class TritonHelper {
                     logLevels = new List<LogLevelRule>();
                     componentScopedLevelsExist = false;
                     for (Log_Level__mdt ll : logLevelsMdt) {
-                        LogLevelRule rule = new LogLevelRule(ll);
+                        LogLevelRule rule;
+                        try {
+                            rule = new LogLevelRule(ll);
+                        } catch (Exception e) {
+                            // Fail-safe: a malformed row (e.g. blank Level__c) becomes
+                            // inert instead of throwing into the host transaction.
+                            continue;
+                        }
                         logLevels.add(rule);
                         componentScopedLevelsExist = componentScopedLevelsExist || rule.component != null;
                     }
@@ -808,9 +815,16 @@ public with sharing class TritonHelper {
         public Boolean isLogAllowed(pharos__Log__c log) {
             if (String.isBlank(log.Log_Level__c) || logLevels.isEmpty()) return true;
 
+            TritonTypes.Level currentLevel;
+            try {
+                currentLevel = TritonTypes.Level.valueOf(log.Log_Level__c);
+            } catch (Exception e) {
+                // Fail open: an unparsable log level must never drop the log.
+                return true;
+            }
+
             String logUserId = normalizeUserId(log.pharos__User_Id__c);
             String logComponent = getComponentName(log);
-            TritonTypes.Level currentLevel = TritonTypes.Level.valueOf(log.Log_Level__c);
 
             TritonTypes.Level effectiveLevel = null;
             Integer bestSpecificity = -1;
@@ -877,6 +891,18 @@ public with sharing class TritonHelper {
     }
 
     /**
+    * Normalizes a Log_Level__mdt scope field to the blank-as-wildcard contract:
+    * rows can arrive with null or ''/whitespace blanks depending on the tooling
+    * that created them, and all must behave the same.
+    * @param value -- raw rule field value
+    * @return null when blank, otherwise the trimmed value
+    */
+    @TestVisible
+    private static String normalizeRuleValue(String value) {
+        return String.isBlank(value) ? null : value.trim();
+    }
+
+    /**
     * Log level specificity weights, ordered from the narrowest scope to the
     * broadest: a User Id targets one person, a Component one class/flow/LWC,
     * while a Category covers an entire technology. Using distinct powers of two
@@ -910,11 +936,11 @@ public with sharing class TritonHelper {
         private final Integer specificity;
 
         private LogLevelRule(Log_Level__mdt mdt) {
-            this.category = mdt.Category__c;
-            this.type = mdt.Type__c;
-            this.area = mdt.Area__c;
-            this.userId = normalizeUserId(mdt.User_Id__c);
-            this.component = mdt.Component_Name__c;
+            this.category = normalizeRuleValue(mdt.Category__c);
+            this.type = normalizeRuleValue(mdt.Type__c);
+            this.area = normalizeRuleValue(mdt.Area__c);
+            this.userId = normalizeUserId(normalizeRuleValue(mdt.User_Id__c));
+            this.component = normalizeRuleValue(mdt.Component_Name__c);
             this.level = TritonTypes.Level.valueOf(mdt.Level__c);
             this.specificity =
                 (this.userId != null ? LEVEL_WEIGHT_USER_ID : 0) +
@@ -929,17 +955,18 @@ public with sharing class TritonHelper {
         * Null (unspecified) rule attributes are treated as wildcards.
         */
         private Boolean targets(pharos__Log__c log, String logUserId, String logComponent) {
+            // User ids compare case-sensitively (15-char Ids are case-sensitive base 62).
             return matches(category, log.pharos__Category__c)
                 && matches(type, log.pharos__Type__c)
                 && matches(area, log.pharos__Area__c)
-                && matches(userId, logUserId)
+                && (userId == null || userId.equals(logUserId))
                 && matches(component, logComponent);
         }
 
-        // String.equals is case-sensitive and null-safe, preserving the
-        // case-sensitivity required for 15-character Salesforce Ids.
+        // Case-insensitive, null-safe comparison: rule values are free text
+        // authored in the console, so matching must be forgiving on case.
         private Boolean matches(String ruleValue, String logValue) {
-            return ruleValue == null || ruleValue.equals(logValue);
+            return ruleValue == null || ruleValue.equalsIgnoreCase(logValue);
         }
     }
 }

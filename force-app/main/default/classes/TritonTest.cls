@@ -580,6 +580,273 @@ private class TritonTest {
         System.assertEquals(null, TritonHelper.normalizeUserId(null));
     }
 
+    // --- LOG-2921: blank-as-wildcard, case-insensitive free-text matching ---
+
+    // The three CMDT blank shapes a rule field can arrive in, depending on how
+    // the row was created. All must behave identically (wildcard).
+    private static List<String> blankShapes() {
+        return new List<String>{ null, '', '  ' };
+    }
+
+    @IsTest
+    private static void test_blank_rule_fields_are_wildcards_in_every_shape() {
+        for (String blank : blankShapes()) {
+            Log_Level__mdt rule = new Log_Level__mdt();
+            rule.Level__c = TritonTypes.Level.INFO.name();
+            rule.Category__c = 'Event';
+            rule.Type__c = blank;
+            rule.Area__c = blank;
+            rule.User_Id__c = blank;
+            rule.Component_Name__c = blank;
+            TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
+            TritonHelper.Config.logLevels = null;
+
+            pharos__Log__c log = new pharos__Log__c(
+                Log_Level__c = TritonTypes.Level.DEBUG.name(),
+                pharos__Category__c = 'Event',
+                pharos__Type__c = 'Backend',
+                pharos__Area__c = 'Community');
+            System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
+                'Blank fields (shape "' + blank + '") must be wildcards: the INFO rule targets the log and blocks DEBUG');
+            System.assertEquals(false, TritonHelper.Config.hasComponentScopedLevels(),
+                'A blank Component_Name__c (shape "' + blank + '") must not mark the rule component-scoped');
+        }
+    }
+
+    @IsTest
+    private static void test_blank_rule_fields_do_not_inflate_specificity() {
+        // If '' counted as a value, the second rule would either fail to target the
+        // log (component mismatch) or outrank the first. Normalized, both rules are
+        // category-only, equally specific, and the tie resolves to WARNING.
+        for (String blank : blankShapes()) {
+            Log_Level__mdt verbose = new Log_Level__mdt();
+            verbose.Level__c = TritonTypes.Level.FINEST.name();
+            verbose.Category__c = 'Event';
+
+            Log_Level__mdt restrictive = new Log_Level__mdt();
+            restrictive.Level__c = TritonTypes.Level.WARNING.name();
+            restrictive.Category__c = 'Event';
+            restrictive.Component_Name__c = blank;
+
+            TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ verbose, restrictive };
+            TritonHelper.Config.logLevels = null;
+
+            pharos__Log__c log = new pharos__Log__c(
+                Log_Level__c = TritonTypes.Level.INFO.name(),
+                pharos__Category__c = 'Event',
+                pharos__Apex_Name__c = 'AnyComponent.method');
+            System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
+                'Shape "' + blank + '": blank component must not add specificity or break targeting; tie-break must yield WARNING');
+        }
+    }
+
+    @IsTest
+    private static void test_rule_values_are_trimmed() {
+        Log_Level__mdt rule = new Log_Level__mdt();
+        rule.Level__c = TritonTypes.Level.INFO.name();
+        rule.Area__c = ' Partners ';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
+        TritonHelper.Config.logLevels = null;
+
+        pharos__Log__c log = new pharos__Log__c(
+            Log_Level__c = TritonTypes.Level.DEBUG.name(),
+            pharos__Area__c = 'Partners');
+        System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
+            'Rule values must be trimmed before matching');
+    }
+
+    @IsTest
+    private static void test_matching_is_case_insensitive_for_free_text_fields() {
+        // Free-text values, deliberately NOT TritonTypes enum members: matching is
+        // pure free text with no vocabulary constraint.
+        Log_Level__mdt rule = new Log_Level__mdt();
+        rule.Level__c = TritonTypes.Level.INFO.name();
+        rule.Category__c = 'fLoW';
+        rule.Type__c = 'screen flow';
+        rule.Area__c = 'PARTNERS';
+        rule.Component_Name__c = 'partner_intake_form';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
+        TritonHelper.Config.logLevels = null;
+
+        pharos__Log__c log = new pharos__Log__c(
+            Log_Level__c = TritonTypes.Level.DEBUG.name(),
+            pharos__Category__c = 'Flow',
+            pharos__Type__c = 'Screen Flow',
+            pharos__Area__c = 'Partners',
+            pharos__Flow_API_Name__c = 'Partner_Intake_Form');
+        System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
+            'All fields must match case-insensitively as free text');
+
+        // A genuinely different value must still miss.
+        log.pharos__Type__c = 'Autolaunched Flow';
+        System.assertEquals(true, TritonHelper.Config.isLogAllowed(log),
+            'Case-insensitivity must not turn into substring/fuzzy matching');
+    }
+
+    @IsTest
+    private static void test_user_id_matching_is_length_insensitive_and_case_exact() {
+        String userId18 = UserInfo.getUserId();
+        String userId15 = userId18.substring(0, 15);
+        // 15- and 18-char forms of the same id match via 15-char prefix truncation.
+        for (String ruleValue : new List<String>{ userId15, userId18 }) {
+            Log_Level__mdt rule = new Log_Level__mdt();
+            rule.Level__c = TritonTypes.Level.INFO.name();
+            rule.User_Id__c = ruleValue;
+            TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
+            TritonHelper.Config.logLevels = null;
+
+            pharos__Log__c log = new pharos__Log__c(
+                Log_Level__c = TritonTypes.Level.DEBUG.name(),
+                pharos__User_Id__c = userId18);
+            System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
+                'Rule user id "' + ruleValue + '" must match the 18-char log value');
+
+            // And the mirror: 15-char log value against the same rule.
+            log.pharos__User_Id__c = userId15;
+            System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
+                'Rule user id "' + ruleValue + '" must match a 15-char log value');
+        }
+
+        // A different user still misses.
+        Log_Level__mdt other = new Log_Level__mdt();
+        other.Level__c = TritonTypes.Level.INFO.name();
+        other.User_Id__c = '005000000000001';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ other };
+        TritonHelper.Config.logLevels = null;
+        System.assertEquals(true, TritonHelper.Config.isLogAllowed(new pharos__Log__c(
+                Log_Level__c = TritonTypes.Level.DEBUG.name(),
+                pharos__User_Id__c = userId18)),
+            'A rule for a different user must not target this log');
+
+        // Case-exact: 15-char ids are case-sensitive base 62.
+        Log_Level__mdt cased = new Log_Level__mdt();
+        cased.Level__c = TritonTypes.Level.INFO.name();
+        cased.User_Id__c = '005000000000Aaa';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ cased };
+        TritonHelper.Config.logLevels = null;
+        System.assertEquals(true, TritonHelper.Config.isLogAllowed(new pharos__Log__c(
+                Log_Level__c = TritonTypes.Level.DEBUG.name(),
+                pharos__User_Id__c = '005000000000AaA')),
+            'User id matching must stay case-sensitive');
+    }
+
+    @IsTest
+    private static void test_malformed_rule_level_is_inert_not_fatal() {
+        // One malformed row (blank or garbage Level__c, in any blank shape) must
+        // not throw inside the caller's transaction or disable sibling rules.
+        for (String badLevel : new List<String>{ null, '', '  ', 'VERBOSE' }) {
+            Log_Level__mdt malformed = new Log_Level__mdt();
+            malformed.Level__c = badLevel;
+            malformed.Category__c = 'Event';
+
+            Log_Level__mdt sibling = new Log_Level__mdt();
+            sibling.Level__c = TritonTypes.Level.INFO.name();
+            sibling.Area__c = 'Community';
+
+            TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ malformed, sibling };
+            TritonHelper.Config.logLevels = null;
+
+            System.assertEquals(1, TritonHelper.Config.logLevels.size(),
+                'Level "' + badLevel + '": the malformed rule must be skipped, the sibling kept');
+            System.assertEquals(false, TritonHelper.Config.isLogAllowed(new pharos__Log__c(
+                    Log_Level__c = TritonTypes.Level.DEBUG.name(),
+                    pharos__Area__c = 'Community')),
+                'Level "' + badLevel + '": the sibling rule must still enforce its threshold');
+        }
+    }
+
+    @IsTest
+    private static void test_unparsable_log_level_fails_open() {
+        Log_Level__mdt rule = new Log_Level__mdt();
+        rule.Level__c = TritonTypes.Level.ERROR.name();
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
+        TritonHelper.Config.logLevels = null;
+
+        System.assertEquals(true, TritonHelper.Config.isLogAllowed(new pharos__Log__c(
+                Log_Level__c = 'NOT_A_LEVEL')),
+            'A log whose level cannot be parsed must be allowed through, not dropped or thrown on');
+    }
+
+    @IsTest
+    private static void test_qa_matrix_shapes_against_real_flow_log() {
+        // QA's flow-log shape (spec §1.3) with the post-fix emission convention:
+        // plain flow API name, separate version, user stamped. One rule per matrix
+        // group; each INFO rule must block the DEBUG log.
+        pharos__Log__c flowLog = new pharos__Log__c(
+            Log_Level__c = TritonTypes.Level.DEBUG.name(),
+            pharos__Category__c = 'Flow',
+            pharos__Type__c = 'Screen Flow',
+            pharos__Area__c = 'Partners',
+            pharos__Flow_API_Name__c = 'Partner_Intake_Form',
+            pharos__Flow_Version__c = '4',
+            pharos__Apex_Name__c = 'Start',
+            pharos__User_Id__c = UserInfo.getUserId());
+
+        Map<String, Log_Level__mdt> rulesByGroup = new Map<String, Log_Level__mdt>();
+
+        Log_Level__mdt categoryRule = new Log_Level__mdt();
+        categoryRule.Level__c = 'INFO'; categoryRule.Category__c = 'flow';
+        rulesByGroup.put('+Category', categoryRule);
+
+        Log_Level__mdt typeRule = new Log_Level__mdt();
+        typeRule.Level__c = 'INFO'; typeRule.Type__c = 'screen flow';
+        rulesByGroup.put('+Type', typeRule);
+
+        Log_Level__mdt areaRule = new Log_Level__mdt();
+        areaRule.Level__c = 'INFO'; areaRule.Area__c = 'partners';
+        rulesByGroup.put('+Area', areaRule);
+
+        Log_Level__mdt componentRule = new Log_Level__mdt();
+        componentRule.Level__c = 'INFO'; componentRule.Component_Name__c = 'Partner_Intake_Form';
+        rulesByGroup.put('+Component', componentRule);
+
+        Log_Level__mdt userRule = new Log_Level__mdt();
+        userRule.Level__c = 'INFO'; userRule.User_Id__c = UserInfo.getUserId().substring(0, 15);
+        rulesByGroup.put('+User', userRule);
+
+        for (String grp : rulesByGroup.keySet()) {
+            TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rulesByGroup.get(grp) };
+            TritonHelper.Config.logLevels = null;
+            System.assertEquals(false, TritonHelper.Config.isLogAllowed(flowLog),
+                grp + ' rule must target the real flow-log shape and block DEBUG');
+        }
+    }
+
+    // --- LOG-2921: emission-time user stamping -----------------------------
+
+    @IsTest
+    private static void test_builder_stamps_running_user_at_emission() {
+        System.assertEquals(UserInfo.getUserId(), Triton.makeBuilder().build().pharos__User_Id__c,
+            'Every builder must carry the running user so User-scoped rules match at filter time');
+    }
+
+    @IsTest
+    private static void test_explicit_user_id_overrides_stamp() {
+        Id otherUser = '005000000000001AAA';
+        TritonBuilder builder = Triton.makeBuilder().userId(otherUser);
+        System.assertEquals(otherUser, builder.build().pharos__User_Id__c,
+            'An explicit .userId() must override the emission-time stamp');
+        System.assertEquals(otherUser, builder.cloneBuilder().build().pharos__User_Id__c,
+            'cloneBuilder must preserve an explicit user id, not re-stamp the running user');
+    }
+
+    @IsTest
+    private static void test_user_rule_matches_apex_log_without_explicit_user() {
+        TritonTestFactory.assertNoLogs();
+
+        // Pre-fix, Apex logs carried no user at filter time, so User-scoped rules
+        // never matched them. The stamp makes this rule bite with no .userId() call.
+        setupUserIdLogLevel(UserInfo.getUserId());
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('no explicit user').details('details').level(TritonTypes.Level.FINE));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()],
+            'The user-scoped DEBUG ceiling must suppress a FINE Apex log that never called .userId()');
+    }
+
     @IsTest
     private static void test_sync_event() {
         TritonTestFactory.assertNoLogs();

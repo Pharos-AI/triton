@@ -78,7 +78,8 @@ Each logging point is a single `<actionCalls>` element referencing the `TritonFl
 | `level` | no | `INFO`/`DEBUG`/`WARNING`/`ERROR` string; defaults to `INFO` |
 | `details` | no | Additional context |
 | `operation` | no | Operation name |
-| `flowApiName` | no | The flow API name |
+| `flowApiName` | no | The **plain** flow API name — never append a `-<version>` suffix |
+| `flowVersion` | no | Numeric flow version as a string (e.g. `4`); pairs with the plain `flowApiName`, matching native flow error logs |
 | `transactionId` | no | Stitch into an existing transaction (Step 3f) |
 | `additionalFields` | no | JSON string → arbitrary `pharos__Log__c` fields |
 | `stacktrace` / `fullStacktrace` | no | Carry-through inputs for chaining fault context |
@@ -119,6 +120,10 @@ Each logging point is a single `<actionCalls>` element referencing the `TritonFl
         <value><stringValue><FlowApiName></stringValue></value>
     </inputParameters>
     <inputParameters>
+        <name>flowVersion</name>
+        <value><stringValue><FlowVersionNumber></stringValue></value>
+    </inputParameters>
+    <inputParameters>
         <name>level</name>
         <value><stringValue>INFO</stringValue></value>
     </inputParameters>
@@ -126,6 +131,8 @@ Each logging point is a single `<actionCalls>` element referencing the `TritonFl
 ```
 
 Every log action must include the three required inputs (`area`, `summary`, `interviewGUID`). The sections below list the additional per-location inputs.
+
+Pass the plain API name in `flowApiName` and the version separately in `flowVersion` (omit it when unknown). Never emit version-suffixed names like `My_Flow-4` — they will not match component-scoped log levels.
 
 ### 3a — Flow entry logging
 

@@ -28,6 +28,7 @@ public with sharing class TritonBuilder {
     public static final String STACKTRACE_PARSE_RESULT = 'pharos__Stacktrace_Parse_Result__c';
     public static final String USER_ID = 'pharos__User_Id__c';
     public static final String FLOW_API_NAME = 'pharos__Flow_API_Name__c';
+    public static final String FLOW_VERSION = 'pharos__Flow_Version__c';
     public static final String DO_NOT_CREATE_ISSUE = 'pharos__Do_Not_Create_Issue__c';
     public static final String REQUEST_ID = 'pharos__Request_Id_External__c';
     public static final String SPAN_ID = 'Span_Id__c';
@@ -511,6 +512,18 @@ public with sharing class TritonBuilder {
     }
 
     /**
+    * Set flow version for the log, following the native flow error log convention
+    * (plain API name + separate version). The managed field is Text, so the
+    * numeric version is stored in its canonical string form.
+    * @param version -- flow version number
+    * @return this builder instance
+    */
+    public TritonBuilder flowVersion(Decimal version) {
+        this.builder.attribute(FLOW_VERSION, version == null ? null : String.valueOf(version));
+        return this;
+    }
+
+    /**
     * Set to not include limit info in the log record
     * @return this builder instance
     */
@@ -812,6 +825,12 @@ public with sharing class TritonBuilder {
             log.pharos__Category__c = categoryValue;
         } else if(String.isBlank(log.pharos__Category__c)) {
             log.pharos__Category__c = TritonTypes.Category.Apex.name();
+        }
+
+        // Default to the running user when not explicitly set, so user-scoped
+        // log level rules can match at filter time (before the flush-time fill)
+        if(String.isBlank(log.pharos__User_Id__c)) {
+            log.pharos__User_Id__c = UserInfo.getUserId();
         }
 
         // Auto-carryover: if summary was truncated, append full text to details
