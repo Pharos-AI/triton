@@ -398,14 +398,83 @@ private class TritonMarkTest {
     }
 
     @IsTest
-    private static void test_startTransaction_clears_marks() {
+    private static void test_startTransaction_preserves_open_marks() {
         Test.startTest();
-        Triton.startMark('stale');
+        Triton.startMark('spans-the-start');
+        String markSpan = Triton.currentSpanId();
         Triton.startTransaction();
+
+        System.assertEquals(true, Triton.hasOpenMark(),
+            'startTransaction never discards an open mark: its completion record has not been '
+            + 'written yet, and TritonLwc.saveComponentLogs and TritonFlow.log both start a '
+            + 'transaction from wherever they are called, including inside a mark');
+        System.assertEquals(markSpan, Triton.currentSpanId(), 'Nor the span stack under it');
+
+        Triton.info(Triton.t.summary('after the start'));
+        Triton.endMark();
         Test.stopTest();
 
-        System.assertEquals(false, Triton.hasOpenMark(), 'startTransaction starts from a clean span hierarchy');
-        System.assertEquals(requestId(), Triton.currentSpanId(), 'The stack is reset to the request root');
+        pharos__Log__c opening = bufferedBySummary('Performance started: spans-the-start');
+        pharos__Log__c completion = bufferedBySummary('Performance: spans-the-start');
+        System.assertNotEquals(null, completion, 'The mark still closes across the transaction start');
+        System.assertEquals(spanOf(opening), spanOf(completion),
+            'And both halves still describe one span');
+        System.assertEquals(spanOf(opening), parentOf(bufferedBySummary('after the start')),
+            'The mark is still the ambient parent after the start');
+    }
+
+    @IsTest
+    private static void test_startTransaction_without_open_mark_resets_the_stack() {
+        Test.startTest();
+        Triton.startMark('already-closed');
+        Triton.endMark();
+        String transactionId = Triton.startTransaction();
+
+        System.assertEquals(false, Triton.hasOpenMark(), 'Nothing is open to preserve');
+        System.assertEquals(requestId(), Triton.currentSpanId(),
+            'So a fresh request still starts from a clean span hierarchy at the request root');
+
+        Triton.startMark('after-the-start');
+        Triton.endMark();
+        Test.stopTest();
+
+        pharos__Log__c later = bufferedBySummary('Performance started: after-the-start');
+        System.assertEquals(transactionId, parentOf(later),
+            'And a mark opened afterwards roots at the new transaction span');
+    }
+
+    /**
+     * Regression: TritonFlow.log() starts a transaction when the flow supplies no
+     * transaction id, and used to destroy the enclosing Apex mark on the way through.
+     *
+     * Asserts on the COMPLETION record only. TritonFlow.log ends in either Triton.flush()
+     * or Triton.drain(), so the buffer -- and with it the mark's opening record -- is
+     * already empty by the time endMark() buffers the completion record into it.
+     */
+    @IsTest
+    private static void test_flow_log_inside_a_mark_preserves_it() {
+        TritonTestFactory.resetFlowState();
+
+        Test.startTest();
+        Triton.startMark('spans-the-flow-log');
+        String markSpan = Triton.currentSpanId();
+
+        TritonFlow.FlowLog flowLog = TritonTestFactory.makeFlowLog('logged from a flow');
+        flowLog.level = TritonTypes.Level.INFO.name();
+        // transactionId left null on purpose: that is the branch that calls startTransaction.
+        TritonFlow.log(new List<TritonFlow.FlowLog>{ flowLog });
+
+        System.assertNotEquals(null, Triton.TRANSACTION_ID,
+            'The flow log did start a transaction -- the code path under test was reached');
+
+        Triton.endMark();
+        Test.stopTest();
+
+        pharos__Log__c completion = bufferedBySummary('Performance: spans-the-flow-log');
+        System.assertNotEquals(null, completion,
+            'The mark survives a flow log action and still emits its completion record');
+        System.assertEquals(markSpan, spanOf(completion),
+            'On the span it opened with, so both halves still describe one span');
     }
 
     @IsTest

@@ -255,8 +255,16 @@ global with sharing class Triton {
      */
     public static String startTransaction() {
         TRANSACTION_ID = TritonHelper.generateUUID4();
-        // A new transaction starts from a clean span hierarchy, mirroring the LWC logger.
-        clearMarks();
+        // A new transaction starts from a clean span hierarchy, mirroring the LWC logger --
+        // but only when no mark is open. Starting a transaction never discards an open mark:
+        // TritonLwc.saveComponentLogs and TritonFlow.log both call startTransaction, and
+        // either can fire from inside an Apex mark, whose not-yet-written completion record
+        // would otherwise vanish. With no mark open this is the near-no-op it has always
+        // been -- every openMark push is matched by a closeMark pop, so the stack is already
+        // back at its request-id root -- and a genuinely fresh request clears as before.
+        if (openMarks.isEmpty()) {
+            clearMarks();
+        }
         if (cacheEnabled) {
             TritonHelper.cacheTransactionId(TRANSACTION_ID);
         }
@@ -464,8 +472,9 @@ global with sharing class Triton {
 
     /**
     * Discards all open marks and resets the span stack to the request root. Called
-    * automatically by startTransaction(). Exposed for deliberate recovery only: an
-    * async context already starts with empty statics and re-seeds itself.
+    * automatically by startTransaction(), but only when no mark is open -- starting a
+    * transaction never discards one. Exposed for deliberate recovery only: an async
+    * context already starts with empty statics and re-seeds itself.
     */
     public static void clearMarks() {
         openMarks.clear();
