@@ -78,14 +78,11 @@ global with sharing class TritonLwc {
                 relatedIds = validIds;
             }
 
-            // LOG-2927: deprecated 'Integration' category is accepted and maps to the context default (LWC)
-            if (!'Integration'.equalsIgnoreCase(componentLog.category)) {
-                try {
-                    category = TritonTypes.Category.valueOf(componentLog.category);
-                } catch(Exception e) {
-                    //invalid category
-                    details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Category: {0}. Default LWC category will be used.', componentLog.category);
-                }
+            try {
+                category = TritonTypes.Category.valueOf(componentLog.category);
+            } catch(Exception e) {
+                //invalid category
+                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Category: {0}. Default LWC category will be used.', componentLog.category);
             }
 
             String areaStr = String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.componentInfo.name;

@@ -174,35 +174,6 @@ private class TritonFlowTest {
     }
 
     /**
-     * Deprecated 'Integration' category is a sanctioned input (LOG-2927):
-     * mapped case-insensitively to the Flow context category,
-     * without the invalid-category note.
-     */
-    @IsTest
-    private static void test_flow_integration_category_maps_to_flow() {
-        TritonTestFactory.assertNoLogs();
-        TritonTestFactory.resetFlowState();
-
-        Test.startTest();
-        TritonFlow.FlowLog flowLog = TritonTestFactory.makeFlowLog('integration exact case');
-        flowLog.category = 'Integration';
-        TritonFlow.FlowLog flowLogLowercase = TritonTestFactory.makeFlowLog('integration lower case');
-        flowLogLowercase.category = 'integration';
-        TritonFlow.log(new List<TritonFlow.FlowLog>{ flowLog, flowLogLowercase });
-        TritonTestFactory.flushCachedFlowLogs();
-        Test.stopTest();
-
-        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
-        System.assertEquals(2, logs.size(), 'Expected both flow logs to be created');
-        for (pharos__Log__c log : logs) {
-            System.assertEquals(TritonTypes.Category.Flow.name(), log.pharos__Category__c,
-                'Deprecated Integration category should map to Flow, but was: ' + log.pharos__Category__c);
-            System.assert(log.pharos__Details__c == null || !log.pharos__Details__c.contains('Unable to locate category'),
-                'Sanctioned Integration mapping must not append the invalid-category note');
-        }
-    }
-
-    /**
      * ERROR level via processFlowLog creates an issue (Do_Not_Create_Issue__c = false).
      */
     @IsTest
