@@ -354,6 +354,13 @@ global with sharing class Triton {
             return false;
         }
 
+        // Inside an open mark, ordinary logs get a hierarchy instead of a flat list of
+        // siblings under one request node. Told, not asked: the mark state lives here,
+        // so TritonBuilder is handed the ambient parent rather than calling back for it.
+        if (!openMarks.isEmpty()) {
+            builder.ambientSpanContext(ambientParentSpanId());
+        }
+
         builder.prepareForLogging(TRANSACTION_ID);
         logs.add(builder.build());
         return true;
@@ -466,10 +473,13 @@ global with sharing class Triton {
     }
 
     /**
-    * True when at least one mark is open. Internal; deliberately not global.
+    * True when at least one mark is open. Internal, and test-visible rather than
+    * public: no production caller outside this class. TritonBuilder used to ask, and
+    * now gets told -- doLog stamps ambient span context onto the builder instead.
     * @return whether a mark is currently open
     */
-    public static Boolean hasOpenMark() {
+    @TestVisible
+    private static Boolean hasOpenMark() {
         return !openMarks.isEmpty();
     }
 
@@ -485,8 +495,8 @@ global with sharing class Triton {
     }
 
     /**
-    * Parent for a span opening at the current stack position. Internal, but public
-    * rather than @TestVisible: TritonBuilder resolves ordinary logs through it.
+    * Parent for a span opening at the current stack position. Internal to this class:
+    * both the paired mark records and, through doLog, ordinary logs are parented here.
     *
     * Resolves to the enclosing mark, or -- outermost, where the stack holds only its
     * request-id root -- TRANSACTION_ID, which the span converter resolves onto the
@@ -496,7 +506,7 @@ global with sharing class Triton {
     * hashing, so a request id used as a parent names a span nothing carries.
     * @return the ambient parent span id, or null
     */
-    public static String ambientParentSpanId() {
+    private static String ambientParentSpanId() {
         String enclosing = spans.current();
         if (String.isNotBlank(enclosing) && !enclosing.equals(TritonHelper.requestId())) {
             return enclosing;
