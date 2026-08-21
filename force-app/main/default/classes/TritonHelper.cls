@@ -420,7 +420,7 @@ public with sharing class TritonHelper {
 
         /**
          * Controls whether stack trace is enhanced by Pharos
-         * Only applicable to Apex and Integration logs
+         * Only applicable to Apex logs
          */
         public PostProcessingControlsBuilder stackTrace(Boolean value) {
             controls.put(STACK_TRACE_KEY, value);

@@ -49,6 +49,8 @@ Rewrite each call using this mapping (the `.instance` drops away; positional arg
 | `Triton.instance.resumeTransaction(id)` | `Triton.resumeTransaction(id)` |
 | `Triton.instance.stopTransaction()` | `Triton.stopTransaction()` |
 
+> **Note on `addIntegrationError`:** the legacy call wrote `Category = 'Integration'`; the 2.0 form intentionally lands as `Apex` — the Integration category is deprecated, and post-processing payload preservation is triggered by the `integrationPayload` itself, not by category.
+
 Transaction/template methods are safe renames. The **logging** methods change shape — and hide the one gotcha.
 
 ## Step 4 — The publishing gotcha (NEVER auto-decide)
