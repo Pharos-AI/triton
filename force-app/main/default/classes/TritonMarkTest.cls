@@ -124,10 +124,14 @@ private class TritonMarkTest {
                 && completion.pharos__Details__c.endsWith('ms'),
             'Completion details state the duration, found: ' + completion.pharos__Details__c);
 
-        System.assertEquals(null, opening.get(CPU_TIME_FIELD),
-            'The opening record suppresses limit info -- it has no deltas worth carrying');
+        System.assertNotEquals(null, opening.get(CPU_TIME_FIELD),
+            'The opening record carries the limit snapshot taken at span start, so a consumer can '
+                + 'derive the span cost as completion - opening (LOG-2931)');
         System.assertNotEquals(null, completion.get(CPU_TIME_FIELD),
             'The completion record keeps limit info');
+        System.assert((Decimal) completion.get(CPU_TIME_FIELD) >= (Decimal) opening.get(CPU_TIME_FIELD),
+            'CPU time is cumulative and monotonic within one execution context, so the completion '
+                + 'snapshot can never be lower than the opening one');
 
         System.assertEquals(false, Triton.hasOpenMark(), 'No mark is left open');
     }

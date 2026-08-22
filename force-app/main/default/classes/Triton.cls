@@ -538,11 +538,15 @@ global with sharing class Triton {
         mark.spanId = TritonHelper.generateUUID4();
         mark.parentSpanId = ambientParentSpanId();
 
+        // The opening record carries the cumulative governor-limit snapshot taken
+        // at span start, so a downstream consumer can derive the span's inclusive
+        // limit cost as completion - opening (LOG-2931). Suppressing it here left
+        // the pair with only one snapshot, which is not a difference.
+        //
         // A mark filtered out by Log_Level__mdt must be transparent, not a phantom
         // parent: push the enclosing span so its children nest under it instead.
         mark.suppressed = !doLog(markBuilder(mark)
-                                    .summary(TritonHelper.MARK_STARTED_PREFIX + markName)
-                                    .withoutLimitInfo());
+                                    .summary(TritonHelper.MARK_STARTED_PREFIX + markName));
         mark.stackedSpanId = mark.suppressed ? spans.current() : mark.spanId;
         spans.push(mark.stackedSpanId);
 
