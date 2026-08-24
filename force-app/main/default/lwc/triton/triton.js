@@ -391,10 +391,7 @@ export const AREA = {
  */
 export const CATEGORY = {
     LWC: 'LWC',
-    AURA: 'Aura',
-    WARNING: 'Warning',
-    DEBUG: 'Debug',
-    EVENT: 'Event'
+    AURA: 'Aura'
 };
 
 /**

@@ -423,9 +423,7 @@ describe('Triton', () => {
     test('should export CATEGORY constants', () => {
       expect(CATEGORY.LWC).toBe('LWC');
       expect(CATEGORY.AURA).toBe('Aura');
-      expect(CATEGORY.WARNING).toBe('Warning');
-      expect(CATEGORY.DEBUG).toBe('Debug');
-      expect(CATEGORY.EVENT).toBe('Event');
+      expect(Object.keys(CATEGORY)).toHaveLength(2);
     });
 
     test('should export LEVEL constants', () => {
