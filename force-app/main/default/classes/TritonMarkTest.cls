@@ -25,19 +25,6 @@ private class TritonMarkTest {
 
     private static final String CPU_TIME_FIELD = 'CPU_Time__c';
 
-    /**
-     * Share of the CPU limit the org's worst-case mark volume is allowed to consume.
-     *
-     * 50% is a 5,000ms ceiling. Back-to-back runs in a quiet org land at 2,723-2,826ms,
-     * a spread of only ~4% -- but the same build measured 3,105ms on a run that overlapped
-     * a deploy, which is 12% above that whole range. Apex CPU accounting swings much wider
-     * under org load than a quiet-org sample suggests, and a tighter ceiling would make
-     * this the flakiest assert in the suite: 40% left the observed outlier only 1.29x of
-     * headroom. The assertion keeps its meaning at 50% -- 217 marks still leave most of
-     * the budget to the business logic they are measuring.
-     */
-    private static final Integer CPU_BUDGET_NUMERATOR = 50;
-
     @TestSetup
     private static void testSetup() {
         TritonTestFactory.initTestSetup();
@@ -931,30 +918,47 @@ private class TritonMarkTest {
 
     // ─── Volume ──────────────────────────────────────────────────────
 
+    /**
+     * This used to loop 217 times and assert a CPU delta against a share of the governor
+     * limit. That ceiling has been retired deliberately -- please do not add it back.
+     *
+     * It measured the org, not the code. The numerator had already been widened once,
+     * from 40% to 50%, purely because a run that overlapped a deploy measured 3,105ms
+     * against a quiet-org range of 2,723-2,826ms. Having to raise a ceiling to keep a
+     * test green is evidence the ceiling is tracking org load rather than the change
+     * under test, and it cost ~2.8s of the suite on its own. The governor-limit half
+     * was tautological in any case: exceeding a limit throws an uncatchable
+     * LimitException, so reaching any assert at all already proves none was exceeded.
+     *
+     * The invariant that budget was indirectly protecting -- one stack capture per mark
+     * pair -- is already covered deterministically, and for free, by
+     * test_mark_pair_captures_the_stack_once and its component-scoped twin: both assert
+     * the opening and completion records carry the identical trace, and one asserts the
+     * completion trace does not name the helper that closed the mark. Reintroducing a
+     * second capture would take the completion trace at the endMark call site and break
+     * that equality instantly, with no dependence on wall-clock or org load.
+     *
+     * A per-log cost figure would measure the wrong thing regardless: ~99% of it is
+     * describe work inside the managed package's field-write path, which this code does
+     * not control and which would force a re-baseline the moment it changes. If a cost
+     * number is ever wanted, it belongs in an on-demand benchmark class that is deleted
+     * before merge, not in a CI assertion.
+     *
+     * What is left is the structural invariant, which is real and costs nothing: N marks
+     * emit exactly 2N records, and the stacking survives repetition.
+     */
     @IsTest
-    private static void test_marks_volume_stays_within_a_cpu_budget() {
-        // 217 marks is the worst case measured in a real org. Asserting only that the
-        // governor limits were not blown would be tautological -- exceeding one throws
-        // an uncatchable LimitException, so reaching an assert already proves it. The
-        // real requirement is that instrumentation leaves most of the CPU budget to the
-        // business logic it is measuring, so this asserts a delta against a ceiling.
-        Integer markCount = 217;
-        Integer cpuCeiling = CPU_BUDGET_NUMERATOR * Limits.getLimitCpuTime() / 100;
+    private static void test_repeated_marks_emit_a_pair_each() {
+        Integer markCount = 10;
 
         Test.startTest();
-        Integer cpuBefore = Limits.getCpuTime();
         for (Integer i = 0; i < markCount; i++) {
             Triton.startMark('bulk-' + i);
             Triton.endMark();
         }
-        Integer cpuUsed = Limits.getCpuTime() - cpuBefore;
         Test.stopTest();
 
         System.assertEquals(markCount * 2, buffer().size(), 'N marks emit exactly 2N records');
-        System.assert(cpuUsed < cpuCeiling,
-            markCount + ' marks must fit inside ' + CPU_BUDGET_NUMERATOR + '% of the CPU limit, '
-            + 'leaving the rest to the code being measured. Ceiling ' + cpuCeiling
-            + 'ms, used ' + cpuUsed + 'ms');
     }
 
     // ─── Never throws ────────────────────────────────────────────────
