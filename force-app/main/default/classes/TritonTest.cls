@@ -50,10 +50,10 @@ private class TritonTest {
         TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ll};
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.DEBUG));
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.DEBUG));
         Test.stopTest();
 
-        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
     }
 
     @IsTest
@@ -65,10 +65,10 @@ private class TritonTest {
         TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ll};
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.FINE));
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.FINE));
         Test.stopTest();
 
-        System.assertEquals(0, [SELECT count() FROM pharos__Log__c where pharos__Category__c=:TritonTypes.Category.Event.name()]);
+        System.assertEquals(0, [SELECT count() FROM pharos__Log__c where pharos__Category__c=:TritonTypes.Category.Flow.name()]);
     }
 
     private static void setupLogLevelsMap() {
@@ -77,11 +77,11 @@ private class TritonTest {
 
         Log_Level__mdt categoryLevel = new Log_Level__mdt();
         categoryLevel.Level__c = TritonTypes.Level.FINE.name();
-        categoryLevel.Category__c = TritonTypes.Category.Event.name();
+        categoryLevel.Category__c = TritonTypes.Category.Flow.name();
 
         Log_Level__mdt categoryAndAreaLevel = new Log_Level__mdt();
         categoryAndAreaLevel.Level__c = TritonTypes.Level.FINEST.name();
-        categoryAndAreaLevel.Category__c = TritonTypes.Category.Event.name();
+        categoryAndAreaLevel.Category__c = TritonTypes.Category.Flow.name();
         categoryAndAreaLevel.Area__c = TritonTypes.Area.Community.name();
 
         TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{globalLevel, categoryLevel, categoryAndAreaLevel};
@@ -97,10 +97,10 @@ private class TritonTest {
         System.assertEquals(3, TritonHelper.Config.logLevels.size(), 'Expected three parsed log level rules');
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.FINEST));
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.FINEST));
         Test.stopTest();
 
-        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
     }
 
     @IsTest
@@ -110,10 +110,10 @@ private class TritonTest {
         setupLogLevelsMap();
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.OpportunityManagement).summary('some event').details('error details').level(TritonTypes.Level.FINEST));
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.OpportunityManagement).summary('some event').details('error details').level(TritonTypes.Level.FINEST));
         Test.stopTest();
 
-        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()]);
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()]);
     }
 
     // A user-scoped log level record used by the user id tests below.
@@ -134,11 +134,11 @@ private class TritonTest {
         setupUserIdLogLevel(UserInfo.getUserId());
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
             .summary('some event').details('error details').userId(UserInfo.getUserId()).level(TritonTypes.Level.DEBUG));
         Test.stopTest();
 
-        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
     }
 
     @IsTest
@@ -150,11 +150,11 @@ private class TritonTest {
         setupUserIdLogLevel(UserInfo.getUserId());
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
             .summary('some event').details('error details').userId(UserInfo.getUserId()).level(TritonTypes.Level.FINE));
         Test.stopTest();
 
-        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()]);
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()]);
     }
 
     @IsTest
@@ -166,11 +166,11 @@ private class TritonTest {
         setupUserIdLogLevel('005000000000001');
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
             .summary('some event').details('error details').userId(UserInfo.getUserId()).level(TritonTypes.Level.FINE));
         Test.stopTest();
 
-        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
     }
 
     @IsTest
@@ -186,11 +186,11 @@ private class TritonTest {
 
         Test.startTest();
         // Apex Name is Class.Method; the class portion must match the component name.
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
             .summary('some event').details('error details').operation('MyComponent.someMethod').level(TritonTypes.Level.DEBUG));
         Test.stopTest();
 
-        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
     }
 
     @IsTest
@@ -205,11 +205,11 @@ private class TritonTest {
 
         Test.startTest();
         // Component matches but FINE is more verbose than the allowed DEBUG.
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
             .summary('some event').details('error details').operation('MyComponent.someMethod').level(TritonTypes.Level.FINE));
         Test.stopTest();
 
-        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()]);
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()]);
     }
 
     @IsTest
@@ -225,11 +225,11 @@ private class TritonTest {
         TritonHelper.Config.logLevels = null;
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
             .summary('some event').details('error details').flowApiName('My_Flow').operation('Some.Apex').level(TritonTypes.Level.DEBUG));
         Test.stopTest();
 
-        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
     }
 
     @IsTest
@@ -240,7 +240,7 @@ private class TritonTest {
         // user id / component matching (nothing broader can match instead).
         Log_Level__mdt allLevel = new Log_Level__mdt();
         allLevel.Level__c = TritonTypes.Level.FINER.name();
-        allLevel.Category__c = TritonTypes.Category.Event.name();
+        allLevel.Category__c = TritonTypes.Category.Flow.name();
         allLevel.Type__c = TritonTypes.Type.DMLResult.name();
         allLevel.Area__c = TritonTypes.Area.Community.name();
         allLevel.User_Id__c = UserInfo.getUserId();
@@ -250,17 +250,17 @@ private class TritonTest {
 
         Test.startTest();
         // Matches every attribute at exactly the allowed level.
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.DMLResult).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.DMLResult).area(TritonTypes.Area.Community)
             .summary('some event').details('error details').userId(UserInfo.getUserId()).operation('TestComponentName').level(TritonTypes.Level.FINER));
         // Same attributes but a different component -> no rule targets it -> allowed by default.
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.DMLResult).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.DMLResult).area(TritonTypes.Area.Community)
             .summary('other event').details('error details').userId(UserInfo.getUserId()).operation('OtherComponent').level(TritonTypes.Level.FINER));
         Test.stopTest();
 
         List<pharos__Log__c> logs = [
             SELECT pharos__User_Id__c, pharos__Apex_Name__c
             FROM pharos__Log__c
-            WHERE pharos__Category__c = :TritonTypes.Category.Event.name()
+            WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()
             ORDER BY pharos__Apex_Name__c
         ];
         System.assertEquals(2, logs.size(), 'Both the targeted (allowed) and untargeted (default-allowed) logs should persist');
@@ -291,11 +291,11 @@ private class TritonTest {
         TritonHelper.Config.logLevels = null;
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
             .summary('noise').details('details').operation('NoisyBatch.run').level(TritonTypes.Level.DEBUG));
         Test.stopTest();
 
-        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()],
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()],
             'The component-scoped ERROR rule is more specific than the global FINEST rule and must suppress the DEBUG log');
     }
 
@@ -306,11 +306,11 @@ private class TritonTest {
         // Category-wide rule allows FINE, but one area is tightened to INFO.
         Log_Level__mdt categoryLevel = new Log_Level__mdt();
         categoryLevel.Level__c = TritonTypes.Level.FINE.name();
-        categoryLevel.Category__c = TritonTypes.Category.Event.name();
+        categoryLevel.Category__c = TritonTypes.Category.Flow.name();
 
         Log_Level__mdt areaLevel = new Log_Level__mdt();
         areaLevel.Level__c = TritonTypes.Level.INFO.name();
-        areaLevel.Category__c = TritonTypes.Category.Event.name();
+        areaLevel.Category__c = TritonTypes.Category.Flow.name();
         areaLevel.Area__c = TritonTypes.Area.Community.name();
 
         TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ categoryLevel, areaLevel };
@@ -318,15 +318,15 @@ private class TritonTest {
 
         Test.startTest();
         // DEBUG is above the tightened INFO ceiling for this area -> dropped.
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
             .summary('tightened').details('details').level(TritonTypes.Level.DEBUG));
         // The same level in a different area still falls under the FINE rule -> kept.
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.OpportunityManagement)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.OpportunityManagement)
             .summary('untightened').details('details').level(TritonTypes.Level.DEBUG));
         Test.stopTest();
 
         List<pharos__Log__c> logs = [SELECT pharos__Summary__c FROM pharos__Log__c
-            WHERE pharos__Category__c = :TritonTypes.Category.Event.name()];
+            WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()];
         System.assertEquals(1, logs.size(), 'Only the log outside the tightened area should persist');
         System.assertEquals('untightened', logs.get(0).pharos__Summary__c);
     }
@@ -339,7 +339,7 @@ private class TritonTest {
         // so the user rule's level decides -- here silencing the log.
         Log_Level__mdt ctaLevel = new Log_Level__mdt();
         ctaLevel.Level__c = TritonTypes.Level.FINEST.name();
-        ctaLevel.Category__c = TritonTypes.Category.Event.name();
+        ctaLevel.Category__c = TritonTypes.Category.Flow.name();
         ctaLevel.Type__c = TritonTypes.Type.Backend.name();
         ctaLevel.Area__c = TritonTypes.Area.Community.name();
 
@@ -351,11 +351,11 @@ private class TritonTest {
         TritonHelper.Config.logLevels = null;
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
             .summary('user scoped').details('details').userId(UserInfo.getUserId()).level(TritonTypes.Level.INFO));
         Test.stopTest();
 
-        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()],
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()],
             'The user-scoped rule is the most specific match and its WARNING ceiling must suppress the INFO log');
     }
 
@@ -376,11 +376,11 @@ private class TritonTest {
         TritonHelper.Config.logLevels = null;
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
             .summary('debug me').details('details').userId(UserInfo.getUserId()).level(TritonTypes.Level.FINE));
         Test.stopTest();
 
-        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
     }
 
     @IsTest
@@ -392,21 +392,21 @@ private class TritonTest {
         // change the outcome.
         Log_Level__mdt verbose = new Log_Level__mdt();
         verbose.Level__c = TritonTypes.Level.FINEST.name();
-        verbose.Category__c = TritonTypes.Category.Event.name();
+        verbose.Category__c = TritonTypes.Category.Flow.name();
 
         Log_Level__mdt restrictive = new Log_Level__mdt();
         restrictive.Level__c = TritonTypes.Level.WARNING.name();
-        restrictive.Category__c = TritonTypes.Category.Event.name();
+        restrictive.Category__c = TritonTypes.Category.Flow.name();
 
         TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ verbose, restrictive };
         TritonHelper.Config.logLevels = null;
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
             .summary('tie').details('details').level(TritonTypes.Level.INFO));
         Test.stopTest();
 
-        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()],
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()],
             'Equally specific rules must resolve to the most restrictive level regardless of order');
     }
 
@@ -415,7 +415,7 @@ private class TritonTest {
         // No component rules -> the stack trace must not be resolved early.
         Log_Level__mdt plain = new Log_Level__mdt();
         plain.Level__c = TritonTypes.Level.DEBUG.name();
-        plain.Category__c = TritonTypes.Category.Event.name();
+        plain.Category__c = TritonTypes.Category.Flow.name();
         TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ plain };
         TritonHelper.Config.logLevels = null;
         System.assertEquals(false, TritonHelper.Config.hasComponentScopedLevels(),
@@ -536,11 +536,11 @@ private class TritonTest {
         TritonHelper.Config.logLevels = null;
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
             .summary('implicit component').details('details').level(TritonTypes.Level.DEBUG));
         Test.stopTest();
 
-        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()],
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()],
             'Component-scoped levels must match Apex logs whose component is derived from the stack trace');
     }
 
@@ -595,7 +595,7 @@ private class TritonTest {
         for (String blank : blankShapes()) {
             Log_Level__mdt rule = new Log_Level__mdt();
             rule.Level__c = TritonTypes.Level.INFO.name();
-            rule.Category__c = 'Event';
+            rule.Category__c = 'Flow';
             rule.Type__c = blank;
             rule.Area__c = blank;
             rule.User_Id__c = blank;
@@ -605,7 +605,7 @@ private class TritonTest {
 
             pharos__Log__c log = new pharos__Log__c(
                 Log_Level__c = TritonTypes.Level.DEBUG.name(),
-                pharos__Category__c = 'Event',
+                pharos__Category__c = 'Flow',
                 pharos__Type__c = 'Backend',
                 pharos__Area__c = 'Community');
             System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
@@ -623,11 +623,11 @@ private class TritonTest {
         for (String blank : blankShapes()) {
             Log_Level__mdt verbose = new Log_Level__mdt();
             verbose.Level__c = TritonTypes.Level.FINEST.name();
-            verbose.Category__c = 'Event';
+            verbose.Category__c = 'Flow';
 
             Log_Level__mdt restrictive = new Log_Level__mdt();
             restrictive.Level__c = TritonTypes.Level.WARNING.name();
-            restrictive.Category__c = 'Event';
+            restrictive.Category__c = 'Flow';
             restrictive.Component_Name__c = blank;
 
             TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ verbose, restrictive };
@@ -635,7 +635,7 @@ private class TritonTest {
 
             pharos__Log__c log = new pharos__Log__c(
                 Log_Level__c = TritonTypes.Level.INFO.name(),
-                pharos__Category__c = 'Event',
+                pharos__Category__c = 'Flow',
                 pharos__Apex_Name__c = 'AnyComponent.method');
             System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
                 'Shape "' + blank + '": blank component must not add specificity or break targeting; tie-break must yield WARNING');
@@ -739,7 +739,7 @@ private class TritonTest {
         for (String badLevel : new List<String>{ null, '', '  ', 'VERBOSE' }) {
             Log_Level__mdt malformed = new Log_Level__mdt();
             malformed.Level__c = badLevel;
-            malformed.Category__c = 'Event';
+            malformed.Category__c = 'Flow';
 
             Log_Level__mdt sibling = new Log_Level__mdt();
             sibling.Level__c = TritonTypes.Level.INFO.name();
@@ -841,11 +841,11 @@ private class TritonTest {
         setupUserIdLogLevel(UserInfo.getUserId());
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
             .summary('no explicit user').details('details').level(TritonTypes.Level.FINE));
         Test.stopTest();
 
-        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()],
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()],
             'The user-scoped DEBUG ceiling must suppress a FINE Apex log that never called .userId()');
     }
 
@@ -854,10 +854,10 @@ private class TritonTest {
         TritonTestFactory.assertNoLogs();
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').info());
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').info());
         Test.stopTest();
 
-        TritonTestFactory.assertSingleLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
     }
 
     @IsTest
@@ -865,10 +865,10 @@ private class TritonTest {
         TritonTestFactory.assertNoLogs();
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Debug).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some debug').details('error details').debug());
+        Triton.logNow(Triton.t.category(TritonTypes.Category.LWC).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some debug').details('error details').debug());
         Test.stopTest();
 
-        TritonTestFactory.assertSingleLog(TritonTypes.Category.Debug);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.LWC);
     }
 
     @IsTest
@@ -876,10 +876,10 @@ private class TritonTest {
         TritonTestFactory.assertNoLogs();
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Warning).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some warning').details('error details').warning());
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some warning').details('error details').warning());
         Test.stopTest();
 
-        TritonTestFactory.assertSingleLog(TritonTypes.Category.Warning);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
     }
 
     @IsTest
@@ -1185,7 +1185,7 @@ private class TritonTest {
         TritonTestFactory.assertNoLogs();
 
         Test.startTest();
-        Triton.logNow(Triton.t.category(TritonTypes.Category.Event).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.INFO));
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.INFO));
         Test.stopTest();
 
         pharos__Log__c log = [select Id from pharos__Log__c limit 1];
@@ -1688,7 +1688,7 @@ private class TritonTest {
         
         // Test via builder
         TritonBuilder builder = Triton.makeBuilder()
-            .category(TritonTypes.Category.Debug)
+            .category(TritonTypes.Category.LWC)
             .type(TritonTypes.Type.Backend)
             .area(TritonTypes.Area.Community)
             .summary('Testing limits')
@@ -1700,7 +1700,7 @@ private class TritonTest {
         // Test via log
         Triton.log(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Debug)
+                .category(TritonTypes.Category.LWC)
                 .type(TritonTypes.Type.Backend)
                 .area(TritonTypes.Area.Community)
                 .summary('Testing limits via addLog')
@@ -1762,7 +1762,7 @@ private class TritonTest {
         Test.startTest();
         Triton.log(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Debug)
+                .category(TritonTypes.Category.LWC)
                 .type(TritonTypes.Type.Backend)
                 .area(TritonTypes.Area.Community)
                 .summary('No limit info test')
@@ -1791,7 +1791,7 @@ private class TritonTest {
         Test.startTest();
         Triton.log(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Debug)
+                .category(TritonTypes.Category.LWC)
                 .type(TritonTypes.Type.Backend)
                 .area(TritonTypes.Area.Community)
                 .summary('Full limit info test')
@@ -1952,7 +1952,7 @@ private class TritonTest {
         
         // Set up a template
         TritonBuilder template = Triton.makeBuilder()
-            .category(TritonTypes.Category.Debug)
+            .category(TritonTypes.Category.LWC)
             .type(TritonTypes.Type.Backend)
             .area(TritonTypes.Area.Community);
         Triton.setTemplate(template);
@@ -1968,7 +1968,7 @@ private class TritonTest {
         
         // Verify template properties are applied
         for(pharos__Log__c log : Triton.logs) {
-            System.assertEquals(TritonTypes.Category.Debug.name(), log.pharos__Category__c, 
+            System.assertEquals(TritonTypes.Category.LWC.name(), log.pharos__Category__c, 
                 'Template category should be applied');
             System.assertEquals(TritonTypes.Type.Backend.name(), log.pharos__Type__c, 
                 'Template type should be applied');
@@ -2007,7 +2007,7 @@ private class TritonTest {
         // Test warning with related objects
         Triton.logNow(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Warning)
+                .category(TritonTypes.Category.Flow)
                 .type(TritonTypes.Type.Backend)
                 .area(TritonTypes.Area.Community)
                 .summary('Test Warning')
@@ -2018,7 +2018,7 @@ private class TritonTest {
         // Test debug with duration and related objects
         Triton.logNow(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Debug)
+                .category(TritonTypes.Category.LWC)
                 .type(TritonTypes.Type.Backend)
                 .area(TritonTypes.Area.Community)
                 .summary('Test Debug')
@@ -2030,7 +2030,7 @@ private class TritonTest {
         // Add debug with related objects
         Triton.log(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Debug)
+                .category(TritonTypes.Category.LWC)
                 .type(TritonTypes.Type.Backend)
                 .area(TritonTypes.Area.Community)
                 .summary('Test Debug with Related')
@@ -2055,11 +2055,11 @@ private class TritonTest {
         System.assertEquals(2, logs.size(), 'Should have created warning and debug logs');
         
         // Verify warning log
-        System.assertEquals(TritonTypes.Category.Warning.name(), logs[0].pharos__Category__c);
+        System.assertEquals(TritonTypes.Category.Flow.name(), logs[0].pharos__Category__c);
         System.assertEquals(TritonTypes.Level.WARNING.name(), logs[0].Log_Level__c);
         
         // Verify debug log with duration
-        System.assertEquals(TritonTypes.Category.Debug.name(), logs[1].pharos__Category__c);
+        System.assertEquals(TritonTypes.Category.LWC.name(), logs[1].pharos__Category__c);
         System.assertEquals(100, logs[1].pharos__Duration__c);
     }
 
@@ -2070,7 +2070,7 @@ private class TritonTest {
         // Test event with related objects
         Triton.logNow(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Event)
+                .category(TritonTypes.Category.Flow)
                 .type(TritonTypes.Type.Backend)
                 .area(TritonTypes.Area.Community)
                 .summary('Test Event')
@@ -2133,8 +2133,8 @@ private class TritonTest {
         Integer payloadLogs = 0;
         for(pharos__Log__c log : logs) {
             if(log.pharos__Summary__c == 'Test Event') {
-                System.assertEquals(TritonTypes.Category.Event.name(), log.pharos__Category__c,
-                    'Event log should keep its explicit Event category');
+                System.assertEquals(TritonTypes.Category.Flow.name(), log.pharos__Category__c,
+                    'Log should keep its explicit Flow category');
                 continue;
             }
             payloadLogs++;
@@ -2208,7 +2208,7 @@ private class TritonTest {
         // Test buffered event with default INFO level
         Triton.log(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Event)
+                .category(TritonTypes.Category.Flow)
                 .type(TritonTypes.Type.Backend)
                 .area(TritonTypes.Area.Community)
                 .summary('Test Event Summary')
@@ -2241,7 +2241,7 @@ private class TritonTest {
         pharos__Log__c log = logs[0];
         
         // Verify log properties
-        System.assertEquals(TritonTypes.Category.Event.name(), log.pharos__Category__c);
+        System.assertEquals(TritonTypes.Category.Flow.name(), log.pharos__Category__c);
         System.assertEquals(TritonTypes.Type.Backend.name(), log.pharos__Type__c);
         System.assertEquals(TritonTypes.Area.Community.name(), log.pharos__Area__c);
         System.assertEquals(TritonTypes.Level.INFO.name(), log.Log_Level__c);
@@ -2317,7 +2317,7 @@ private class TritonTest {
         Test.startTest();
         Triton.log(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Debug)
+                .category(TritonTypes.Category.LWC)
                 .type(TritonTypes.Type.Backend)
                 .area(TritonTypes.Area.Accounts)
                 .summary('Test Summary')
@@ -2537,7 +2537,7 @@ private class TritonTest {
         Double templateTimestamp = 123456789.0; // A fixed timestamp
         
         TritonBuilder template = Triton.makeBuilder()
-            .category(TritonTypes.Category.Debug)
+            .category(TritonTypes.Category.LWC)
             .type(TritonTypes.Type.Backend)
             .area(TritonTypes.Area.Community)
             .createdTimestamp(templateTimestamp)
@@ -2658,11 +2658,11 @@ private class TritonTest {
     @IsTest
     static void test_default_category_not_overridden() {
         pharos__Log__c log = Triton.makeBuilder()
-            .category(TritonTypes.Category.Event)
+            .category(TritonTypes.Category.Flow)
             .summary('test')
             .error()
             .build();
-        System.assertEquals(TritonTypes.Category.Event.name(), log.pharos__Category__c, 'Explicit category should not be overridden');
+        System.assertEquals(TritonTypes.Category.Flow.name(), log.pharos__Category__c, 'Explicit category should not be overridden');
     }
 
     @IsTest
@@ -2676,7 +2676,7 @@ private class TritonTest {
     @IsTest
     static void test_builder_clone() {
         TritonBuilder original = Triton.makeBuilder()
-            .category(TritonTypes.Category.Event)
+            .category(TritonTypes.Category.Flow)
             .type(TritonTypes.Type.Backend)
             .area(TritonTypes.Area.Community)
             .level(TritonTypes.Level.WARNING)
@@ -2686,7 +2686,7 @@ private class TritonTest {
         TritonBuilder cloned = original.cloneBuilder();
         pharos__Log__c clonedLog = cloned.build();
 
-        System.assertEquals(TritonTypes.Category.Event.name(), clonedLog.pharos__Category__c,
+        System.assertEquals(TritonTypes.Category.Flow.name(), clonedLog.pharos__Category__c,
             'Cloned builder should preserve category');
         System.assertEquals(TritonTypes.Type.Backend.name(), clonedLog.pharos__Type__c,
             'Cloned builder should preserve type');
