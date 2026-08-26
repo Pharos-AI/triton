@@ -214,6 +214,10 @@ public with sharing class TritonHelper {
         'TritonFlowFlushBatch',
         'TritonHelper',
         'TritonLwc',
+        // Defensive, as the comment above asks: TritonSpanContext never logs, and a
+        // mark's trace is captured before any call into it, so no test can reach a
+        // trace where this entry is what removes a frame.
+        'TritonSpanContext',
         'TritonTypes'
     };
 
@@ -968,5 +972,57 @@ public with sharing class TritonHelper {
         private Boolean matches(String ruleValue, String logValue) {
             return ruleValue == null || ruleValue.equalsIgnoreCase(logValue);
         }
+    }
+
+    /**
+     * ---------------------------
+     * Performance mark support.
+     * ---------------------------
+     *
+     * The stateless half of Triton's performance marks: the literals both paired
+     * records are built from, the name derivation, and the request id the span stack
+     * is rooted at. Triton keeps everything that is mark state -- the span stack, the
+     * open mark list -- and reads its naming and its literals from here.
+     */
+
+    /**
+     * Summary prefixes for a mark's two halves, matched verbatim by the span converter
+     * and identical to the ones the LWC logger emits.
+     */
+    public static final String MARK_STARTED_PREFIX = 'Performance started: ';
+    public static final String MARK_COMPLETED_PREFIX = 'Performance: ';
+    public static final String MARK_DURATION_PREFIX = 'Duration: ';
+    public static final String MARK_DURATION_SUFFIX = 'ms';
+
+    /** Name given to a mark whose name cannot be derived from the stack trace. */
+    private static final String ANONYMOUS_MARK_NAME = 'AnonymousMark';
+
+    /**
+     * Occurrence counter behind the anonymous mark name fallback. Static lifetime is
+     * the execution context, so the numbering restarts with every request -- exactly
+     * as it did while this lived on Triton, and nothing resets it explicitly.
+     */
+    private static Integer anonymousMarkCounter = 0;
+
+    /**
+    * Derives a mark name from a stack trace: the topmost application frame, minus the
+    * 'Class.' prefix getOperation retains. Falls back to a counted anonymous name.
+    * @param stackTrace -- trace captured at the call site
+    * @return the derived mark name, never blank
+    */
+    public static String deriveMarkName(String stackTrace) {
+        String operation = getOperation(stackTrace);
+        if (String.isNotBlank(operation) && operation.startsWith(CLASS_FRAME_PREFIX)) {
+            operation = operation.substringAfter(CLASS_FRAME_PREFIX);
+        }
+        if (String.isNotBlank(operation)) return operation;
+
+        anonymousMarkCounter++;
+        return ANONYMOUS_MARK_NAME + anonymousMarkCounter;
+    }
+
+    /** The request id -- the root sentinel of an execution context's span stack. */
+    public static String requestId() {
+        return System.Request.getCurrent().getRequestId();
     }
 }

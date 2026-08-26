@@ -756,8 +756,7 @@ public with sharing class TritonBuilder {
     */
     private void ensureSpanIds() {
         if (String.isBlank(this.currentSpanId)) {
-            String requestId = System.Request.getCurrent().getRequestId();
-            this.builder.attribute(SPAN_ID, requestId);
+            this.builder.attribute(SPAN_ID, TritonHelper.requestId());
         }
     }
 
@@ -785,6 +784,39 @@ public with sharing class TritonBuilder {
             if(String.isBlank(tempLog.pharos__Apex_Name__c)) {
                 this.operation(TritonHelper.getOperation(stackTrace));
             }
+        }
+        return this;
+    }
+
+    /**
+    * Stamps ambient span context onto a log emitted inside an open mark: its own span
+    * id, parented to the innermost mark (or, outermost, to the transaction span). This
+    * is what gives Apex logs a hierarchy instead of a flat list of siblings under one
+    * request node.
+    *
+    * Called by Triton.log() only while a mark is open, and passed the ambient parent
+    * it resolved -- the mark state is Triton's, so this method is told rather than
+    * asking. A log emitted by code that never calls startMark is never routed here and
+    * keeps exactly the span fields it has today: the request id as the span id, and no
+    * parent. A mark filtered out by Log_Level__mdt is still an open mark, so parenting
+    * stays transparent but the data shape does not -- surrounding logs get a fresh span
+    * id rather than the request id, which is why a blank ambientParent still mints one.
+    *
+    * Explicitly set values always win. TritonLwc forwards the browser's span ids
+    * straight through, and overwriting them would sever every LWC to Apex trace.
+    * @param ambientParent -- the enclosing span id, or blank when there is none
+    * @return this builder instance
+    * @see Triton.startMark
+    */
+    public TritonBuilder ambientSpanContext(String ambientParent) {
+        if (String.isBlank(this.currentSpanId)) {
+            this.spanId(TritonHelper.generateUUID4());
+        }
+        // Left unset rather than set to null when there is no ambient parent, so the
+        // field is simply absent instead of explicitly empty -- as Triton.markBuilder
+        // does for the paired mark records.
+        if (String.isBlank(this.currentParentSpanId) && String.isNotBlank(ambientParent)) {
+            this.parentSpanId(ambientParent);
         }
         return this;
     }
