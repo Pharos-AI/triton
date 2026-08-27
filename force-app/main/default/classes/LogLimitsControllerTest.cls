@@ -27,7 +27,7 @@ private class LogLimitsControllerTest {
         
         // Create a log with Triton
         TritonBuilder builder = Triton.makeBuilder()
-            .category(TritonTypes.Category.Debug)
+            .category(TritonTypes.Category.Apex)
             .type(TritonTypes.Type.Backend)
             .area(TritonTypes.Area.OpportunityManagement)
             .summary('Test Log with Limits')
@@ -128,7 +128,7 @@ private class LogLimitsControllerTest {
         
         // Create a log with partial data using Triton
         TritonBuilder builder = Triton.makeBuilder()
-            .category(TritonTypes.Category.Debug)
+            .category(TritonTypes.Category.Apex)
             .type(TritonTypes.Type.Backend)
             .area(TritonTypes.Area.OpportunityManagement)
             .summary('Test Log with Partial Limits')

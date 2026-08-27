@@ -111,6 +111,8 @@ public class TritonTestFactory {
             FROM pharos__Log__c
         ];
         System.assertEquals(1, logs.size(), 'Expected exactly 1 log');
+        System.assertEquals(expectedCategory.name(), logs[0].pharos__Category__c,
+            'Log category mismatch');
         System.assertNotEquals(null, logs[0].pharos__Hash__c, 'Hash should be populated');
         return logs[0];
     }

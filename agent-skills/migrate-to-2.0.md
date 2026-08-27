@@ -38,7 +38,9 @@ Rewrite each call using this mapping (the `.instance` drops away; positional arg
 | `Triton.instance.addWarning(type, area, summary, details)` | `Triton.warning(Triton.t.type(type).area(area).summary(summary).details(details))` |
 | `Triton.instance.addDebug(type, area, summary, details)` | `Triton.debug(Triton.t.type(type).area(area).summary(summary).details(details))` |
 | `Triton.instance.addDebug(type, area, summary, details, duration)` | `Triton.debug(Triton.t.type(type).area(area).summary(summary).details(details).attribute(TritonBuilder.DURATION, duration))` |
-| `Triton.instance.addEvent(level, type, area, summary, details)` | `Triton.log(Triton.t.category(TritonTypes.Category.Event).type(type).area(area).summary(summary).details(details).level(level))` |
+| `Triton.instance.addEvent(level, type, area, summary, details)` | `Triton.log(Triton.t.type(type).area(area).summary(summary).details(details).level(level))` |
+| `Triton.instance.addEvent(type, area, summary, details)` | `Triton.info(Triton.t.type(type).area(area).summary(summary).details(details))` |
+| `Triton.instance.event(level, type, area, summary, details)` | `Triton.logNow(Triton.t.type(type).area(area).summary(summary).details(details).level(level))` |
 | `Triton.instance.addDMLResult(area, results)` | `Triton.error(Triton.t.area(area).dmlResults(results))` |
 | `Triton.instance.addIntegrationError(area, e, request, response)` | `Triton.error(Triton.t.area(area).exception(e).integrationPayload(request, response))` |
 | `Triton.instance.addLog(builder)` | `Triton.log(builder)` |
@@ -51,17 +53,19 @@ Rewrite each call using this mapping (the `.instance` drops away; positional arg
 
 > **Note on `addIntegrationError`:** the legacy call wrote `Category = 'Integration'`; the 2.0 form intentionally lands as `Apex` — the Integration category is deprecated, and post-processing payload preservation is triggered by the `integrationPayload` itself, not by category.
 
+> **Note on severity-shaped categories:** 1.x `addWarning` / `addDebug` / `addEvent` stamped `Category = Warning / Debug / Event`. Those Category values are removed in 2.0 — severity is expressed through the log **Level** (`.warning()`, `.debug()`, `.level(...)`; the mapped 2.0 forms above already do this). Category identifies the producing technology: categorize by where the call is made from. These are Apex APIs, so the default is `Apex` — omit `.category(...)` and the builder defaults to it; set `.category(...)` explicitly only when the call site is a bridge for another technology (Flow, LWC, Aura).
+
 Transaction/template methods are safe renames. The **logging** methods change shape — and hide the one gotcha.
 
 ## Step 4 — The publishing gotcha (NEVER auto-decide)
 
 In 1.x the **method name** decided publishing timing:
-- **bare** methods (`error`, `warning`, `debug`) published **immediately**.
+- **bare** methods (`error`, `warning`, `debug`, `event`) published **immediately**.
 - **`add*`** methods **buffered** until `flush()`.
 
 In 2.0 **all level methods buffer**; you opt into immediate publishing with **`Triton.logNow(...)`**. That's why bare → `logNow` and `add*` → level methods in the table.
 
-For **every old bare-method call** (`Triton.instance.error/warning/debug(...)`), do **not** silently choose. Present both options and ask:
+For **every old bare-method call** (`Triton.instance.error/warning/debug/event(...)`), do **not** silently choose. Present both options and ask:
 
 ```
 <file>:<line>  Triton.instance.error(area, e)

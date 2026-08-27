@@ -255,6 +255,37 @@ private class TritonFlowTest {
     }
 
     /**
+     * Removed severity-shaped categories (Event, Warning, Debug) are invalid
+     * and fall back to the Flow category with a diagnostic note in Details.
+     */
+    @IsTest
+    private static void test_flow_removed_severity_categories() {
+        TritonTestFactory.assertNoLogs();
+        TritonTestFactory.resetFlowState();
+
+        Test.startTest();
+        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
+        for (String legacy : new List<String>{ 'Event', 'Warning', 'Debug' }) {
+            TritonFlow.FlowLog flowLog = TritonTestFactory.makeFlowLog('test ' + legacy);
+            flowLog.category = legacy;
+            flowLog.details = 'test ' + legacy;
+            flowLogs.add(flowLog);
+        }
+        TritonFlow.log(flowLogs);
+        TritonTestFactory.flushCachedFlowLogs();
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
+        System.assertEquals(3, logs.size(), 'Should have created 3 logs');
+        for (pharos__Log__c log : logs) {
+            System.assertEquals(TritonTypes.Category.Flow.name(), log.pharos__Category__c,
+                'Removed severity category should fall back to Flow');
+            System.assert(log.pharos__Details__c.contains('Unable to locate category'),
+                'Details should carry the invalid-category diagnostic note');
+        }
+    }
+
+    /**
      * ERROR level via processFlowLog creates an issue (Do_Not_Create_Issue__c = false).
      */
     @IsTest
