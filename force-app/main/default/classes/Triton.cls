@@ -138,6 +138,18 @@ global with sharing class Triton {
         Boolean suppressed = false;
     }
 
+    /**
+     * Auto-duration reference timestamps for the current execution context (same
+     * static scope as openMarks / TRANSACTION_ID). lastLogAt is when the previous
+     * emitted user log fired; transactionStartedAt is set by startTransaction and
+     * resumeTransaction. A user log with no explicit .duration() measures from the
+     * most recent of these and the innermost open mark. Numbers only, so heap impact
+     * is negligible. The same clock as marks (System.currentTimeMillis) is used so the
+     * anchors are directly comparable.
+     */
+    private static Long lastLogAt;
+    private static Long transactionStartedAt;
+
 
     /**
      * Enables platform cache for transaction management
@@ -255,6 +267,8 @@ global with sharing class Triton {
      */
     public static String startTransaction() {
         TRANSACTION_ID = TritonHelper.generateUUID4();
+        // Anchor the first log of the new transaction to this call.
+        transactionStartedAt = System.currentTimeMillis();
         // A new transaction starts from a clean span hierarchy, mirroring the LWC logger --
         // but only when no mark is open. Starting a transaction never discards an open mark:
         // TritonLwc.saveComponentLogs and TritonFlow.log both call startTransaction, and
@@ -282,6 +296,8 @@ global with sharing class Triton {
             TritonHelper.cacheTransactionId(transactionId);
         }
         TRANSACTION_ID = transactionId;
+        // Anchor the first log after resume (e.g. an async continuation) to this call.
+        transactionStartedAt = System.currentTimeMillis();
     }
 
     /**
@@ -333,7 +349,7 @@ global with sharing class Triton {
     * @param builder TritonBuilder instance containing log details
     */
     public static void log(TritonBuilder builder) {
-        doLog(builder);
+        doLog(builder, true);
     }
 
     /**
@@ -343,7 +359,7 @@ global with sharing class Triton {
     * @param builder TritonBuilder instance containing log details
     * @return true when the log was buffered, false when it was filtered out
     */
-    private static Boolean doLog(TritonBuilder builder) {
+    private static Boolean doLog(TritonBuilder builder, Boolean autoDuration) {
         if (TritonHelper.Config.isLoggingDisabled()) {
             return false;
         }
@@ -369,9 +385,46 @@ global with sharing class Triton {
             builder.ambientSpanContext(ambientParentSpanId());
         }
 
+        // Automatic duration: only user logs (autoDuration == true) opt in. Mark
+        // records manage their own duration and must not advance the reference.
+        if (autoDuration) {
+            applyAutoDuration(builder, log);
+        }
+
         builder.prepareForLogging(TRANSACTION_ID);
         logs.add(builder.build());
         return true;
+    }
+
+    /**
+    * Stamps an automatic duration on a user log that did not set one explicitly: the
+    * elapsed time from the most recent of the previous emitted user log, the innermost
+    * open mark, or the current transaction start. An explicit .duration() always wins.
+    * Every emitted user log advances lastLogAt, so each log sets the timer for the
+    * next. `log` is the builder.build() doLog already computed, read only to detect an
+    * explicit duration.
+    * @param builder -- the log builder being emitted
+    * @param log -- the already-built log, checked for an explicit duration
+    */
+    private static void applyAutoDuration(TritonBuilder builder, pharos__Log__c log) {
+        Long nowMs = System.currentTimeMillis();
+        if (log.get(TritonBuilder.DURATION) == null) {
+            Long ref = transactionStartedAt;
+            if (lastLogAt != null && (ref == null || lastLogAt > ref)) {
+                ref = lastLogAt;
+            }
+            if (!openMarks.isEmpty()) {
+                Long markStart = openMarks.get(openMarks.size() - 1).startedAt;
+                if (ref == null || markStart > ref) {
+                    ref = markStart;
+                }
+            }
+            if (ref == null) {
+                ref = nowMs;
+            }
+            builder.duration(Decimal.valueOf(nowMs - ref));
+        }
+        lastLogAt = nowMs;
     }
 
     /**
@@ -542,7 +595,7 @@ global with sharing class Triton {
         // parent: push the enclosing span so its children nest under it instead.
         mark.suppressed = !doLog(markBuilder(mark)
                                     .summary(TritonHelper.MARK_STARTED_PREFIX + markName)
-                                    .withoutLimitInfo());
+                                    .withoutLimitInfo(), false);
         mark.stackedSpanId = mark.suppressed ? spans.current() : mark.spanId;
         spans.push(mark.stackedSpanId);
 
@@ -565,7 +618,7 @@ global with sharing class Triton {
         doLog(markBuilder(mark)
                 .summary(TritonHelper.MARK_COMPLETED_PREFIX + mark.name)
                 .details(TritonHelper.MARK_DURATION_PREFIX + elapsedMs + TritonHelper.MARK_DURATION_SUFFIX)
-                .duration(Decimal.valueOf(elapsedMs)));
+                .duration(Decimal.valueOf(elapsedMs)), false);
     }
 
     /**

@@ -981,4 +981,85 @@ private class TritonMarkTest {
         }
         Test.stopTest();
     }
+
+    // ─── Auto-duration ───────────────────────────────────────────────
+
+    @IsTest
+    private static void test_autoDuration_first_log_after_startTransaction() {
+        Test.startTest();
+        Triton.startTransaction();
+        Triton.info(Triton.t.summary('after-transaction'));
+        Test.stopTest();
+
+        pharos__Log__c log = bufferedBySummary('after-transaction');
+        System.assertNotEquals(null, log, 'The log was buffered');
+        System.assertNotEquals(null, log.pharos__Duration__c,
+            'A log with no explicit duration is auto-timed from startTransaction');
+        System.assert(log.pharos__Duration__c >= 0,
+            'Auto duration is non-negative: ' + log.pharos__Duration__c);
+    }
+
+    @IsTest
+    private static void test_autoDuration_explicit_duration_wins() {
+        Test.startTest();
+        Triton.startTransaction();
+        Triton.info(Triton.t.summary('explicit').duration(4242));
+        Test.stopTest();
+
+        pharos__Log__c log = bufferedBySummary('explicit');
+        System.assertEquals(4242, log.pharos__Duration__c,
+            'An explicit .duration() is never overwritten by the automatic value');
+    }
+
+    @IsTest
+    private static void test_autoDuration_log_after_mark_is_stamped() {
+        Test.startTest();
+        Triton.startMark('work');
+        Triton.info(Triton.t.summary('inside-mark'));
+        Triton.endMark();
+        Test.stopTest();
+
+        pharos__Log__c opening = bufferedBySummary('Performance started: work');
+        pharos__Log__c userLog = bufferedBySummary('inside-mark');
+        pharos__Log__c completion = bufferedBySummary('Performance: work');
+
+        System.assertEquals(null, opening.pharos__Duration__c,
+            'The mark opening record still carries no auto duration');
+        System.assertNotEquals(null, userLog.pharos__Duration__c,
+            'A log inside a mark is auto-timed from the mark');
+        System.assert(userLog.pharos__Duration__c >= 0, 'Auto duration non-negative');
+        System.assertNotEquals(null, completion.pharos__Duration__c,
+            'The mark completion still carries its own span duration, unaffected');
+    }
+
+    @IsTest
+    private static void test_autoDuration_sequence_of_logs_each_timed() {
+        Test.startTest();
+        Triton.startMark('seq');
+        Triton.info(Triton.t.summary('A'));
+        Triton.info(Triton.t.summary('B'));
+        Triton.endMark();
+        Test.stopTest();
+
+        pharos__Log__c a = bufferedBySummary('A');
+        pharos__Log__c b = bufferedBySummary('B');
+        System.assertNotEquals(null, a.pharos__Duration__c, 'A is auto-timed (from the mark)');
+        System.assertNotEquals(null, b.pharos__Duration__c, 'B is auto-timed (from A)');
+        System.assert(a.pharos__Duration__c >= 0 && b.pharos__Duration__c >= 0,
+            'Both auto durations are non-negative');
+    }
+
+    @IsTest
+    private static void test_autoDuration_logNow_flushes_and_runs() {
+        Test.startTest();
+        Triton.startTransaction();
+        Triton.logNow(Triton.t.summary('immediate'));
+        Test.stopTest();
+
+        // logNow shares log()'s doLog(_, true) path, so auto-duration is applied before
+        // the immediate flush. It flushes the buffer, so nothing is left queued.
+        System.assertEquals(0, buffer().size(),
+            'logNow flushed the buffer (auto-duration applied on the shared path before flush)');
+    }
+
 }
