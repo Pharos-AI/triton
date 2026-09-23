@@ -163,24 +163,18 @@ System.enqueueJob(new MyQueueable(payload, Triton.TRANSACTION_ID));
 
 If the catch currently swallows the exception (no throw/return), add the log and leave the flow as-is. Do not change exception-handling behavior — only add logging.
 
-For methods **without** try-catch that contain meaningful business logic (DML, callouts, complex conditions), wrap the body, buffering the success log and flushing at the boundary (Step 3f):
+For methods **without** try-catch that contain meaningful business logic (DML, callouts, complex conditions), open a mark, wrap the body, and close it in `finally`. Logs emitted inside the mark are **auto-timed from the mark's start** — no hand-carried start time and no `.duration(...)` call. Buffer the success log and flush at the boundary (Step 3f):
 
 ```apex
-Long startTime = System.now().getTime();
+Triton.startMark();          // '<ClassName>.<methodName>' from the stack trace
 try {
     // existing body here
-    Triton.info(
-        Triton.t
-            .summary('<methodName> completed')
-            .duration(System.now().getTime() - startTime)
-    );
+    Triton.info(Triton.t.summary('<methodName> completed'));   // duration set automatically
 } catch (Exception e) {
-    Triton.logNow(
-        Triton.t
-            .exception(e)
-            .duration(System.now().getTime() - startTime)
-    );
+    Triton.logNow(Triton.t.exception(e));                      // duration set automatically
     throw e;
+} finally {
+    Triton.endMark();
 }
 ```
 
@@ -206,7 +200,7 @@ try {
 - Marks are **buffered like any other log and never flush** — keep your existing flush points (Step 3f).
 - Marks emit at **FINE**. Dial a class up or down with a `Log_Level__mdt` rule, not with a call-site argument. A mark filtered out by a rule stays transparent: logs inside it nest under the nearest surviving ancestor.
 
-Manual timing as shown above remains correct for a **one-off** duration on a single log — a mark is what you want when the stretch should appear as a span with everything inside it attached.
+Inside an open mark every log's `Duration` is set automatically from the mark's start, so a log statement never needs a hand-computed duration. Outside any mark a log is a point-in-time record and carries no duration; set `.duration(...)` explicitly only for a value you measured yourself (for example a callout's own elapsed time).
 
 ### 3d — DML result logging
 
@@ -308,7 +302,6 @@ Triton.info(
     Triton.t
         .summary('Order batch completed')
         .details('result=' + JSON.serialize(new Map<String, Object>{ 'processed' => scope.size(), 'skipped' => skipped }))
-        .duration(System.now().getTime() - startTime)
 );
 
 // FINEST — terse marker, no serialization

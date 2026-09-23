@@ -139,21 +139,8 @@ global with sharing class Triton {
     }
 
     /**
-     * Auto-duration reference timestamps for the current execution context (same
-     * static scope as openMarks / TRANSACTION_ID). lastLogAt is when the previous
-     * emitted user log fired; transactionStartedAt is set by startTransaction and
-     * resumeTransaction. A user log with no explicit .duration() measures from the
-     * most recent of these and the innermost open mark. Numbers only, so heap impact
-     * is negligible. The same clock as marks (System.currentTimeMillis) is used so the
-     * anchors are directly comparable.
-     */
-    private static Long lastLogAt;
-    private static Long transactionStartedAt;
-
-    /**
-     * Test seam for the auto-duration and mark clock. Null in production, where
-     * currentMillis() reads the system clock; a test sets it to advance time
-     * deterministically and assert exact reference selection.
+     * Test seam for the mark / auto-duration clock (see applyAutoDuration). Null in
+     * production, where currentMillis() reads the system clock.
      */
     @TestVisible
     private static Long clockOverrideMs;
@@ -161,6 +148,13 @@ global with sharing class Triton {
     private static Long currentMillis() {
         return clockOverrideMs != null ? clockOverrideMs : System.currentTimeMillis();
     }
+
+    /**
+     * The most recently emitted (buffered) log. Test seam only: lets a test assert the
+     * duration stamped on a logNow record after the buffer has been flushed.
+     */
+    @TestVisible
+    private static pharos__Log__c lastEmittedLog;
 
 
     /**
@@ -279,8 +273,6 @@ global with sharing class Triton {
      */
     public static String startTransaction() {
         TRANSACTION_ID = TritonHelper.generateUUID4();
-        // Anchor the first log of the new transaction to this call.
-        transactionStartedAt = currentMillis();
         // A new transaction starts from a clean span hierarchy, mirroring the LWC logger --
         // but only when no mark is open. Starting a transaction never discards an open mark:
         // TritonLwc.saveComponentLogs and TritonFlow.log both call startTransaction, and
@@ -306,11 +298,6 @@ global with sharing class Triton {
         if (cacheEnabled) {
             //cache the transaction id, even if it's the same as the current one to extend the TTL
             TritonHelper.cacheTransactionId(transactionId);
-        }
-        // Anchor durations only on a genuine resume, not on a cache-TTL refresh that
-        // re-passes the current id (withCache calls resumeTransaction to extend the TTL).
-        if (TRANSACTION_ID != transactionId) {
-            transactionStartedAt = currentMillis();
         }
         TRANSACTION_ID = transactionId;
     }
@@ -364,7 +351,9 @@ global with sharing class Triton {
     * @param builder TritonBuilder instance containing log details
     */
     public static void log(TritonBuilder builder) {
-        doLog(builder, true);
+        // Capture the clock on entry, before Triton's own per-log cost (build,
+        // filtering, stack-trace parsing) so it is never folded into a measured span.
+        doLog(builder, true, currentMillis());
     }
 
     /**
@@ -374,7 +363,7 @@ global with sharing class Triton {
     * @param builder TritonBuilder instance containing log details
     * @return true when the log was buffered, false when it was filtered out
     */
-    private static Boolean doLog(TritonBuilder builder, Boolean isUserLog) {
+    private static Boolean doLog(TritonBuilder builder, Boolean isUserLog, Long entryMillis) {
         if (TritonHelper.Config.isLoggingDisabled()) {
             return false;
         }
@@ -401,53 +390,44 @@ global with sharing class Triton {
         }
 
         // Automatic duration: only Apex user logs opt in. Mark records
-        // (isUserLog == false) manage their own duration and must not advance the
-        // reference; applyAutoDuration additionally skips non-Apex bridge logs.
+        // (isUserLog == false) manage their own duration.
         if (isUserLog) {
-            applyAutoDuration(builder, log);
+            applyAutoDuration(builder, log, entryMillis);
         }
 
         builder.prepareForLogging(TRANSACTION_ID);
-        logs.add(builder.build());
+        pharos__Log__c emitted = builder.build();
+        logs.add(emitted);
+        lastEmittedLog = emitted;
         return true;
     }
 
     /**
-    * Stamps an automatic duration on a user log that did not set one explicitly: the
-    * elapsed time from the most recent of the previous emitted user log, the innermost
-    * open mark, or the current transaction start. An explicit .duration() always wins.
-    * Every emitted user log advances lastLogAt, so each log sets the timer for the
-    * next. `log` is the builder.build() doLog already computed, read only to detect an
-    * explicit duration.
+    * Stamps an automatic duration on an Apex log emitted inside an open mark: the
+    * elapsed time from the innermost open mark's start to when log() was entered. This
+    * removes the hand-carried start-time / .duration(now - start) pair from a marked
+    * method's completion or exception log. Outside any open mark a log is a
+    * point-in-time record and its Duration is left unset, so a consumer (the Gantt
+    * chart, the OTel pipeline) can tell a measured span from a record that measures
+    * nothing. An explicit .duration() always wins, and logs forwarded from other
+    * technologies (LWC/Aura/Flow) are never stamped.
     * @param builder -- the log builder being emitted
-    * @param log -- the already-built log, checked for an explicit duration
+    * @param log -- the already-built log, read for category and an explicit duration
+    * @param entryMillis -- the clock captured at entry to log(), so Triton's own
+    *                       per-log cost is excluded from the measured span
     */
-    private static void applyAutoDuration(TritonBuilder builder, pharos__Log__c log) {
-        // Auto-duration is an Apex-instrumentation feature. Logs forwarded from other
-        // technologies (LWC, Aura, Flow) carry their own duration or none and must not
-        // be stamped with an Apex-clock value -- Duration is a performance metric. They
-        // also must not advance the reference for the surrounding Apex logs.
+    private static void applyAutoDuration(TritonBuilder builder, pharos__Log__c log, Long entryMillis) {
+        if (openMarks.isEmpty()) {
+            return;
+        }
         if (log.pharos__Category__c != TritonTypes.Category.Apex.name()) {
             return;
         }
-        Long nowMs = currentMillis();
-        if (log.get(TritonBuilder.DURATION) == null) {
-            Long ref = transactionStartedAt;
-            if (lastLogAt != null && (ref == null || lastLogAt > ref)) {
-                ref = lastLogAt;
-            }
-            if (!openMarks.isEmpty()) {
-                Long markStart = openMarks.get(openMarks.size() - 1).startedAt;
-                if (ref == null || markStart > ref) {
-                    ref = markStart;
-                }
-            }
-            if (ref == null) {
-                ref = nowMs;
-            }
-            builder.duration(Decimal.valueOf(nowMs - ref));
+        if (log.get(TritonBuilder.DURATION) != null) {
+            return;
         }
-        lastLogAt = nowMs;
+        Long markStart = openMarks.get(openMarks.size() - 1).startedAt;
+        builder.duration(Decimal.valueOf(entryMillis - markStart));
     }
 
     /**
@@ -618,7 +598,7 @@ global with sharing class Triton {
         // parent: push the enclosing span so its children nest under it instead.
         mark.suppressed = !doLog(markBuilder(mark)
                                     .summary(TritonHelper.MARK_STARTED_PREFIX + markName)
-                                    .withoutLimitInfo(), false);
+                                    .withoutLimitInfo(), false, null);
         mark.stackedSpanId = mark.suppressed ? spans.current() : mark.spanId;
         spans.push(mark.stackedSpanId);
 
@@ -641,7 +621,7 @@ global with sharing class Triton {
         doLog(markBuilder(mark)
                 .summary(TritonHelper.MARK_COMPLETED_PREFIX + mark.name)
                 .details(TritonHelper.MARK_DURATION_PREFIX + elapsedMs + TritonHelper.MARK_DURATION_SUFFIX)
-                .duration(Decimal.valueOf(elapsedMs)), false);
+                .duration(Decimal.valueOf(elapsedMs)), false, null);
     }
 
     /**

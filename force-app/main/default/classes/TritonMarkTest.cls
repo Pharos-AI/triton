@@ -982,39 +982,10 @@ private class TritonMarkTest {
         Test.stopTest();
     }
 
-    // ─── Auto-duration ───────────────────────────────────────────────
+    // ─── Auto-duration (mark-scoped) ─────────────────────────────────
 
     @IsTest
-    private static void test_autoDuration_first_log_measures_from_transaction() {
-        Test.startTest();
-        Triton.clockOverrideMs = 1000;
-        Triton.startTransaction();
-        Triton.clockOverrideMs = 1500;
-        Triton.info(Triton.t.summary('A'));
-        Test.stopTest();
-
-        System.assertEquals(500, bufferedBySummary('A').pharos__Duration__c,
-            'First log after startTransaction is timed from that call (1500 - 1000)');
-    }
-
-    @IsTest
-    private static void test_autoDuration_subsequent_log_measures_from_previous_log() {
-        Test.startTest();
-        Triton.clockOverrideMs = 1000;
-        Triton.startTransaction();
-        Triton.clockOverrideMs = 1500;
-        Triton.info(Triton.t.summary('A'));
-        Triton.clockOverrideMs = 1800;
-        Triton.info(Triton.t.summary('B'));
-        Test.stopTest();
-
-        System.assertEquals(500, bufferedBySummary('A').pharos__Duration__c, 'A measured from the transaction');
-        System.assertEquals(300, bufferedBySummary('B').pharos__Duration__c,
-            'B measured from the previous log A (1800 - 1500), not from the transaction');
-    }
-
-    @IsTest
-    private static void test_autoDuration_sequence_across_a_mark() {
+    private static void test_autoDuration_logs_inside_mark_measure_from_mark_start() {
         Test.startTest();
         Triton.clockOverrideMs = 2000;
         Triton.startMark('m');
@@ -1026,77 +997,95 @@ private class TritonMarkTest {
         Triton.endMark();
         Test.stopTest();
 
+        System.assertEquals(300, bufferedBySummary('A').pharos__Duration__c,
+            'A is timed from the open mark start (2300 - 2000)');
+        System.assertEquals(500, bufferedBySummary('B').pharos__Duration__c,
+            'B is also timed from the mark start (2500 - 2000), not from A');
         System.assertEquals(null, bufferedBySummary('Performance started: m').pharos__Duration__c,
             'The mark opening record carries no auto duration');
-        System.assertEquals(300, bufferedBySummary('A').pharos__Duration__c,
-            'A is timed from the open mark (2300 - 2000)');
-        System.assertEquals(200, bufferedBySummary('B').pharos__Duration__c,
-            'B is timed from the previous log A (2500 - 2300)');
         System.assertEquals(600, bufferedBySummary('Performance: m').pharos__Duration__c,
             'The mark completion still carries its own span duration (2600 - 2000), unchanged');
     }
 
     @IsTest
-    private static void test_autoDuration_explicit_duration_wins() {
+    private static void test_autoDuration_nested_marks_use_innermost() {
         Test.startTest();
         Triton.clockOverrideMs = 1000;
-        Triton.startTransaction();
-        Triton.clockOverrideMs = 5000;
-        Triton.info(Triton.t.summary('explicit').duration(42));
+        Triton.startMark('outer');
+        Triton.clockOverrideMs = 1200;
+        Triton.startMark('inner');
+        Triton.clockOverrideMs = 1500;
+        Triton.info(Triton.t.summary('C'));
+        Triton.clockOverrideMs = 1600;
+        Triton.endMark();
+        Triton.clockOverrideMs = 1800;
+        Triton.info(Triton.t.summary('D'));
+        Triton.endMark();
         Test.stopTest();
 
-        System.assertEquals(42, bufferedBySummary('explicit').pharos__Duration__c,
-            'An explicit .duration() is never overwritten by the automatic value (would have been 4000)');
+        System.assertEquals(300, bufferedBySummary('C').pharos__Duration__c,
+            'C measures from the innermost (inner) mark (1500 - 1200)');
+        System.assertEquals(800, bufferedBySummary('D').pharos__Duration__c,
+            'After inner closes, D measures from the outer mark (1800 - 1000)');
     }
 
     @IsTest
-    private static void test_autoDuration_excludes_non_apex_bridge_logs() {
+    private static void test_autoDuration_explicit_duration_wins_inside_mark() {
+        Test.startTest();
+        Triton.clockOverrideMs = 1000;
+        Triton.startMark('m');
+        Triton.clockOverrideMs = 5000;
+        Triton.info(Triton.t.summary('explicit').duration(42));
+        Triton.endMark();
+        Test.stopTest();
+
+        System.assertEquals(42, bufferedBySummary('explicit').pharos__Duration__c,
+            'An explicit .duration() is never overwritten (would have been 4000)');
+    }
+
+    @IsTest
+    private static void test_autoDuration_log_outside_mark_is_unset() {
         Test.startTest();
         Triton.clockOverrideMs = 1000;
         Triton.startTransaction();
+        Triton.clockOverrideMs = 9000;
+        Triton.info(Triton.t.summary('lonely'));
+        Test.stopTest();
+
+        System.assertEquals(null, bufferedBySummary('lonely').pharos__Duration__c,
+            'A log outside any open mark is a point-in-time record; Duration stays unset');
+    }
+
+    @IsTest
+    private static void test_autoDuration_bridge_log_inside_mark_not_stamped() {
+        Test.startTest();
+        Triton.clockOverrideMs = 1000;
+        Triton.startMark('m');
         Triton.clockOverrideMs = 5000;
         // A log forwarded from another technology (LWC/Aura/Flow) must not be stamped
-        // with an Apex-clock duration, and must not advance the Apex reference.
+        // with an Apex-clock span, even inside a mark.
         Triton.log(Triton.t.summary('bridge').category(TritonTypes.Category.LWC));
-        Triton.clockOverrideMs = 5200;
-        Triton.info(Triton.t.summary('apex-after-bridge'));
+        Triton.endMark();
         Test.stopTest();
 
         System.assertEquals(null, bufferedBySummary('bridge').pharos__Duration__c,
             'A non-Apex bridge log gets no auto duration');
-        System.assertEquals(4200, bufferedBySummary('apex-after-bridge').pharos__Duration__c,
-            'The bridge log did not advance the reference: the next Apex log still measures from the transaction (5200 - 1000)');
     }
 
     @IsTest
-    private static void test_autoDuration_resumeTransaction_ttl_refresh_does_not_reanchor() {
+    private static void test_autoDuration_logNow_inside_mark_is_stamped() {
         Test.startTest();
         Triton.clockOverrideMs = 1000;
-        Triton.startTransaction();
-        String txId = Triton.TRANSACTION_ID;
-        // A cache-TTL refresh re-passes the same id; it must not move the anchor.
-        Triton.clockOverrideMs = 4000;
-        Triton.resumeTransaction(txId);
-        Triton.clockOverrideMs = 4500;
-        Triton.info(Triton.t.summary('A'));
-        Test.stopTest();
-
-        System.assertEquals(3500, bufferedBySummary('A').pharos__Duration__c,
-            'Re-passing the current id (TTL refresh) keeps the original anchor (4500 - 1000)');
-    }
-
-    @IsTest
-    private static void test_autoDuration_logNow_is_stamped_before_flush() {
-        Test.startTest();
-        Triton.clockOverrideMs = 1000;
-        Triton.startTransaction();
-        Triton.clockOverrideMs = 1700;
+        Triton.startMark('m');
+        Triton.clockOverrideMs = 1400;
         Triton.logNow(Triton.t.summary('immediate'));
+        pharos__Log__c emitted = Triton.lastEmittedLog;
         Test.stopTest();
 
-        // logNow flushed the buffer, so nothing is queued -- the shared doLog(_, true)
-        // path applied auto-duration before flushTop, identical to buffered log().
-        System.assertEquals(0, buffer().size(), 'logNow flushed the buffer');
+        System.assertEquals('immediate', emitted.pharos__Summary__c,
+            'lastEmittedLog is the logNow record just emitted');
+        System.assertEquals(400, emitted.pharos__Duration__c,
+            'logNow inside a mark is stamped on the shared path before flush (1400 - 1000)');
     }
 
 }
