@@ -138,6 +138,24 @@ global with sharing class Triton {
         Boolean suppressed = false;
     }
 
+    /**
+     * Test seam for the mark / auto-duration clock (see applyAutoDuration). Null in
+     * production, where currentMillis() reads the system clock.
+     */
+    @TestVisible
+    private static Long clockOverrideMs;
+
+    private static Long currentMillis() {
+        return clockOverrideMs != null ? clockOverrideMs : System.currentTimeMillis();
+    }
+
+    /**
+     * The most recently emitted (buffered) log. Test seam only: lets a test assert the
+     * duration stamped on a logNow record after the buffer has been flushed.
+     */
+    @TestVisible
+    private static pharos__Log__c lastEmittedLog;
+
 
     /**
      * Enables platform cache for transaction management
@@ -333,7 +351,9 @@ global with sharing class Triton {
     * @param builder TritonBuilder instance containing log details
     */
     public static void log(TritonBuilder builder) {
-        doLog(builder);
+        // Capture the clock on entry, before Triton's own per-log cost (build,
+        // filtering, stack-trace parsing) so it is never folded into a measured span.
+        doLog(builder, true, currentMillis());
     }
 
     /**
@@ -343,7 +363,7 @@ global with sharing class Triton {
     * @param builder TritonBuilder instance containing log details
     * @return true when the log was buffered, false when it was filtered out
     */
-    private static Boolean doLog(TritonBuilder builder) {
+    private static Boolean doLog(TritonBuilder builder, Boolean isUserLog, Long entryMillis) {
         if (TritonHelper.Config.isLoggingDisabled()) {
             return false;
         }
@@ -369,9 +389,45 @@ global with sharing class Triton {
             builder.ambientSpanContext(ambientParentSpanId());
         }
 
+        // Automatic duration: only Apex user logs opt in. Mark records
+        // (isUserLog == false) manage their own duration.
+        if (isUserLog) {
+            applyAutoDuration(builder, log, entryMillis);
+        }
+
         builder.prepareForLogging(TRANSACTION_ID);
-        logs.add(builder.build());
+        pharos__Log__c emitted = builder.build();
+        logs.add(emitted);
+        lastEmittedLog = emitted;
         return true;
+    }
+
+    /**
+    * Stamps an automatic duration on an Apex log emitted inside an open mark: the
+    * elapsed time from the innermost open mark's start to when log() was entered. This
+    * removes the hand-carried start-time / .duration(now - start) pair from a marked
+    * method's completion or exception log. Outside any open mark a log is a
+    * point-in-time record and its Duration is left unset, so a consumer (the Gantt
+    * chart, the OTel pipeline) can tell a measured span from a record that measures
+    * nothing. An explicit .duration() always wins, and logs forwarded from other
+    * technologies (LWC/Aura/Flow) are never stamped.
+    * @param builder -- the log builder being emitted
+    * @param log -- the already-built log, read for category and an explicit duration
+    * @param entryMillis -- the clock captured at entry to log(), so Triton's own
+    *                       per-log cost is excluded from the measured span
+    */
+    private static void applyAutoDuration(TritonBuilder builder, pharos__Log__c log, Long entryMillis) {
+        if (openMarks.isEmpty()) {
+            return;
+        }
+        if (log.pharos__Category__c != TritonTypes.Category.Apex.name()) {
+            return;
+        }
+        if (log.get(TritonBuilder.DURATION) != null) {
+            return;
+        }
+        Long markStart = openMarks.get(openMarks.size() - 1).startedAt;
+        builder.duration(Decimal.valueOf(entryMillis - markStart));
     }
 
     /**
@@ -534,7 +590,7 @@ global with sharing class Triton {
         Mark mark = new Mark();
         mark.name = markName;
         mark.stackTrace = stackTrace;
-        mark.startedAt = System.currentTimeMillis();
+        mark.startedAt = currentMillis();
         mark.spanId = TritonHelper.generateUUID4();
         mark.parentSpanId = ambientParentSpanId();
 
@@ -542,7 +598,7 @@ global with sharing class Triton {
         // parent: push the enclosing span so its children nest under it instead.
         mark.suppressed = !doLog(markBuilder(mark)
                                     .summary(TritonHelper.MARK_STARTED_PREFIX + markName)
-                                    .withoutLimitInfo());
+                                    .withoutLimitInfo(), false, null);
         mark.stackedSpanId = mark.suppressed ? spans.current() : mark.spanId;
         spans.push(mark.stackedSpanId);
 
@@ -561,11 +617,11 @@ global with sharing class Triton {
         // The opening record was filtered out, so a completion record would be half a pair.
         if (mark.suppressed) return;
 
-        Long elapsedMs = System.currentTimeMillis() - mark.startedAt;
+        Long elapsedMs = currentMillis() - mark.startedAt;
         doLog(markBuilder(mark)
                 .summary(TritonHelper.MARK_COMPLETED_PREFIX + mark.name)
                 .details(TritonHelper.MARK_DURATION_PREFIX + elapsedMs + TritonHelper.MARK_DURATION_SUFFIX)
-                .duration(Decimal.valueOf(elapsedMs)));
+                .duration(Decimal.valueOf(elapsedMs)), false, null);
     }
 
     /**
