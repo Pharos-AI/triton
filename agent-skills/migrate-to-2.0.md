@@ -37,7 +37,9 @@ Scan for `Triton.instance` and any legacy patterns. For each file, list the call
 
 ## Step 3 — Apply the method mapping
 
-Rewrite each call using this mapping. The `.instance` drops away and positional args move onto a builder — but **the table shows the call shape, not the full field set.** The 1.x convenience methods inject fields you cannot see at the call site (`category`, `postProcessing`, `stackTrace`, `level`, `createIssue`). Open each 1.x method body in the version you are migrating *from* and carry across every field it set. Where 2.0 sets a field automatically — it captures stacktraces in `prepareForLogging` and defaults `category` to `Apex` — note that in the summary instead of restating it at the call site.
+Rewrite each call using this mapping. The `.instance` drops away and positional args move onto a builder — but **the table shows the call shape, not the full field set.** The 1.x convenience methods inject fields you cannot see at the call site (`category`, `stackTrace`, `level`, `createIssue`). Open each 1.x method body in the version you are migrating *from* and carry across every field it set. Where 2.0 sets a field automatically — it captures stacktraces in `prepareForLogging` and defaults `category` to `Apex` — note that in the summary instead of restating it at the call site. Do not carry `postProcessing` across: post-processing defaults are set per log level in Triton, not at the call site.
+
+When a field has a dedicated builder method, use it — `.duration(d)`, `.userId(id)`, `.action(a)`, `.relatedObjects(ids)`, `.createdTimestamp(ts)`, `.spanId(id)` — never `.attribute(TritonBuilder.<FIELD>, value)`. Fall back to `.attribute(...)` only for a field with no dedicated method, and flag each one in the summary.
 
 | Triton 1.x | Triton 2.0 |
 |------------|------------|
@@ -47,16 +49,16 @@ Rewrite each call using this mapping. The `.instance` drops away and positional 
 | `Triton.instance.addError(area, e, relatedObjectIds)` | `Triton.error(Triton.t.area(area).exception(e).relatedObjects(relatedObjectIds))` |
 | `Triton.instance.error(type, area, summary, details)` | `Triton.logNow(Triton.t.type(type).area(area).summary(summary).details(details).error())` |
 | `Triton.instance.addError(type, area, summary, details)` | `Triton.error(Triton.t.type(type).area(area).summary(summary).details(details))` |
-| `Triton.instance.warning(type, area, summary, details)` | `Triton.logNow(Triton.t.type(type).area(area).summary(summary).details(details).warning())` † |
-| `Triton.instance.addWarning(type, area, summary, details)` | `Triton.warning(Triton.t.type(type).area(area).summary(summary).details(details))` † |
+| `Triton.instance.warning(type, area, summary, details)` | `Triton.logNow(Triton.t.type(type).area(area).summary(summary).details(details).warning())` |
+| `Triton.instance.addWarning(type, area, summary, details)` | `Triton.warning(Triton.t.type(type).area(area).summary(summary).details(details))` |
 | `Triton.instance.debug(type, area, summary, details)` | `Triton.logNow(Triton.t.type(type).area(area).summary(summary).details(details).debug())` |
 | `Triton.instance.addDebug(type, area, summary, details)` | `Triton.debug(Triton.t.type(type).area(area).summary(summary).details(details))` |
 | `Triton.instance.debug(type, area, summary, details, duration)` | `Triton.logNow(Triton.t.type(type).area(area).summary(summary).details(details).duration(duration).debug())` |
-| `Triton.instance.addDebug(type, area, summary, details, duration)` | `Triton.debug(Triton.t.type(type).area(area).summary(summary).details(details).attribute(TritonBuilder.DURATION, duration))` |
-| `Triton.instance.addEvent(level, type, area, summary, details)` | `Triton.log(Triton.t.type(type).area(area).summary(summary).details(details).level(level))` † |
-| `Triton.instance.addEvent(type, area, summary, details)` | `Triton.info(Triton.t.type(type).area(area).summary(summary).details(details))` † |
-| `Triton.instance.event(level, type, area, summary, details)` | `Triton.logNow(Triton.t.type(type).area(area).summary(summary).details(details).level(level))` † |
-| `Triton.instance.event(type, area, summary, details)` | `Triton.logNow(Triton.t.type(type).area(area).summary(summary).details(details).info())` † |
+| `Triton.instance.addDebug(type, area, summary, details, duration)` | `Triton.debug(Triton.t.type(type).area(area).summary(summary).details(details).duration(duration))` |
+| `Triton.instance.addEvent(level, type, area, summary, details)` | `Triton.log(Triton.t.type(type).area(area).summary(summary).details(details).level(level))` |
+| `Triton.instance.addEvent(type, area, summary, details)` | `Triton.info(Triton.t.type(type).area(area).summary(summary).details(details))` |
+| `Triton.instance.event(level, type, area, summary, details)` | `Triton.logNow(Triton.t.type(type).area(area).summary(summary).details(details).level(level))` |
+| `Triton.instance.event(type, area, summary, details)` | `Triton.logNow(Triton.t.type(type).area(area).summary(summary).details(details).info())` |
 | `Triton.instance.addDMLResult(area, results)` | `Triton.error(Triton.t.area(area).dmlResults(results))` — **see Step 4b** |
 | `Triton.instance.dmlResult(area, results)` | `Triton.logNow(Triton.t.area(area).dmlResults(results))` — **see Step 4b** |
 | `Triton.instance.addIntegrationError(area, e, request, response)` | `Triton.error(Triton.t.area(area).exception(e).integrationPayload(request, response))` § |
@@ -79,8 +81,6 @@ Rewrite each call using this mapping. The `.instance` drops away and positional 
 > **Note on `addIntegrationError`:** the legacy call wrote `Category = 'Integration'`; the 2.0 form intentionally lands as `Apex` — the Integration category is deprecated, and post-processing payload preservation is triggered by the `integrationPayload` itself, not by category.
 
 > **Note on severity-shaped categories:** 1.x `addWarning` / `addDebug` / `addEvent` stamped `Category = Warning / Debug / Event`. Those Category values are removed in 2.0 — severity is expressed through the log **Level** (`.warning()`, `.debug()`, `.level(...)`; the mapped 2.0 forms above already do this). Category identifies the producing technology: categorize by where the call is made from. These are Apex APIs, so the default is `Apex` — omit `.category(...)` and the builder defaults to it; set `.category(...)` explicitly only when the call site is a bridge for another technology (Flow, LWC, Aura).
-
-† **Carry the post-processing controls.** Separately from category, 1.x `addEvent`, `event`, `addWarning` and `warning` all set `.postProcessing(makePostProcessingBuilder().stackTrace(true).userInfo(true).relatedObjects(true))`. 2.0's `prepareForLogging` does not set post-processing, so omitting it silently disables Pharos-side enrichment on every migrated log — and no test will catch that. Append `.postProcessing(Triton.makePostProcessingBuilder().stackTrace(true).userInfo(true).relatedObjects(true))` to those rewrites, or state explicitly in the summary that the org has chosen to drop it.
 
 § **Http and Rest payloads share one mapping.** Each 1.x integration-error overload exists twice, once taking `HttpRequest`/`HttpResponse` and once taking `RestRequest`/`RestResponse`. 2.0's `integrationPayload(...)` is overloaded for both pairs, so the rewrite is identical either way — pass the request/response through unchanged.
 
@@ -141,9 +141,9 @@ Report the guarded/unguarded split in the Step 6 summary. A log that fires on su
 
 **Re-run check 1 immediately before merge, not just before presenting the diff.** Because 2.0 removes `Triton.instance`, the library and every caller have to land together — so on an active integration branch a caller that merges *after* your sweep but *before* yours lands leaves the branch with the 2.0 library and live 1.x references, which does not compile. The window is the review period, and it is easy to lose: verifying at sweep time proves nothing about merge time.
 
-For anything beyond a one-off, make it a CI check rather than a habit: fail the build when `Triton.instance` appears in the source tree while `Triton.cls` has no `instance` member. That is a two-line grep, it runs on every pull request, and it converts a post-merge breakage into a pre-merge one. A deprecated `instance` facade delegating to the 2.0 statics is the stronger variant — it turns the same situation into a deprecation warning instead of a broken build, and lets stragglers migrate incrementally.
+For anything beyond a one-off, recommend a CI check rather than a habit: the `setup-standards` skill adds one that fails the build on any `Triton.instance`, so a late 1.x caller breaks its own pull request instead of the branch.
 
-Then present a summary — calls migrated, bare-method decisions (A/B) taken, conditional-logging classifications, collapses applied, flush gaps found, fields carried across per the † note, and any `Category` reporting change implied by the severity-category note — then the diff, with `yes` / `modify` / `skip`. On `yes`, write back to the original file. With `--deploy` (or on confirmation), run `sf project deploy start --source-dir <path> --json` (or the `sfdx` equivalent).
+Then present a summary — calls migrated, bare-method decisions (A/B) taken, conditional-logging classifications, collapses applied, flush gaps found, any `.attribute(...)` fallbacks, whether a `setup-standards` CI check is in place, and any `Category` reporting change implied by the severity-category note — then the diff, with `yes` / `modify` / `skip`. On `yes`, write back to the original file. With `--deploy` (or on confirmation), run `sf project deploy start --source-dir <path> --json` (or the `sfdx` equivalent).
 
 > After deploying 2.0, remind the user to re-assign the `Triton_Read` / `Triton_Write` permission sets so the new fields are visible.
 
