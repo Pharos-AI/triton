@@ -64,7 +64,7 @@ When a field has a dedicated builder method, use it — `.duration(d)`, `.userId
 | `Triton.instance.addIntegrationError(area, e, request, response)` | `Triton.error(Triton.t.area(area).exception(e).integrationPayload(request, response))` § |
 | `Triton.instance.integrationError(area, e, request, response)` | `Triton.logNow(Triton.t.area(area).exception(e).integrationPayload(request, response))` § |
 | `Triton.instance.addIntegrationError(type, area, summary, details, request, response)` | `Triton.error(Triton.t.type(type).area(area).summary(summary).details(details).integrationPayload(request, response))` § |
-| `Triton.instance.integrationError(type, area, summary, details, request, response)` | `Triton.logNow(Triton.t.type(type).area(area).summary(summary).details(details).integrationPayload(request, response))` § |
+| `Triton.instance.integrationError(type, area, summary, details, request, response)` | `Triton.logNow(Triton.t.type(type).area(area).summary(summary).details(details).integrationPayload(request, response).error())` § |
 | `Triton.instance.addLog(builder)` | `Triton.log(builder)` |
 | `Triton.instance.log(builder)` | `Triton.logNow(builder)` — 1.x `log` was `addLog` + `flushTop`, i.e. immediate |
 | `Triton.instance.setTemplate(builder)` | `Triton.setTemplate(builder)` |
