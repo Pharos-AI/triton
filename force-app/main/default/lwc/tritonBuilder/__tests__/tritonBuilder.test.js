@@ -273,6 +273,29 @@ describe('TritonBuilder', () => {
       expect(isNotTriton).toHaveBeenCalled();
       expect(getFunctionName).toHaveBeenCalled();
     });
+
+    test('exception() sets the ERROR level', () => {
+      expect(new TritonBuilder().exception(new Error('x')).build().level).toBe('ERROR');
+    });
+
+    test('exception() overrides an earlier level', () => {
+      const log = new TritonBuilder().level('INFO').exception(new Error('x')).build();
+
+      expect(log.level).toBe('ERROR');
+    });
+
+    test('a level set after exception() wins', () => {
+      const log = new TritonBuilder().exception(new Error('x')).level('WARNING').build();
+
+      expect(log.level).toBe('WARNING');
+    });
+
+    test('exception() tolerates a missing error', () => {
+      // A promise rejected with no reason hands undefined to the catch block.
+      let result;
+      expect(() => { result = new TritonBuilder().exception(undefined); }).not.toThrow();
+      expect(result.build().level).toBe('ERROR');
+    });
   });
 
   describe('componentDetails()', () => {
