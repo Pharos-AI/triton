@@ -1007,6 +1007,34 @@ private class TritonFlowTest {
     }
 
     @IsTest
+    private static void test_addLogs_failed_put_removes_the_transactions_earlier_cache_entry() {
+        TritonTestFactory.resetFlowState();
+
+        Test.startTest();
+        // No batch is scheduled here, as when one is already active: the pending buffer
+        // keeps growing and each call rewrites this transaction's cache key.
+        TritonFlowFlushBatch.addLogs(
+            new List<pharos__Log__c>{ TritonTestFactory.makeLogRecord('a') }, 'txput');
+        TritonFlowFlushBatch.addLogs(
+            new List<pharos__Log__c>{ TritonTestFactory.makeLogRecord('b') }, 'txput');
+        // The third write fails (the payload outgrew the per-key limit), so a, b and c
+        // are published now.
+        TritonTestFactory.failCachePuts();
+        TritonFlowFlushBatch.addLogs(
+            new List<pharos__Log__c>{ TritonTestFactory.makeLogRecord('c') }, 'txput');
+
+        System.assert(TritonFlowFlushBatch.pendingLogs.isEmpty(),
+            'A failed cache write publishes the pending buffer and clears it');
+        System.assert(TritonHelper.getFlowLogCacheKeys().isEmpty(),
+            'The earlier write of a and b must not stay cached for the active batch to publish again');
+        // What the active batch's finish() would hand to the next batch.
+        TritonTestFactory.flushCachedFlowLogs();
+        Test.stopTest();
+
+        TritonTestFactory.assertLogCount(3);
+    }
+
+    @IsTest
     private static void test_addLogs_publish_failure_never_throws() {
         TritonTestFactory.resetFlowState();
         TritonTestFactory.failPublishing();

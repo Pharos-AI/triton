@@ -59,6 +59,14 @@ public class TritonTestFactory {
         TritonFlowFlushBatch.scheduleFault = new AsyncException('Simulated schedule failure');
     }
 
+    /**
+     * Makes every later Org Cache put in this test throw, as Cache.Org.put does for an
+     * item over the per-key size limit. resetFlowState clears it.
+     */
+    public static void failCachePuts() {
+        TritonCacheManager.failPuts = true;
+    }
+
     // ─── Log Levels ─────────────────────────────────────────────────
 
     /**

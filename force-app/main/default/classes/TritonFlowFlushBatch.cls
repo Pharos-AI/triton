@@ -90,7 +90,7 @@ global class TritonFlowFlushBatch implements Database.Batchable<SObject> {
             // Platform enforces the 100KB per-key limit; cacheFlowLogs returns
             // false if the write fails (size exceeded or cache unavailable).
             if (!TritonHelper.cacheFlowLogs(transactionId, pendingLogs)) {
-                publishPendingNow(null); // nothing was cached
+                publishPendingNow(transactionId);
                 return;
             }
 
@@ -128,13 +128,12 @@ global class TritonFlowFlushBatch implements Database.Batchable<SObject> {
 
     /**
      * Publishes this transaction's pending logs now and clears the buffer. Removes the
-     * transaction's cache key first, so no later batch republishes them.
-     * @param cachedTransactionId The transaction whose cache key to remove, or null when nothing was cached
+     * transaction's cache key first, so no later batch republishes them: an earlier call
+     * in this transaction may have cached some of them even when the latest write failed.
+     * @param transactionId The transaction whose cache key to remove (null-safe)
      */
-    private static void publishPendingNow(String cachedTransactionId) {
-        if (cachedTransactionId != null) {
-            TritonHelper.removeFlowLogs(cachedTransactionId);
-        }
+    private static void publishPendingNow(String transactionId) {
+        TritonHelper.removeFlowLogs(transactionId);
         List<pharos__Log__c> toPublish = new List<pharos__Log__c>(pendingLogs);
         pendingLogs.clear();
         TritonHelper.publishLogs(toPublish);

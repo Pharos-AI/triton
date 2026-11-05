@@ -27,8 +27,16 @@ public with sharing class TritonCacheManager {
     @TestVisible
     private static Map<String, Object> mockCache = new Map<String, Object>();
 
+    // Test seam: when true, the mock's put() throws, as Cache.Org.put does for an
+    // item over the per-key size limit. Only tests set it.
+    @TestVisible
+    private static Boolean failPuts = false;
+
     public static void put(String key, Object value, Integer ttl) {
         if (useMock) {
+            if (failPuts) {
+                throw new Cache.ItemSizeLimitExceededException('Simulated put failure');
+            }
             mockCache.put(key, value);
         } else {
             Cache.Org.put(key, value, ttl);
@@ -79,5 +87,6 @@ public with sharing class TritonCacheManager {
     private static void resetMock() {
         mockCache.clear();
         useMock = true;
+        failPuts = false;
     }
 }
