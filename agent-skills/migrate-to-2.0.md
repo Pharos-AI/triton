@@ -18,7 +18,7 @@ Mechanically convert Triton **1.x** singleton usage (`Triton.instance.*`) to the
 
 - **Diff the local `TritonTypes` against the incoming 2.0 one and re-add any org-local enum values.** A wholesale copy drops them and every reference fails to compile. This is the one shipped file expected to carry a local delta — see the note in Step 5. Org-local `Category` values are the exception: prefer retiring them per the severity-category note in Step 3 rather than preserving them.
 - **Confirm the branch you are sweeping actually contains every caller.** The sweep is only as complete as its `<path>` and its branch. In a promotion-pipeline repo the integration branch can sit well ahead of the default branch; a sweep run against the wrong one removes `Triton.instance` from the library while live references survive elsewhere.
-- **Add `**/__tests__/**` to `.forceignore` before any deploy.** 2.0 ships four LWC modules (`triton`, `tritonBuilder`, `tritonUtils`, `logLimits`), three of which carry Jest tests under `__tests__/`. Jest tests are not deployable metadata — they rely on Jest globals and test-only module mocks — so the Step 6 `sf project deploy` can reject the bundle unless the folder is ignored. Salesforce documents this entry alongside the `**/jsconfig.json` and `**/.eslintrc.json` ones many repos already have, so it is often the only line missing. The tests stay in version control; they are just never pushed to an org.
+- **Add `**/__tests__/**` to `.forceignore` before any deploy.** 2.0 ships four LWC modules (`triton`, `tritonBuilder`, `tritonUtils`, `logLimits`), three of which carry Jest tests under `__tests__/`. Jest tests are not deployable metadata — they rely on Jest globals and test-only module mocks — so the Step 6 `sf project deploy` can reject the bundle unless the folder is ignored. Salesforce documents this entry alongside the `**/jsconfig.json` and `**/.eslintrc.json` ones many repos already have, so it is often the only line missing. The tests stay in version control; they are just never pushed to an org. Triton's own repository already ignores them — its `.forceignore` excludes `**/__tests__/**` and `**/__mocks__/**` from 2.0.0 — but a `.forceignore` only governs the project it sits in: once `force-app` is vendored into your repo, your project's `.forceignore` is the one that applies.
 
 ## Step 1 — Parse arguments
 
@@ -37,7 +37,7 @@ Scan for `Triton.instance` and any legacy patterns. For each file, list the call
 
 ## Step 3 — Apply the method mapping
 
-Rewrite each call using this mapping. The `.instance` drops away and positional args move onto a builder — but **the table shows the call shape, not the full field set.** The 1.x convenience methods inject fields you cannot see at the call site (`category`, `stackTrace`, `level`, `createIssue`). Open each 1.x method body in the version you are migrating *from* and carry across every field it set. Where 2.0 sets a field automatically — it captures stacktraces in `prepareForLogging` and defaults `category` to `Apex` — note that in the summary instead of restating it at the call site. Do not carry `postProcessing` across: post-processing defaults are set per log level in Triton, not at the call site.
+Rewrite each call using this mapping. The `.instance` drops away and positional args move onto a builder — but **the table shows the call shape, not the full field set.** The 1.x convenience methods inject fields you cannot see at the call site (`category`, `stackTrace`, `level`, `createIssue`). Open each 1.x method body in the version you are migrating *from* and carry across every field it set. Where 2.0 sets a field automatically — it captures stacktraces in `prepareForLogging` and defaults `category` to `Apex` — note that in the summary instead of restating it at the call site. Do not carry `postProcessing` across by default. Triton 2.0 sets no post-processing controls on Apex or LWC logs, so they get whatever the installed Pharos package applies by default; only the Flow invocable sets controls, and it sets the same ones at every level. The 1.x warning, debug and event methods (`addWarning`, `warning`, `addDebug`, `debug`, `addEvent`, `event`) asked for a narrower set — stack trace, user info and related objects. If the user wants exactly that back, append `.postProcessing(Triton.makePostProcessingBuilder().stackTrace(true).userInfo(true).relatedObjects(true))` to those rewritten calls and flag each one in the summary.
 
 When a field has a dedicated builder method, use it — `.duration(d)`, `.userId(id)`, `.action(a)`, `.relatedObjects(ids)`, `.createdTimestamp(ts)`, `.spanId(id)` — never `.attribute(TritonBuilder.<FIELD>, value)`. Fall back to `.attribute(...)` only for a field with no dedicated method, and flag each one in the summary.
 
@@ -84,7 +84,7 @@ When a field has a dedicated builder method, use it — `.duration(d)`, `.userId
 
 § **Http and Rest payloads share one mapping.** Each 1.x integration-error overload exists twice, once taking `HttpRequest`/`HttpResponse` and once taking `RestRequest`/`RestResponse`. 2.0's `integrationPayload(...)` is overloaded for both pairs, so the rewrite is identical either way — pass the request/response through unchanged.
 
-Transaction/template methods are safe renames. The **logging** methods change shape — and hide the two gotchas below.
+Transaction/template methods are safe renames. The **logging** methods change shape — and hide one gotcha (Step 4), plus a second that Triton 2.0.0 handles for you once the library is current (Step 4b).
 
 ## Step 4 — The publishing gotcha (NEVER auto-decide)
 
@@ -107,23 +107,11 @@ For **every old bare-method call**, do **not** silently choose. Present both opt
 
 Getting this wrong is how a migrated log silently disappears when the transaction dies before flushing.
 
-## Step 4b — The conditional-logging gotcha (ALSO never auto-decide)
+## Step 4b — Conditional 1.x methods: check the library, not the call site
 
-Timing is one axis of behavior change; **whether a log is emitted at all** is the other, and it is easier to miss because the rewrite looks correct.
+Timing is one axis of behavior change; **whether a log is emitted at all** is the other. 1.x `addDMLResult` and `dmlResult` emitted only when a row failed. From Triton **2.0.0** the mapped form keeps that contract by itself: `dmlResults(results)` marks the builder as skipped when every row succeeded — or the list is null or empty — and `Triton.error`, `Triton.logNow`, `Triton.log` and `Triton.warning` then emit nothing: no blank record, no issue. The Step 3 rows are therefore correct as written, whether or not the call site sits behind a failure check.
 
-Some 1.x methods only emit under a condition: `addDMLResult` and `dmlResult` wrap their `addLog` in `if(!errorMessages.isEmpty())`, so an all-success DML produced nothing. The 2.0 equivalents are unconditional — `builder.dmlResults(results)` populates no fields when nothing failed, but it still returns the builder, so `Triton.error(...)` buffers a **blank ERROR record and creates an issue on every successful DML**.
-
-For every such call, inspect the call site and classify it:
-
-```
-<file>:<line>  Triton.instance.addDMLResult(area, results)
-  1.x logged ONLY when a row failed. The 2.0 rewrite logs unconditionally.
-  [guarded]   call site is already behind a failure check (if (!sr.isSuccess()),
-              an early return/continue on success, or !failures.isEmpty()) — rewrite as-is
-  [unguarded] propose a guard and show it in the diff
-```
-
-Report the guarded/unguarded split in the Step 6 summary. A log that fires on success is as wrong as one that never fires, and it is worse in volume: one spurious issue per successful batch row.
+What to verify is the library you are migrating **to**. A snapshot of the 2.0 source vendored before 2.0.0 has no skip, and there the same rewrite buffers a blank ERROR record and opens an issue on every successful DML. Check the vendored `TritonBuilder.cls` for an `isSuppressed()` method: if it is missing, upgrade the library to 2.0.0 or later in this change (Step 0) rather than adding guards at each call site, and say so in the summary.
 
 ## Step 5 — Audit flush coverage & collapse
 
@@ -143,16 +131,16 @@ Report the guarded/unguarded split in the Step 6 summary. A log that fires on su
 
 For anything beyond a one-off, recommend a CI check rather than a habit: the `setup-standards` skill adds one that fails the build on any `Triton.instance`, so a late 1.x caller breaks its own pull request instead of the branch.
 
-Then present a summary — calls migrated, bare-method decisions (A/B) taken, conditional-logging classifications, collapses applied, flush gaps found, any `.attribute(...)` fallbacks, whether a `setup-standards` CI check is in place, and any `Category` reporting change implied by the severity-category note — then the diff, with `yes` / `modify` / `skip`. On `yes`, write back to the original file. With `--deploy` (or on confirmation), run `sf project deploy start --source-dir <path> --json` (or the `sfdx` equivalent).
+Then present a summary — calls migrated, bare-method decisions (A/B) taken, the Step 4b library-version check, collapses applied, flush gaps found, any `.attribute(...)` fallbacks, whether a `setup-standards` CI check is in place, and any `Category` reporting change implied by the severity-category note — then the diff, with `yes` / `modify` / `skip`. On `yes`, write back to the original file. With `--deploy` (or on confirmation), run `sf project deploy start --source-dir <path> --json` (or the `sfdx` equivalent).
 
 > After deploying 2.0, remind the user to re-assign the `Triton_Read` / `Triton_Write` permission sets so the new fields are visible.
 
 ## Constraints
 
 - Never auto-convert a bare-method call — always present the immediate (`logNow`) vs. buffer (+flush) choice.
-- Never auto-convert a conditional 1.x method (`addDMLResult`, `dmlResult`) without classifying the call site as guarded or unguarded.
+- Rely on the `dmlResults` rows only when the target library is Triton 2.0.0 or later (Step 4b); otherwise upgrade the library in the same change.
 - Stop and report any `Triton.instance` member *or overload* that is not in the Step 3 table rather than inferring a mapping.
-- Never change program behavior beyond the logging call itself; preserve control flow, throws, signatures. A failure guard added under Step 4b is a behavior *preservation*, not a change — show it explicitly in the diff.
+- Never change program behavior beyond the logging call itself; preserve control flow, throws, signatures.
 - Do not add new values to the shipped `TritonTypes` enums; route org-specific values to `String` constants. Do, however, preserve org-local `Area` and `Type` values when re-vendoring the library (Step 0).
 - Report (don't silently invent) flush gaps introduced by the buffering default.
 - Idempotent: a file with no `Triton.instance` usage is left untouched.
