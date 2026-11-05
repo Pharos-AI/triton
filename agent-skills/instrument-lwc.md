@@ -32,7 +32,7 @@ If no default org → stop:
 
 From the skill arguments:
 - **Path** — the LWC component directory (e.g. `force-app/main/default/lwc/myComponent/`) or the `.js` file directly (required). If not provided, ask.
-- **`--area`** — the feature's functional area, given as one of the `AREA` constants (`ACCOUNTS`, `COMMUNITY`, `LEAD_CONVERSION`, `OPPORTUNITY_MANAGEMENT`, `REST_API`). **Infer it from the code and match the area used by the paired Apex controller / related components** so the whole feature groups together (Step 2). The server records any area outside this set as `LWC`, so pick the closest matching constant; if none fits, omit `.area(...)` and logs record under `LWC`.
+- **`--area`** — the feature's functional area. **Infer it from the code and match the area used by the paired Apex controller / related components** so the whole feature groups together (Step 2). `.area(...)` accepts any String, exactly as in Apex and Flow — reuse the paired Apex controller's area string verbatim (e.g. `.area('OrderEntry')`). The `AREA` constants (`ACCOUNTS`, `COMMUNITY`, `LEAD_CONVERSION`, `OPPORTUNITY_MANAGEMENT`, `REST_API`) are the standard values and land as the matching Apex `TritonTypes.Area` names (`Accounts`, `Community`, `LeadConversion`, `OpportunityManagement`, `RestAPI`). If the feature has no area, omit `.area(...)` and logs record under `LWC`.
 - **`--type`** — Triton `TYPE` constant. Real values: `BACKEND`, `FRONTEND`, `BACKEND_CALL`, `COMPONENT_LIFECYCLE`, `COMPONENT_RENDER`, `USER_INTERACTION`, `PERFORMANCE`. Default: `FRONTEND`.
 - **`--perf`** — depth of performance/profiling instrumentation (§3k), as one of three verbosity tiers. Default: **`essential`**.
   - `essential` — backend-call + user-interaction timing only (Category 1).
@@ -52,7 +52,7 @@ Read the `.js` file (and the `.html` template if present for context). Identify:
 4. **Imperative Apex calls** — `import x from '@salesforce/apex/...'` and their call sites (these are the transaction-stitching points).
 5. **Event handlers** — `handle*` methods (user interactions to log at DEBUG).
 6. **Error handling** — existing `.catch()` / `try...catch` (instrument these first).
-7. **Area — match related code (give this special attention).** Determine the feature's functional area from the code and, above all, **reuse the area the paired Apex controller and related components already use** so the feature's logs group together. Pick the matching `AREA` constant. (The server coerces any value outside the `AREA` set to `LWC`, so if the feature's area isn't one of the constants, omit `.area(...)` and logs record under `LWC`.)
+7. **Area — match related code (give this special attention).** Determine the feature's functional area from the code and, above all, **reuse the area the paired Apex controller and related components already use** so the feature's logs group together. Pick the matching `AREA` constant, or pass the paired Apex area string verbatim. If the feature has none, omit `.area(...)`; logs then record under `LWC`.
 
 8. **Performance-instrumentation targets (drives §3k, scoped by `--perf`).** Note the sites each tier will touch: imperative Apex calls and `handle*` interaction handlers (Category 1); `connectedCallback`/`disconnectedCallback` and any notable client-side stretch — data shaping, debounce window, animation — worth a custom mark (Category 2); and whether the component re-renders enough to warrant render tracking (Category 3). You only instrument the tiers included by the resolved `--perf` level.
 
@@ -83,7 +83,7 @@ constructor() {
     this.triton.setTemplate(
         this.triton.makeBuilder()
             .type(TYPE.<inferred-type>)
-            .area(AREA.<inferred-area>)   // match the paired Apex controller's area; omit if none fits
+            .area(AREA.<inferred-area>)   // the paired Apex controller's area: an AREA constant or the same String; omit if none
     );
 }
 ```
@@ -182,7 +182,7 @@ handleButtonClick(event) {
 }
 ```
 
-(`this.triton.debug(type, area)` / `.info(...)` / `.warning(...)` / `.error(...)` return a pre-leveled builder; `.exception(error)` returns an ERROR builder from a JS Error.)
+(`this.triton.debug(type, area)` / `.info(...)` / `.warning(...)` / `.error(...)` return a pre-leveled builder. `.exception(error)` — on `this.triton` or on any builder — sets ERROR, so the server opens an issue, exactly like Apex's `.exception(e)`; chain `.level(...)` after it to override.)
 
 ### 3f — Error instrumentation
 
@@ -194,6 +194,8 @@ For every existing `.catch(error => ...)` / `catch (error)` not already instrume
     // preserve original error handling below
 }
 ```
+
+`logNow` and `flush` never reject: if the server can't take the logs they are kept for the next flushes and dropped after three failed attempts in a row, so awaiting them can't derail your catch block.
 
 `log` buffers; `logNow` flushes immediately. Use `logNow` for errors, `log` for debug/info.
 
@@ -253,7 +255,7 @@ this.triton.log(
 
 ### 3j — disconnectedCallback flush (optional safety)
 
-Flushing is already automatic (an idle auto-flush monitor runs, and `stopTransaction()` flushes). A `disconnectedCallback` flush is optional belt-and-suspenders:
+Flushing is already automatic (an idle auto-flush monitor runs, and `stopTransaction()` flushes and returns a promise that settles once that final flush has been attempted). `flush()` never rejects, so an un-awaited call here is safe. A `disconnectedCallback` flush is optional belt-and-suspenders:
 
 ```javascript
 disconnectedCallback() {
@@ -274,7 +276,7 @@ Triton ships profiling helpers that piggy-back on the bound `triton` instance an
 
 > **These helpers require `bindToComponent()`** (already done in §3b) — without it they no-op with a console warning. All profiling helpers require the component to be bound.
 
-> ⚠️ **All profiling logs emit at `INFO`** — the helpers don't set (or accept) a level, and the server defaults an un-leveled LWC log to INFO. You therefore **cannot** dial a perf log down to DEBUG/FINE. Control production noise at runtime with a **`Type`-scoped `Log_Level__mdt` rule** instead (each tier has its own `TYPE`), not by level. This is why the noisier tiers are opt-in.
+> **Profiling logs have fixed default levels**, matching Apex marks: span records (`timeBackendCall`/`timeUserInteraction` started and completed, `startPerformanceMark`/`endPerformanceMark`) emit at **FINE**; a failed backend call or interaction emits at **ERROR** (and opens an issue); lifecycle tracking at **FINER**; render tracking at **FINEST**. They inherit the Area from the component's template (§3b), so set the template before you profile. Each tier therefore maps to a `Log_Level__mdt` threshold — `FINE` keeps Category 1 and custom marks, `FINER` adds lifecycle, `FINEST` adds render tracking. A production rule at `INFO` or stricter drops every profiling record except failures; set the LWC threshold (or a `Type`-scoped rule) to `FINE` where the essential tier should stay on in production.
 
 #### Category 1 — Essential (`--perf essential`, the default)
 
@@ -334,7 +336,7 @@ renderedCallback() {
 }
 ```
 
-`renderedCallback` can fire many times, so this is the noisiest tier. Because the log is pinned to INFO, it **must** be filtered at runtime in production. When you add this, surface the note in the Step 4 diff (below) telling the user to add a `Log_Level__mdt` rule scoped to `Type = ComponentRender` at threshold `WARNING`, so the INFO render logs drop in prod but can be switched back on mid-investigation.
+`renderedCallback` can fire many times, so this is the noisiest tier. It emits at FINEST, so production must run the LWC threshold (or a `Type = ComponentRender` rule) at FINER or stricter; lower it to FINEST only mid-investigation. Surface that note in the Step 4 diff.
 
 ## Step 4 — Review diff with user
 
@@ -354,7 +356,7 @@ renderedCallback() {
 [Show import, constructor bind+template, one timeBackendCall example, one error handler; one perf example matching the resolved tier]
 
 <Include ONLY when --perf=deep added render tracking:>
-⚠️ **Render tracking emits at INFO and can flood production.** Add a `Log_Level__mdt` rule scoped to `Type = ComponentRender` at threshold `WARNING` so these logs drop in prod (switch back to `FINE`/lower to capture them mid-investigation).
+⚠️ **Render tracking is high-frequency and emits at FINEST.** Make sure production's LWC threshold (or a `Log_Level__mdt` rule scoped to `Type = ComponentRender`) is FINER or stricter; lower it to FINEST only mid-investigation.
 
 Apply? (yes / modify / skip)
 ```
@@ -384,14 +386,14 @@ Parse result:
 
 ## Constraints
 
-- Import is `import Triton, { TYPE, AREA, LEVEL } from 'c/triton';`. Pick the `AREA` constant matching the feature (consistent with the paired Apex); omit `.area(...)` when none fits (the server then records it as `LWC`). Keep `CATEGORY` standard.
+- Import is `import Triton, { TYPE, AREA, LEVEL } from 'c/triton';`. Pick the `AREA` constant matching the feature, or reuse the paired Apex area String verbatim; omit `.area(...)` when the feature has none (the server then records `LWC`). Keep `CATEGORY` standard.
 - Always `bindToComponent(name)`. Do not call `startTransaction()` in the constructor — construction already starts/resumes one.
 - Never start/stop a transaction per handler. Reserve `stopTransaction()` for true teardown; use `enterStep()` to segment a multi-step flow within one transaction.
 - Only pass `transactionId` to an Apex method that declares the param; otherwise use `withCache()` on the Apex side. Never inject an undeclared key into an Apex call.
 - **For `@wire` / cacheable Apex, always stitch with an explicit `transactionId`** (reactive property, §3d) — never rely on `withCache()`, which can't write to Platform Cache from cacheable Apex. See https://resources.pharos.ai/wire-cache-antipattern
 - **Scale per-log data to level (§3i):** ERROR/WARNING/INFO serialize state/inputs into `.details()` + `.relatedObjects([...])`; DEBUG uses named values only; FINE/FINER/FINEST stay terse. The PII carve-out always wins over "attach maximum data."
-- **Performance instrumentation is tiered by `--perf` (§3k), default `essential`:** Category 1 (`timeBackendCall`/`timeUserInteraction`) always; Category 2 (`trackComponentLifecycle`/custom marks) at `standard`+; Category 3 (`trackComponentRender`) at `deep` only. All profiling helpers require `bindToComponent()` and emit at **INFO** (level not settable) — control prod noise with `Type`-scoped `Log_Level__mdt` rules, not level.
-- **Never leave `--perf deep` render tracking unguarded in prod:** it emits at INFO and is high-frequency — always surface the `Type=ComponentRender → WARNING` `Log_Level__mdt` note in the diff.
+- **Performance instrumentation is tiered by `--perf` (§3k), default `essential`:** Category 1 (`timeBackendCall`/`timeUserInteraction`) always; Category 2 (`trackComponentLifecycle`/custom marks) at `standard`+; Category 3 (`trackComponentRender`) at `deep` only. All profiling helpers require `bindToComponent()` and emit at fixed levels (spans FINE, failures ERROR, lifecycle FINER, render FINEST) — control prod noise with the LWC `Log_Level__mdt` threshold or `Type`-scoped rules.
+- **Never leave `--perf deep` render tracking unguarded in prod:** it is high-frequency — always surface the FINER-or-stricter threshold note in the diff.
 - Pair every `startPerformanceMark` with an `endPerformanceMark` in a `finally`; never wrap a span already covered by `timeBackendCall`/`timeUserInteraction`. The Apex equivalent is `Triton.startMark()` / `Triton.endMark()` — reuse the same span boundaries when instrumenting both tiers of one feature.
 - Prefer `timeBackendCall(name, fn).execute()` for imperative Apex calls.
 - Use `logNow` for errors (immediate), `log` for debug/info (buffered).
