@@ -303,6 +303,24 @@ describe('Triton', () => {
       expect(triton.logs[0]).toBe(earlier);
       expect(triton.logs[1]).toBe(newBuilder);
     });
+
+    test.each([
+      ['undefined', undefined],
+      ['null', null],
+      ['a built log instead of its builder', { mockBuiltLog: true }]
+    ])('logNow given %s resolves and keeps the buffered logs', async (_label, notABuilder) => {
+      const earlier = [new TritonBuilder(), new TritonBuilder()];
+      triton.logs = [...earlier];
+
+      // Never rejects, even when handed something that is not a builder
+      await expect(triton.logNow(notABuilder)).resolves.toBeUndefined();
+
+      expect(saveComponentLogs).not.toHaveBeenCalled();
+      expect(triton.logs).toHaveLength(2);
+      expect(triton.logs[0]).toBe(earlier[0]);
+      expect(triton.logs[1]).toBe(earlier[1]);
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('needs a builder'), expect.any(TypeError));
+    });
   });
 
   describe('Flush Method', () => {
@@ -926,6 +944,18 @@ describe('Profiling defaults', () => {
     const failedRecord = triton.logs[triton.logs.length - 1];
     expect(failedRecord.summary).toHaveBeenCalledWith('User interaction failed: save');
     expect(failedRecord.exception).toHaveBeenCalledWith(error);
+    expect(failedRecord.level).toHaveBeenLastCalledWith(LEVEL.ERROR);
+  });
+
+  test('a call rejected with no reason is logged, and resolves null without rethrow', async () => {
+    mockApexCall.mockRejectedValue(undefined);
+
+    const result = await boundTriton.timeBackendCall('loadData', mockApexCall).withoutRethrow().execute();
+
+    expect(result).toBeNull();
+    const failedRecord = triton.logs[triton.logs.length - 1];
+    expect(failedRecord.summary).toHaveBeenCalledWith('Backend call failed: loadData');
+    expect(failedRecord.exception).toHaveBeenCalledWith(undefined);
     expect(failedRecord.level).toHaveBeenLastCalledWith(LEVEL.ERROR);
   });
 

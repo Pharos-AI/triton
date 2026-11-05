@@ -269,14 +269,21 @@ export default class Triton {
 
     /**
      * Immediately flushes a single log builder; the other buffered logs stay buffered.
-     * Never rejects (see flush()): if the server can't take the log it is kept for later flushes.
+     * Never rejects (see flush()): if the server can't take the log it is kept for later flushes,
+     * and anything that is not a builder is reported to the console and not logged.
      * @param {TritonBuilder} builder - Builder instance to log
      * @returns {Promise} Promise that resolves when the log is flushed
      */
     async logNow(builder) {
         const earlier = [...this.logs];
         this.logs = [];
-        this.log(builder);
+        try {
+            this.log(builder);
+        } catch (error) {
+            this.logs = earlier;
+            console.error('Triton: logNow needs a builder; nothing was logged', error);
+            return undefined;
+        }
 
         const data = await this.flush();
         // Earlier logs first, then anything kept by a failed flush or logged meanwhile
@@ -586,7 +593,7 @@ class PerformanceCallBuilder {
                     profilingBuilder(this.triton)
                         .type(logType)
                         .summary(`${operationName} failed: ${methodName}`)
-                        .details(`Duration: ${duration}ms, Error: ${error.message}`)
+                        .details(`Duration: ${duration}ms, Error: ${error?.message}`)
                         .duration(duration)
                         .action(methodName)
                         .exception(error)
