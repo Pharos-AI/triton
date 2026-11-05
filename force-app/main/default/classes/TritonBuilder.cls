@@ -115,6 +115,15 @@ public with sharing class TritonBuilder {
     @TestVisible
     private String currentParentSpanId;
 
+    /** Set by dmlResults when there is nothing to report; Triton.doLog then emits nothing. Per log, so not cloned. */
+    private Boolean suppressed = false;
+    /** Issue requested as a side effect of error(), exception() or a failed dmlResults(): follows the final level. Cloned. */
+    @TestVisible
+    private Boolean issueImplied = false;
+    /** Issue requested explicitly by createIssue() or traceable(true): always stands. Cloned. */
+    @TestVisible
+    private Boolean issueRequested = false;
+
     public TritonBuilder cloneBuilder() {
         pharos__Log__c clonedLog = this.builder.build().clone(false, true, false, false);
         TritonBuilder cloned = new TritonBuilder();
@@ -130,7 +139,9 @@ public with sharing class TritonBuilder {
         cloned.categoryValue = this.categoryValue;
         cloned.currentSpanId = this.currentSpanId;
         cloned.currentParentSpanId = this.currentParentSpanId;
-        // fullSummary and executionContextDetails are intentionally NOT cloned — per-log values
+        cloned.issueImplied = this.issueImplied;
+        cloned.issueRequested = this.issueRequested;
+        // fullSummary, executionContextDetails and suppressed are intentionally NOT cloned — per-log values
         cloned.initBuilder();
         return cloned;
     }
@@ -208,10 +219,22 @@ public with sharing class TritonBuilder {
     }
 
     /**
-     * Convenience methods for setting common levels
+    * True when this builder has nothing to report: dmlResults() was given null, empty or
+    * all-success results. Triton emits nothing for a suppressed builder, whichever
+    * method it is passed to.
+    * @return whether the log is suppressed
+    */
+    public Boolean isSuppressed() {
+        return this.suppressed;
+    }
+
+    /**
+     * Convenience methods for setting common levels.
+     * error() also requests an issue, which is withdrawn at build() time if the final
+     * level ends up below ERROR.
      */
     public TritonBuilder error() {
-        return this.level(TritonTypes.Level.ERROR).createIssue();
+        return this.level(TritonTypes.Level.ERROR).impliedIssue();
     }
     public TritonBuilder error(String summary) { return this.summary(summary).error(); }
 
@@ -318,13 +341,25 @@ public with sharing class TritonBuilder {
 	}
 
     /**
-    * Set issue creation flag
+    * Set issue creation flag. An explicit request: the issue stands at any level.
     * @return this builder instance
     */
     public TritonBuilder createIssue() {
 		this.builder.createIssue();
+		this.issueRequested = true;
 		return this;
-	}    
+	}
+
+    /**
+    * Requests an issue as a side effect of an error. Unlike createIssue(), the request
+    * follows the final level: build() withdraws it when the level is below ERROR.
+    * @return this builder instance
+    */
+    private TritonBuilder impliedIssue() {
+        this.builder.createIssue();
+        this.issueImplied = true;
+        return this;
+    }
 
     /**
     * Set user Id for the log
@@ -635,7 +670,8 @@ public with sharing class TritonBuilder {
     /**
     * Configure builder for an exception
     * Sets type from exception type (or defaults to Backend), sets error level,
-    * sets summary from exception message, sets details and stack trace from exception
+    * sets summary from exception message, sets details and stack trace from exception.
+    * Requests an issue, which is withdrawn if the final level ends up below ERROR
     * @param e -- Exception to configure the builder with
     * @return this builder instance
     */
@@ -651,18 +687,26 @@ public with sharing class TritonBuilder {
             .summary(e.getMessage())
             .stackTrace(e.getStackTraceString())
             .details(String.valueOf(e) + Triton.SPACE_SEP + e.getStackTraceString())
-            .createIssue();
+            .impliedIssue();
 
         return this;
     }
 
     /**
      * Formats DML operation results and adds them to the log
-     * Area should be set via template or explicitly before calling this method
+     * Area should be set via template or explicitly before calling this method.
+     * When any row failed, the log is a DMLResult at ERROR with an issue. When every row
+     * succeeded, or the list is null or empty, the builder is suppressed and Triton
+     * emits nothing for it.
      * @param dmlResults List of Database.SaveResult, DeleteResult, UpsertResult, UndeleteResult, or MergeResult
      * @return TritonBuilder for chaining
      */
     public TritonBuilder dmlResults(List<Object> dmlResults) {
+        if (dmlResults == null || dmlResults.isEmpty()) {
+            this.suppressed = true;
+            return this;
+        }
+
         Set<String> failedIds = new Set<String>();
         List<String> errorMessages = new List<String>();
         String operation;
@@ -734,6 +778,7 @@ public with sharing class TritonBuilder {
         }
 
         // Only log if there are errors
+        this.suppressed = errorMessages.isEmpty();
         if(!errorMessages.isEmpty()) {
             return this.type(TritonTypes.Type.DMLResult)
                 .operation(operation)
@@ -875,6 +920,13 @@ public with sharing class TritonBuilder {
         if(String.isNotBlank(executionContextDetails)) {
             log.pharos__Details__c = (String.isNotBlank(log.pharos__Details__c) ?
                 log.pharos__Details__c + Triton.SPACE_SEP : '') + executionContextDetails;
+        }
+
+        // An issue implied by an error follows the final level, whatever the call order;
+        // an explicit createIssue() always stands.
+        if (this.issueImplied) {
+            log.pharos__Do_Not_Create_Issue__c =
+                !(this.issueRequested || log.Log_Level__c == TritonTypes.Level.ERROR.name());
         }
 
         return log;

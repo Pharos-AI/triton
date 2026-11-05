@@ -1537,41 +1537,135 @@ private class TritonTest {
     private static void testDMLErrorLogging_NoErrors() {
         Test.startTest();
 
-        // 1. Test SaveResult with valid data
+        // The DML subject: a log record this test writes and then counts out.
         pharos__Log__c newLog = new pharos__Log__c(
             pharos__Summary__c = 'Valid Log',
             pharos__Post_Processing_Status__c = 'Not Needed'
         );
         Database.SaveResult[] srList = Database.insert(new List<pharos__Log__c>{newLog}, false);
         System.assert(srList[0].isSuccess(), 'Insert should succeed');
-        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(srList));
 
-        // 2. Test UpsertResult with valid data
         newLog.pharos__Summary__c = 'Updated Log';
         Database.UpsertResult[] upsertList = Database.upsert(new List<pharos__Log__c>{newLog}, false);
         System.assert(upsertList[0].isSuccess(), 'Upsert should succeed');
-        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(upsertList));
 
-        // 3. Test DeleteResult with valid data
         Database.DeleteResult[] drList = Database.delete(new List<Id>{newLog.Id}, false);
         System.assert(drList[0].isSuccess(), 'Delete should succeed');
-        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(drList));
 
-        // 4. Test UndeleteResult with valid data
         Database.UndeleteResult[] urList = Database.undelete(new List<Id>{newLog.Id}, false);
         System.assert(urList[0].isSuccess(), 'Undelete should succeed');
-        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(urList));
-        
+
+        // Every all-success result, through every entry point.
+        List<List<Object>> allSuccess = new List<List<Object>>{ srList, upsertList, drList, urList };
+        for (List<Object> results : allSuccess) {
+            Triton.log(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(results));
+            Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(results));
+            Triton.error(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(results));
+            Triton.warning(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(results));
+        }
+        System.assert(Triton.logs.isEmpty(), 'Successful DML results must not buffer any log');
+
+        Triton.flush();
         Test.stopTest();
-        
-        // Verify no logs were created since operations were successful
-        List<pharos__Log__c> logs = [
-            SELECT Id, pharos__Apex_Name__c, pharos__Summary__c, pharos__Details__c
-            FROM pharos__Log__c 
-            WHERE pharos__Type__c = :TritonTypes.Type.DMLResult.name()
-        ];
-                
-        System.assertEquals(0, logs.size(), 'No logs should be created for successful DML operations');
+
+        // Counts every log, whatever its Type, except the DML subject itself.
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE Id != :newLog.Id],
+            'No logs should be created for successful DML operations');
+    }
+
+    /** SaveResults for an insert that fails: a log record pointing at an issue that does not exist. */
+    private static List<Database.SaveResult> failedSaveResults() {
+        Id fakeId = pharos__Log__c.SObjectType.getDescribe().getKeyPrefix() + '000000000000';
+        Database.SaveResult[] results = Database.insert(
+            new List<pharos__Log__c>{ new pharos__Log__c(pharos__Issue__c = fakeId) }, false);
+        System.assert(!results[0].isSuccess(), 'The insert should fail');
+        return results;
+    }
+
+    @IsTest
+    private static void test_dmlResults_null_and_empty_emit_nothing() {
+        Test.startTest();
+        System.assert(Triton.t.dmlResults(null).isSuppressed(), 'Null results suppress the builder');
+        System.assert(Triton.t.dmlResults(new List<Database.SaveResult>()).isSuppressed(),
+            'Empty results suppress the builder');
+
+        Triton.error(Triton.t.dmlResults(null));
+        Triton.error(Triton.t.dmlResults(new List<Database.SaveResult>()));
+        System.assert(Triton.logs.isEmpty(), 'Null or empty DML results must not buffer any log');
+        Test.stopTest();
+    }
+
+    @IsTest
+    private static void test_issue_follows_level_when_implied_by_error() {
+        Exception e = new DmlException('boom');
+        List<Database.SaveResult> failed = failedSaveResults();
+
+        pharos__Log__c downgraded = Triton.makeBuilder().exception(e).warning().build();
+        System.assertEquals(true, downgraded.pharos__Do_Not_Create_Issue__c,
+            'An exception downgraded to WARNING withdraws the issue it implied');
+
+        pharos__Log__c atError = Triton.makeBuilder().exception(e).build();
+        System.assertEquals(false, atError.pharos__Do_Not_Create_Issue__c,
+            'An exception at ERROR keeps its issue');
+
+        pharos__Log__c exceptionLast = Triton.makeBuilder().warning().exception(e).build();
+        System.assertEquals(TritonTypes.Level.ERROR.name(), exceptionLast.Log_Level__c,
+            'exception() after warning() sets ERROR');
+        System.assertEquals(false, exceptionLast.pharos__Do_Not_Create_Issue__c,
+            'exception() after warning() keeps its issue');
+
+        pharos__Log__c dmlWarning = Triton.makeBuilder().dmlResults(failed).warning().build();
+        System.assertEquals(TritonTypes.Level.WARNING.name(), dmlWarning.Log_Level__c,
+            'A failed dmlResults() downgraded to WARNING stays at WARNING');
+        System.assertEquals(true, dmlWarning.pharos__Do_Not_Create_Issue__c,
+            'A failed dmlResults() at WARNING withdraws the issue it implied');
+
+        pharos__Log__c explicitIssue = Triton.makeBuilder().createIssue().warning().build();
+        System.assertEquals(false, explicitIssue.pharos__Do_Not_Create_Issue__c,
+            'An explicit createIssue() stands at any level');
+
+        pharos__Log__c traced = Triton.makeBuilder().traceable(true).info().build();
+        System.assertEquals(false, traced.pharos__Do_Not_Create_Issue__c,
+            'traceable(true) is an explicit issue request and stands at INFO');
+
+        TritonBuilder reraised = Triton.makeBuilder().error().warning();
+        System.assertEquals(true, reraised.build().pharos__Do_Not_Create_Issue__c,
+            'At WARNING the implied issue is withdrawn');
+        reraised.level(TritonTypes.Level.ERROR);
+        System.assertEquals(false, reraised.build().pharos__Do_Not_Create_Issue__c,
+            'Back at ERROR the implied issue returns: build() does not depend on call order');
+    }
+
+    @IsTest
+    private static void test_dmlResults_failure_as_warning_creates_no_issue() {
+        List<Database.SaveResult> failed = failedSaveResults();
+
+        Test.startTest();
+        Triton.warning(Triton.t.area(TritonTypes.Area.Accounts).dmlResults(failed));
+        Triton.flush();
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
+        System.assertEquals(1, logs.size(), 'The failed DML should be logged once');
+        System.assertEquals(TritonTypes.Type.DMLResult.name(), logs[0].pharos__Type__c, 'Type should be DMLResult');
+        System.assertEquals(TritonTypes.Level.WARNING.name(), logs[0].Log_Level__c, 'Level should be WARNING');
+        System.assertEquals(true, logs[0].pharos__Do_Not_Create_Issue__c,
+            'A DML failure logged as a WARNING should not open an issue');
+    }
+
+    @IsTest
+    private static void test_logNow_filtered_log_leaves_buffer_untouched() {
+        TritonTestFactory.restrictLevel(TritonTypes.Level.ERROR);
+
+        Test.startTest();
+        Triton.log(Triton.t.summary('buffered').error());
+        Triton.logNow(Triton.t.summary('filtered').debug());
+
+        System.assertEquals(1, Triton.logs.size(), 'A filtered logNow must not touch the buffer');
+        System.assertEquals('buffered', Triton.logs[0].pharos__Summary__c, 'The buffered log is still there');
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
     }
 
     @IsTest

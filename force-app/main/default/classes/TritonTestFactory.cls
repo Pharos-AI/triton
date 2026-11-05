@@ -59,6 +59,19 @@ public class TritonTestFactory {
         TritonFlowFlushBatch.scheduleFault = new AsyncException('Simulated schedule failure');
     }
 
+    // ─── Log Levels ─────────────────────────────────────────────────
+
+    /**
+     * Installs a single global Log_Level__mdt rule at the given level, so every log
+     * more verbose than it is filtered out.
+     */
+    public static void restrictLevel(TritonTypes.Level l) {
+        Log_Level__mdt rule = new Log_Level__mdt();
+        rule.Level__c = l.name();
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
+        TritonHelper.Config.logLevels = null;
+    }
+
     // ─── Record Creation ────────────────────────────────────────────
 
     /**

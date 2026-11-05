@@ -328,7 +328,7 @@ global with sharing class Triton {
     */
     private static Boolean doLog(TritonBuilder builder) {
         try {
-            if (builder == null || TritonHelper.Config.isLoggingDisabled()) {
+            if (builder == null || builder.isSuppressed() || TritonHelper.Config.isLoggingDisabled()) {
                 return false;
             }
 
@@ -363,12 +363,14 @@ global with sharing class Triton {
     }
 
     /**
-    * Adds a log to the buffer and immediately flushes it
+    * Adds a log to the buffer and immediately publishes it. When the log is filtered
+    * out, nothing is published and the buffer is left untouched. Never throws.
     * @param builder TritonBuilder instance containing log details
     */
     public static void logNow(TritonBuilder builder) {
-        log(builder);
-        flushTop();
+        if (doLog(builder)) {
+            flushTop();
+        }
     }
 
 
