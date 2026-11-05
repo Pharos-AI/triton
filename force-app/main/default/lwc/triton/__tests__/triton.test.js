@@ -412,12 +412,16 @@ describe('Triton', () => {
   });
 
   describe('Constants', () => {
-    test('should export AREA constants', () => {
-      expect(AREA.ACCOUNTS).toBe('ACCOUNTS');
-      expect(AREA.COMMUNITY).toBe('COMMUNITY');
-      expect(AREA.LEAD_CONVERSION).toBe('LEAD_CONVERSION');
-      expect(AREA.OPPORTUNITY_MANAGEMENT).toBe('OPPORTUNITY_MANAGEMENT');
-      expect(AREA.REST_API).toBe('REST_API');
+    test('AREA values are the Apex TritonTypes.Area names', () => {
+      // LWC logs group with the Apex and Flow logs of the same feature only when the
+      // strings match the server-side enum names exactly.
+      expect(AREA).toEqual({
+        ACCOUNTS: 'Accounts',
+        COMMUNITY: 'Community',
+        LEAD_CONVERSION: 'LeadConversion',
+        OPPORTUNITY_MANAGEMENT: 'OpportunityManagement',
+        REST_API: 'RestAPI'
+      });
     });
 
     test('should export CATEGORY constants', () => {
@@ -660,7 +664,7 @@ describe('PerformanceTracker', () => {
     boundTriton.startPerformanceMark('slow-thing');
     const openMarkSpanId = triton.spanContext.current();
 
-    boundTriton.log(boundTriton.info(TYPE.FRONTEND, AREA.OTHER).summary('work'));
+    boundTriton.log(boundTriton.info(TYPE.FRONTEND, AREA.ACCOUNTS).summary('work'));
 
     const [opening, work] = triton.logs.slice(initialLogCount);
     expect(opening.spanId).toHaveBeenCalledWith(openMarkSpanId);

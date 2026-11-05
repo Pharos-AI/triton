@@ -374,15 +374,16 @@ export default class Triton {
 }
 
 /**
- * Enumeration of available log areas
+ * Standard functional areas. Values are the Apex TritonTypes.Area names, so LWC logs group with
+ * the Apex and Flow logs of the same feature. .area() accepts any other String as a custom area.
  * @enum {string}
  */
 export const AREA = {
-    ACCOUNTS: 'ACCOUNTS',
-    COMMUNITY: 'COMMUNITY',
-    LEAD_CONVERSION: 'LEAD_CONVERSION',
-    OPPORTUNITY_MANAGEMENT: 'OPPORTUNITY_MANAGEMENT',
-    REST_API: 'REST_API'
+    ACCOUNTS: 'Accounts',
+    COMMUNITY: 'Community',
+    LEAD_CONVERSION: 'LeadConversion',
+    OPPORTUNITY_MANAGEMENT: 'OpportunityManagement',
+    REST_API: 'RestAPI'
 };
 
 /**
