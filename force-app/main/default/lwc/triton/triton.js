@@ -18,6 +18,18 @@ let instance = null;
 
 export default class Triton {
     /**
+     * Most logs the buffer keeps after a failed flush; the oldest are dropped beyond it
+     * @type {number}
+     */
+    static MAX_BUFFERED_LOGS = 500;
+
+    /**
+     * Consecutive failed flushes after which the failing batch is dropped
+     * @type {number}
+     */
+    static MAX_FLUSH_ATTEMPTS = 3;
+
+    /**
      * Buffer to store logs before sending to server
      * @private
      * @type {Array}
@@ -32,6 +44,13 @@ export default class Triton {
     templates = new Map();
 
     category = CATEGORY.LWC;
+
+    /**
+     * Consecutive failed flushes; reset by a successful flush or a drop
+     * @private
+     * @type {number}
+     */
+    failedFlushes = 0;
     
     /**
      * Current transaction ID
@@ -127,11 +146,13 @@ export default class Triton {
     /**
      * Stops the current transaction and auto-flush monitor
      * Flushes any remaining logs
+     * @returns {Promise} Settles once the final flush has been attempted; never rejects
      */
     stopTransaction() {
-        this.transactionManager.stop();
+        const flushed = this.transactionManager.stop();
         this.transactionId = null;
         this.spanContext.clear();
+        return flushed;
     }
 
     /**
@@ -198,12 +219,16 @@ export default class Triton {
     }
 
     /**
-     * Sends all buffered logs to the server and clears the buffer
-     * @returns {Promise} Promise that resolves when logs are flushed
+     * Sends all buffered logs to the server and clears the buffer.
+     * Never rejects: logging must not derail the caller's own error handling. A failed batch
+     * is put back at the front of the buffer for the next flush, and dropped once
+     * MAX_FLUSH_ATTEMPTS flushes in a row have failed.
+     * @returns {Promise} Resolves with the server response, or undefined when there was
+     * nothing to flush or the flush failed
      */
     async flush() {
-        if(this.logs.length === 0) {
-            return;
+        if (this.logs.length === 0) {
+            return undefined;
         }
 
         // Save current logs and clear buffer to prevent duplicates
@@ -214,12 +239,20 @@ export default class Triton {
             const data = await saveComponentLogs({
                 componentLogs: logsToFlush.map(builder => builder.build())
             });
+            this.failedFlushes = 0;
             return data;
         } catch (error) {
-            console.error('Error flushing logs:', error);
-            // Restore logs that failed to flush
-            this.logs.unshift(...logsToFlush);
-            throw error;
+            this.failedFlushes += 1;
+            if (this.failedFlushes >= Triton.MAX_FLUSH_ATTEMPTS) {
+                this.failedFlushes = 0;
+                console.error(`Triton: dropping ${logsToFlush.length} log(s) after ${Triton.MAX_FLUSH_ATTEMPTS} failed flushes`, error);
+            } else {
+                console.error('Triton: flush failed; logs kept for the next flush', error);
+                // Failed logs go first: they are older than anything logged during the flush
+                this.logs = [...logsToFlush, ...this.logs];
+                this._trimBuffer();
+            }
+            return undefined;
         }
     }
 
@@ -235,24 +268,40 @@ export default class Triton {
     }
 
     /**
-     * Immediately flushes a single log builder
+     * Immediately flushes a single log builder; the other buffered logs stay buffered.
+     * Never rejects (see flush()): if the server can't take the log it is kept for later flushes,
+     * and anything that is not a builder is reported to the console and not logged.
      * @param {TritonBuilder} builder - Builder instance to log
      * @returns {Promise} Promise that resolves when the log is flushed
      */
     async logNow(builder) {
-        const currentLogs = [...this.logs];
+        const earlier = [...this.logs];
         this.logs = [];
-        this.log(builder);
-        
         try {
-            const data = await this.flush();
-            // Add back any logs that were buffered during flush
-            this.logs.push(...currentLogs);  
-            return data;
+            this.log(builder);
         } catch (error) {
-            // Also preserve logs on error
-            this.logs.push(...currentLogs);  
-            throw error;
+            this.logs = earlier;
+            console.error('Triton: logNow needs a builder; nothing was logged', error);
+            return undefined;
+        }
+
+        const data = await this.flush();
+        // Earlier logs first, then anything kept by a failed flush or logged meanwhile
+        this.logs = [...earlier, ...this.logs];
+        this._trimBuffer();
+        return data;
+    }
+
+    /**
+     * Drops the oldest buffered logs beyond MAX_BUFFERED_LOGS, so a server that keeps
+     * refusing logs cannot grow the buffer without bound
+     * @private
+     */
+    _trimBuffer() {
+        const excess = this.logs.length - Triton.MAX_BUFFERED_LOGS;
+        if (excess > 0) {
+            this.logs.splice(0, excess);
+            console.warn(`Triton: log buffer full; dropped the ${excess} oldest log(s)`);
         }
     }
 
@@ -374,15 +423,16 @@ export default class Triton {
 }
 
 /**
- * Enumeration of available log areas
+ * Standard functional areas. Values are the Apex TritonTypes.Area names, so LWC logs group with
+ * the Apex and Flow logs of the same feature. .area() accepts any other String as a custom area.
  * @enum {string}
  */
 export const AREA = {
-    ACCOUNTS: 'ACCOUNTS',
-    COMMUNITY: 'COMMUNITY',
-    LEAD_CONVERSION: 'LEAD_CONVERSION',
-    OPPORTUNITY_MANAGEMENT: 'OPPORTUNITY_MANAGEMENT',
-    REST_API: 'REST_API'
+    ACCOUNTS: 'Accounts',
+    COMMUNITY: 'Community',
+    LEAD_CONVERSION: 'LeadConversion',
+    OPPORTUNITY_MANAGEMENT: 'OpportunityManagement',
+    REST_API: 'RestAPI'
 };
 
 /**
@@ -421,6 +471,19 @@ export const TYPE = {
     USER_INTERACTION: 'UserInteraction',
     PERFORMANCE: 'Performance'
 };
+
+/**
+ * Builder for a profiling record: from the bound component's template when it has one, so the
+ * record inherits the component's Area (Apex marks build from Triton.t the same way); otherwise
+ * a plain builder, whose blank Area lands as LWC.
+ * @private
+ * @param {Triton} tritonInstance - The bound Triton proxy, or the shared instance
+ * @returns {TritonBuilder} Builder for the profiling record
+ */
+const profilingBuilder = (tritonInstance) =>
+    typeof tritonInstance.fromTemplate === 'function'
+        ? tritonInstance.fromTemplate()
+        : tritonInstance.makeBuilder();
 
 /**
  * Unified builder for configuring performance call error handling and execution
@@ -482,8 +545,9 @@ class PerformanceCallBuilder {
             // Log operation start (only if component is bound)
             if (this.triton._componentId) {
                 this.triton.log(
-                    this.triton.makeBuilder()
+                    profilingBuilder(this.triton)
                         .type(logType)
+                        .level(LEVEL.FINE)
                         .summary(`${operationName} started: ${methodName}`)
                         .details(`Initiating ${operationName.toLowerCase()}: ${methodName}`)
                         .action(methodName)
@@ -499,8 +563,9 @@ class PerformanceCallBuilder {
             // Log successful operation (only if component is bound)
             if (this.triton._componentId) {
                 this.triton.log(
-                    this.triton.makeBuilder()
+                    profilingBuilder(this.triton)
                         .type(logType)
+                        .level(LEVEL.FINE)
                         .summary(`${operationName} completed: ${methodName}`)
                         .details(`Duration: ${duration}ms`)
                         .duration(duration)
@@ -525,13 +590,14 @@ class PerformanceCallBuilder {
             } else if (this.triton._componentId) {
                 // Built-in error logging (only if component is bound)
                 this.triton.log(
-                    this.triton.makeBuilder()
+                    profilingBuilder(this.triton)
                         .type(logType)
                         .summary(`${operationName} failed: ${methodName}`)
-                        .details(`Duration: ${duration}ms, Error: ${error.message}`)
+                        .details(`Duration: ${duration}ms, Error: ${error?.message}`)
                         .duration(duration)
                         .action(methodName)
                         .exception(error)
+                        .level(LEVEL.ERROR)
                         .spanId(spanId)
                         .parentSpanId(parentSpanId)
                 );
@@ -636,8 +702,9 @@ class PerformanceTracker {
         // the two by span id and collapses them into one span, the way it
         // already does for "Backend call started/completed".
         tritonInstance.log(
-            tritonInstance.makeBuilder()
+            profilingBuilder(tritonInstance)
                 .type(TYPE.PERFORMANCE)
+                .level(LEVEL.FINE)
                 .summary(`Performance started: ${tritonInstance._componentId || 'unknown'} - ${markName}`)
                 .action(markName)
                 .spanId(spanId)
@@ -675,8 +742,9 @@ class PerformanceTracker {
 
         // Log the performance data using the mark's captured span context
         tritonInstance.log(
-            tritonInstance.makeBuilder()
+            profilingBuilder(tritonInstance)
                 .type(TYPE.PERFORMANCE)
+                .level(LEVEL.FINE)
                 .summary(`Performance: ${tritonInstance._componentId || 'unknown'} - ${markData.name}`)
                 .details(`Duration: ${duration}ms`)
                 .duration(duration)
@@ -726,8 +794,9 @@ class PerformanceTracker {
         
         // Use the appropriate context for logging
         tritonInstance.log(
-            tritonInstance.makeBuilder()
+            profilingBuilder(tritonInstance)
                 .type(TYPE.COMPONENT_LIFECYCLE)
+                .level(LEVEL.FINER)
                 .summary(`Component lifecycle: ${tritonInstance._componentId || 'unknown'} - ${lifecycleEvent}`)
                 .details(`Component ${lifecycleEvent} event triggered`)
                 .action(`lifecycle-${lifecycleEvent}`)
@@ -746,8 +815,9 @@ class PerformanceTracker {
         
         // Use the appropriate context for logging
         tritonInstance.log(
-            tritonInstance.makeBuilder()
+            profilingBuilder(tritonInstance)
                 .type(TYPE.COMPONENT_RENDER)
+                .level(LEVEL.FINEST)
                 .summary(`Component render: ${tritonInstance._componentId || 'unknown'}`)
                 .details(`Render count: ${componentData.renderCounts}`)
                 .action('component-render')
@@ -896,12 +966,14 @@ class SpanContext {
  */
 class TransactionManager {
     static STORAGE_KEY = 'tritonTransactionId';
-    static AUTO_FLUSH_CHECK_INTERVAL = 5000; // 10 seconds
-    static AUTO_FLUSH_DELAY = 10000; // 1 minute
+    static AUTO_FLUSH_CHECK_INTERVAL = 5000; // poll every 5 seconds
+    static AUTO_FLUSH_DELAY = 10000; // flush once the newest buffered log is 10 seconds old
 
     constructor(triton) {
         this.triton = triton;
         this._transactionId = null; // Memory storage fallback
+        // Bumped on every stop, so a superseded polling loop can tell and exit
+        this._monitorGeneration = 0;
     }
 
     /**
@@ -983,11 +1055,14 @@ class TransactionManager {
 
     /**
      * Stops current transaction and monitoring
+     * @returns {Promise} Settles once the final flush has been attempted; never rejects
      */
     stop() {
         this.stopAutoFlushMonitor();
-        this.triton.flush();
+        const flushed = this.triton.flush()
+            .catch(error => console.error('Triton: final flush failed', error));
         this.removeItem();
+        return flushed;
     }
 
     /**
@@ -995,13 +1070,14 @@ class TransactionManager {
      * @private
      */
     async startAutoFlushMonitor() {
-        // Clear any existing monitor
+        // Clear any existing monitor: its loop sees a newer generation and exits
         this.stopAutoFlushMonitor();
         
         this.isMonitoring = true;
+        const generation = this._monitorGeneration;
         
         const checkAndFlush = async () => {
-            if (!this.isMonitoring) return;
+            if (!this.isMonitoring || generation !== this._monitorGeneration) return;
 
             try {
                 const now = Date.now();
@@ -1017,8 +1093,8 @@ class TransactionManager {
                 console.error('Error in auto-flush monitor:', error);
             }
 
-            // Schedule next check if still monitoring
-            if (this.isMonitoring) {
+            // Schedule next check if this loop is still the current monitor
+            if (this.isMonitoring && generation === this._monitorGeneration) {
                 setTimeout(checkAndFlush, TransactionManager.AUTO_FLUSH_CHECK_INTERVAL);
             }
         };
@@ -1033,5 +1109,6 @@ class TransactionManager {
      */
     stopAutoFlushMonitor() {
         this.isMonitoring = false;
+        this._monitorGeneration += 1;
     }
 }

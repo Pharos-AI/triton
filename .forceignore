@@ -1,7 +1,12 @@
+# Not deployable metadata: kept out of every deploy and package version.
+package.xml
+
+# LWC configuration and tooling
 **/jsconfig.json
-
 **/tsconfig.json
-
 **/.eslintrc.json
-
 **/*.ts
+
+# LWC Jest tests and mocks
+**/__tests__/**
+**/__mocks__/**

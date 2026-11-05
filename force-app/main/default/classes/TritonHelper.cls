@@ -46,7 +46,54 @@ public with sharing class TritonHelper {
         }
         private set;
     }
-    
+
+    // ─── Publishing ──────────────────────────────────────────────────
+
+    /** Test seam: when set, publishLogs throws it inside its own guard. Only tests set it. */
+    @TestVisible
+    private static Exception publishFault;
+
+    /** Failures Triton swallowed in this transaction. Test-visible for assertions. */
+    @TestVisible
+    private static Integer failureCount = 0;
+
+    /**
+     * The one place Triton hands log records to the Pharos package. Never throws.
+     * On failure the records are dropped, not retried: after a failed flush the managed
+     * logger's own buffer is opaque, so re-adding them could publish duplicates.
+     * @param records -- the log records to publish
+     * @return true when published; false when publishing failed and the records were dropped
+     */
+    public static Boolean publishLogs(List<pharos__Log__c> records) {
+        if (records == null || records.isEmpty()) return true;
+        try {
+            if (publishFault != null) throw publishFault;
+            // Inside the guard: getInstance can throw too.
+            pharos.Logger logger = pharos.Logger.getInstance();
+            for (pharos__Log__c record : records) {
+                logger.add(record);
+            }
+            logger.flush();
+            return true;
+        } catch (Exception e) {
+            recordFailure('publish', e, records.size());
+            return false;
+        }
+    }
+
+    /**
+     * Records a failure Triton swallowed so that it never reaches the caller.
+     * Pharos cannot report a failure that may be its own, so this goes to the debug log at ERROR.
+     * @param operation -- what Triton was doing ('publish', 'log', ...)
+     * @param e -- the swallowed exception
+     * @param droppedLogs -- how many logs the failure cost
+     */
+    public static void recordFailure(String operation, Exception e, Integer droppedLogs) {
+        failureCount++;
+        System.debug(LoggingLevel.ERROR, 'Triton ' + operation + ' failed, ' + droppedLogs
+            + ' log(s) dropped: ' + e.getTypeName() + ': ' + e.getMessage());
+    }
+
     /**
      * Generates a user-specific cache key
      * @return Cache key specific to current user
@@ -166,6 +213,16 @@ public with sharing class TritonHelper {
         } catch (Exception e) {
             // Silently handle cache failures
         }
+    }
+
+    /**
+     * Removes a transaction's flow log cache entry, so no later batch publishes it.
+     * Null-safe: a null transaction id has no cache entry.
+     * @param transactionId The transaction ID whose cache entry to remove
+     */
+    public static void removeFlowLogs(String transactionId) {
+        if (transactionId == null) return;
+        removeFlowLogCacheKey(buildFlowCacheKey(transactionId));
     }
 
     /**

@@ -10,6 +10,9 @@
 
 import { isNotTriton, getFunctionName } from 'c/tritonUtils';
 
+// Mirrors LEVEL.ERROR in c/triton; not imported, which would be a circular import.
+const ERROR_LEVEL = 'ERROR';
+
 export default class TritonBuilder {
 
     /**
@@ -133,11 +136,18 @@ export default class TritonBuilder {
     }
 
     /**
-     * Sets the error information
+     * Sets the error information and the ERROR level, as Apex's exception(e) does, so the
+     * server opens an issue. A .level(...) chained after this call still wins.
+     * A missing error (a promise rejected with no reason) only sets the level.
      * @param {Error|Object} error - Error object to process
      * @returns {TritonBuilder} Builder instance for chaining
      */
     exception(error) {
+        this._level = ERROR_LEVEL;
+        if (!error) {
+            return this;
+        }
+
         this._error = {};
 
         if (error.body) {

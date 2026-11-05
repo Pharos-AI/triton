@@ -25,8 +25,9 @@ Claude Code users get these as `/pharos:*` slash commands (see `.claude/commands
 
 - **Never write a file without showing the diff and getting a `yes` first.** `yes` / `modify` / `skip` on every change.
 - Follow the Triton **2.0 static API** (`Triton.log` / `Triton.logNow`, builders from `Triton.t` / `Triton.makeBuilder()`); `Triton.instance` is the removed 1.x singleton.
-- **Area is the primary grouping key** — reuse the Area already used by related code so a feature's logs group together. `.area(...)` accepts any String; enum values are examples.
+- **Area is the primary grouping key** — reuse the Area already used by related code so a feature's logs group together. `.area(...)` accepts any String on every tier (Apex, LWC, Flow); the enum values and the LWC `AREA` constants are examples.
 - Do not change program behavior — only add logging (the one sanctioned exception is an optional `transactionId` param on an entry point, which must be flagged).
+- **Logging must never fail the caller.** Triton's entry points swallow their own failures (2.0.0+); what remains is keeping builder arguments null-safe and staying inside governor limits — see `instrument-apex` §3j for trigger handlers.
 - Never instrument `@isTest` classes or managed-package code. Never log PII.
 - On a large rollout, keep the human in the loop at batch boundaries and **defer** risky, low-comfort code rather than rewriting it.
 

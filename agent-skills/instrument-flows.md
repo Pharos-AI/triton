@@ -28,14 +28,17 @@ sf org display --json 2>&1 || sfdx force:org:display --json 2>&1
 If no default org → stop:
 > "No default Salesforce org connected. Run `sf org login web` and `sf config set target-org <alias>`, then re-run."
 
-Verify Triton is installed in the target org (the `TritonFlow` invocable must exist):
+Verify Triton is installed in the target org (the `TritonFlow` invocable must exist). `sf apex run` takes Apex from a file (or stdin) — it has no inline-code flag — so write a one-line probe that only compiles when the invocable's class is present:
 
 ```bash
-sf apex run --target-org <defaultOrg> --code "System.debug(TritonTypes.Level.ERROR);" --json
+printf 'TritonFlow.FlowLog probe = new TritonFlow.FlowLog();\n' > "${TMPDIR:-/tmp}/triton-probe.apex"
+sf apex run --target-org <defaultOrg> --file "${TMPDIR:-/tmp}/triton-probe.apex" --json
 ```
 
-If this fails with a type error → stop:
+Exit code 0 with `result.compiled` and `result.success` both `true` → Triton is installed; continue. A compile failure that names `TritonFlow` — non-zero exit, `"name": "executeCompileFailure"`, `data.compiled` false, and `data.compileProblem` (also in `message`) mentioning `TritonFlow` → stop:
 > "Triton is not installed in the connected org. Deploy the Triton package first, then re-run."
+
+Any other failure (auth, network) → report the CLI error as-is; it does not mean Triton is missing.
 
 ## Step 1 — Parse arguments
 

@@ -39,6 +39,47 @@ public class TritonTestFactory {
         TritonCacheManager.resetMock();
     }
 
+    // ─── Fault Injection ────────────────────────────────────────────
+
+    /**
+     * Makes every publish in this test fail inside TritonHelper.publishLogs, the
+     * single choke point every Triton publish goes through. pharos.Logger is managed
+     * code and cannot be stubbed, so this is the seam.
+     */
+    public static void failPublishing() {
+        TritonHelper.publishFault = new DmlException('Simulated publish failure');
+    }
+
+    /**
+     * Makes the next deferred Flow batch schedule fail, after its constructor has
+     * drained the cache. Pair with TritonFlowFlushBatch.scheduleInTests = true, since
+     * addLogs skips scheduling in tests by default.
+     */
+    public static void failScheduling() {
+        TritonFlowFlushBatch.scheduleFault = new AsyncException('Simulated schedule failure');
+    }
+
+    /**
+     * Makes every later Org Cache put in this test throw, as Cache.Org.put does for an
+     * item over the per-key size limit. resetFlowState clears it.
+     */
+    public static void failCachePuts() {
+        TritonCacheManager.failPuts = true;
+    }
+
+    // ─── Log Levels ─────────────────────────────────────────────────
+
+    /**
+     * Installs a single global Log_Level__mdt rule at the given level, so every log
+     * more verbose than it is filtered out.
+     */
+    public static void restrictLevel(TritonTypes.Level l) {
+        Log_Level__mdt rule = new Log_Level__mdt();
+        rule.Level__c = l.name();
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
+        TritonHelper.Config.logLevels = null;
+    }
+
     // ─── Record Creation ────────────────────────────────────────────
 
     /**

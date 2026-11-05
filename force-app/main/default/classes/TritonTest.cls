@@ -1059,7 +1059,7 @@ private class TritonTest {
         // Verify log properties
         System.assertEquals(TritonTypes.Category.LWC.name(), log.pharos__Category__c);
         System.assertEquals('test type', log.pharos__Type__c);
-        System.assertEquals(TritonTypes.Area.LWC.name(), log.pharos__Area__c);
+        System.assertEquals('test area', log.pharos__Area__c, 'A custom area is kept as sent');
         System.assertEquals('Runtime Info Test', log.pharos__Summary__c);
         System.assertEquals('TestComponent.testFunction', log.pharos__Apex_Name__c);
         
@@ -1158,7 +1158,7 @@ private class TritonTest {
         
         // Verify default/fallback values are used
         System.assertEquals(TritonTypes.Category.LWC.name(), log.pharos__Category__c, 'Should fall back to LWC category');
-        System.assertEquals(TritonTypes.Area.LWC.name(), log.pharos__Area__c, 'Should fall back to LWC area');
+        System.assertEquals('InvalidArea', log.pharos__Area__c, 'A custom area is kept as sent');
         System.assertEquals(TritonTypes.Level.INFO.name(), log.Log_Level__c, 'Should fall back to INFO level');
         System.assertEquals('Error type', log.pharos__Type__c, 'Should use error type');
         System.assertEquals('TestComponent.testFunction', log.pharos__Apex_Name__c, 'Should combine component name and function');
@@ -1168,7 +1168,7 @@ private class TritonTest {
         System.assert(details.contains('Invalid User Id'), 'Should contain user ID error message');
         System.assert(details.contains('Invalid Record Id'), 'Should contain record ID error message');
         System.assert(details.contains('Invalid Log Category'), 'Should contain category error message');
-        System.assert(details.contains('Invalid Log Functional Area'), 'Should contain area error message');
+        System.assert(!details.contains('Invalid Log Functional Area'), 'A custom area is not an error');
         System.assert(details.contains('Invalid Log Level'), 'Should contain level error message');
         
         // Verify null values for invalid IDs
@@ -1178,6 +1178,142 @@ private class TritonTest {
             log.pharos__Related_Objects__c, 
             'Related objects should only contain the valid ID'
         );
+    }
+
+    // ─── LWC areas, levels and null safety ──────────────────────────
+
+    /** A bound component's log at INFO, with no area set. */
+    private static TritonLwc.ComponentLog makeComponentLog(String summary) {
+        TritonLwc.ComponentLog componentLog = new TritonLwc.ComponentLog();
+        componentLog.category = TritonTypes.Category.LWC.name();
+        componentLog.type = 'test type';
+        componentLog.level = TritonTypes.Level.INFO.name();
+        componentLog.summary = summary;
+        TritonLwc.Component component = new TritonLwc.Component();
+        component.name = 'testComponent';
+        component.function = 'testFunction';
+        componentLog.componentInfo = component;
+        return componentLog;
+    }
+
+    private static pharos__Log__c lwcLogBySummary(String summary) {
+        List<pharos__Log__c> logs = [
+            SELECT Id, pharos__Area__c, Log_Level__c, pharos__Details__c, pharos__Apex_Name__c
+            FROM pharos__Log__c
+            WHERE pharos__Summary__c = :summary
+        ];
+        System.assertEquals(1, logs.size(), 'Expected exactly one log with summary ' + summary);
+        return logs[0];
+    }
+
+    private static void assertNoNote(pharos__Log__c log, String note) {
+        System.assert(log.pharos__Details__c == null || !log.pharos__Details__c.contains(note),
+            'Details should not contain the note: ' + note);
+    }
+
+    @IsTest
+    private static void test_resolveArea_maps_known_areas_in_any_spelling() {
+        Map<String, TritonTypes.Area> expected = new Map<String, TritonTypes.Area>{
+            'ACCOUNTS' => TritonTypes.Area.Accounts,
+            'COMMUNITY' => TritonTypes.Area.Community,
+            'LEAD_CONVERSION' => TritonTypes.Area.LeadConversion,
+            'OPPORTUNITY_MANAGEMENT' => TritonTypes.Area.OpportunityManagement,
+            'REST_API' => TritonTypes.Area.RestAPI,
+            'Accounts' => TritonTypes.Area.Accounts,
+            'leadconversion' => TritonTypes.Area.LeadConversion,
+            '  RestAPI  ' => TritonTypes.Area.RestAPI
+        };
+        for (String requested : expected.keySet()) {
+            System.assertEquals(expected.get(requested).name(), TritonLwc.resolveArea(requested),
+                'Known area \'' + requested + '\' should map to its TritonTypes.Area name');
+        }
+    }
+
+    @IsTest
+    private static void test_resolveArea_keeps_custom_area_verbatim() {
+        System.assertEquals('OrderEntry', TritonLwc.resolveArea('OrderEntry'), 'A custom area is kept as sent');
+        System.assertEquals('Order_Entry', TritonLwc.resolveArea('Order_Entry'), 'Underscores in a custom area are kept');
+        System.assertEquals('Billing', TritonLwc.resolveArea(' Billing '), 'A custom area is trimmed');
+    }
+
+    @IsTest
+    private static void test_resolveArea_blank_falls_back_to_lwc() {
+        for (String blank : new List<String>{ null, '', '  ' }) {
+            System.assertEquals(TritonTypes.Area.LWC.name(), TritonLwc.resolveArea(blank),
+                'A blank area lands as LWC');
+        }
+    }
+
+    @IsTest
+    private static void test_saveComponentLogs_custom_area_kept() {
+        TritonLwc.ComponentLog componentLog = makeComponentLog('custom area');
+        componentLog.area = 'OrderEntry';
+
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ componentLog });
+        Test.stopTest();
+
+        pharos__Log__c log = lwcLogBySummary('custom area');
+        System.assertEquals('OrderEntry', log.pharos__Area__c, 'A custom LWC area is kept as sent');
+        assertNoNote(log, 'Invalid Log Functional Area');
+    }
+
+    @IsTest
+    private static void test_saveComponentLogs_blank_area_and_level_default_silently() {
+        TritonLwc.ComponentLog componentLog = makeComponentLog('blank area and level');
+        componentLog.area = null;
+        componentLog.level = null;
+
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ componentLog });
+        Test.stopTest();
+
+        pharos__Log__c log = lwcLogBySummary('blank area and level');
+        System.assertEquals(TritonTypes.Area.LWC.name(), log.pharos__Area__c, 'A blank area lands as LWC');
+        System.assertEquals(TritonTypes.Level.INFO.name(), log.Log_Level__c, 'A blank level lands as INFO');
+        assertNoNote(log, 'Invalid Log Functional Area');
+        assertNoNote(log, 'Invalid Log Level');
+    }
+
+    @IsTest
+    private static void test_saveComponentLogs_null_component_info_still_logs() {
+        TritonLwc.ComponentLog unbound = makeComponentLog('no component info');
+        unbound.componentInfo = null;
+
+        TritonLwc.ComponentLog functionOnly = makeComponentLog('function only');
+        TritonLwc.Component component = new TritonLwc.Component();
+        component.function = 'fn';
+        functionOnly.componentInfo = component;
+
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ unbound, functionOnly });
+        Test.stopTest();
+
+        TritonTestFactory.assertLogCount(2);
+        lwcLogBySummary('no component info');
+        System.assertEquals('fn', lwcLogBySummary('function only').pharos__Apex_Name__c,
+            'With no component name, the operation is the function alone');
+    }
+
+    @IsTest
+    private static void test_saveComponentLogs_null_entry_does_not_drop_others() {
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ null, makeComponentLog('valid') });
+        Test.stopTest();
+
+        TritonTestFactory.assertLogCount(1);
+        lwcLogBySummary('valid');
+    }
+
+    @IsTest
+    private static void test_saveComponentLogs_publish_failure_never_throws() {
+        TritonTestFactory.failPublishing();
+
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ makeComponentLog('lost') });
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
     }
 
     @IsTest
@@ -1537,41 +1673,135 @@ private class TritonTest {
     private static void testDMLErrorLogging_NoErrors() {
         Test.startTest();
 
-        // 1. Test SaveResult with valid data
+        // The DML subject: a log record this test writes and then counts out.
         pharos__Log__c newLog = new pharos__Log__c(
             pharos__Summary__c = 'Valid Log',
             pharos__Post_Processing_Status__c = 'Not Needed'
         );
         Database.SaveResult[] srList = Database.insert(new List<pharos__Log__c>{newLog}, false);
         System.assert(srList[0].isSuccess(), 'Insert should succeed');
-        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(srList));
 
-        // 2. Test UpsertResult with valid data
         newLog.pharos__Summary__c = 'Updated Log';
         Database.UpsertResult[] upsertList = Database.upsert(new List<pharos__Log__c>{newLog}, false);
         System.assert(upsertList[0].isSuccess(), 'Upsert should succeed');
-        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(upsertList));
 
-        // 3. Test DeleteResult with valid data
         Database.DeleteResult[] drList = Database.delete(new List<Id>{newLog.Id}, false);
         System.assert(drList[0].isSuccess(), 'Delete should succeed');
-        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(drList));
 
-        // 4. Test UndeleteResult with valid data
         Database.UndeleteResult[] urList = Database.undelete(new List<Id>{newLog.Id}, false);
         System.assert(urList[0].isSuccess(), 'Undelete should succeed');
-        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(urList));
-        
+
+        // Every all-success result, through every entry point.
+        List<List<Object>> allSuccess = new List<List<Object>>{ srList, upsertList, drList, urList };
+        for (List<Object> results : allSuccess) {
+            Triton.log(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(results));
+            Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(results));
+            Triton.error(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(results));
+            Triton.warning(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(results));
+        }
+        System.assert(Triton.logs.isEmpty(), 'Successful DML results must not buffer any log');
+
+        Triton.flush();
         Test.stopTest();
-        
-        // Verify no logs were created since operations were successful
-        List<pharos__Log__c> logs = [
-            SELECT Id, pharos__Apex_Name__c, pharos__Summary__c, pharos__Details__c
-            FROM pharos__Log__c 
-            WHERE pharos__Type__c = :TritonTypes.Type.DMLResult.name()
-        ];
-                
-        System.assertEquals(0, logs.size(), 'No logs should be created for successful DML operations');
+
+        // Counts every log, whatever its Type, except the DML subject itself.
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE Id != :newLog.Id],
+            'No logs should be created for successful DML operations');
+    }
+
+    /** SaveResults for an insert that fails: a log record pointing at an issue that does not exist. */
+    private static List<Database.SaveResult> failedSaveResults() {
+        Id fakeId = pharos__Log__c.SObjectType.getDescribe().getKeyPrefix() + '000000000000';
+        Database.SaveResult[] results = Database.insert(
+            new List<pharos__Log__c>{ new pharos__Log__c(pharos__Issue__c = fakeId) }, false);
+        System.assert(!results[0].isSuccess(), 'The insert should fail');
+        return results;
+    }
+
+    @IsTest
+    private static void test_dmlResults_null_and_empty_emit_nothing() {
+        Test.startTest();
+        System.assert(Triton.t.dmlResults(null).isSuppressed(), 'Null results suppress the builder');
+        System.assert(Triton.t.dmlResults(new List<Database.SaveResult>()).isSuppressed(),
+            'Empty results suppress the builder');
+
+        Triton.error(Triton.t.dmlResults(null));
+        Triton.error(Triton.t.dmlResults(new List<Database.SaveResult>()));
+        System.assert(Triton.logs.isEmpty(), 'Null or empty DML results must not buffer any log');
+        Test.stopTest();
+    }
+
+    @IsTest
+    private static void test_issue_follows_level_when_implied_by_error() {
+        Exception e = new DmlException('boom');
+        List<Database.SaveResult> failed = failedSaveResults();
+
+        pharos__Log__c downgraded = Triton.makeBuilder().exception(e).warning().build();
+        System.assertEquals(true, downgraded.pharos__Do_Not_Create_Issue__c,
+            'An exception downgraded to WARNING withdraws the issue it implied');
+
+        pharos__Log__c atError = Triton.makeBuilder().exception(e).build();
+        System.assertEquals(false, atError.pharos__Do_Not_Create_Issue__c,
+            'An exception at ERROR keeps its issue');
+
+        pharos__Log__c exceptionLast = Triton.makeBuilder().warning().exception(e).build();
+        System.assertEquals(TritonTypes.Level.ERROR.name(), exceptionLast.Log_Level__c,
+            'exception() after warning() sets ERROR');
+        System.assertEquals(false, exceptionLast.pharos__Do_Not_Create_Issue__c,
+            'exception() after warning() keeps its issue');
+
+        pharos__Log__c dmlWarning = Triton.makeBuilder().dmlResults(failed).warning().build();
+        System.assertEquals(TritonTypes.Level.WARNING.name(), dmlWarning.Log_Level__c,
+            'A failed dmlResults() downgraded to WARNING stays at WARNING');
+        System.assertEquals(true, dmlWarning.pharos__Do_Not_Create_Issue__c,
+            'A failed dmlResults() at WARNING withdraws the issue it implied');
+
+        pharos__Log__c explicitIssue = Triton.makeBuilder().createIssue().warning().build();
+        System.assertEquals(false, explicitIssue.pharos__Do_Not_Create_Issue__c,
+            'An explicit createIssue() stands at any level');
+
+        pharos__Log__c traced = Triton.makeBuilder().traceable(true).info().build();
+        System.assertEquals(false, traced.pharos__Do_Not_Create_Issue__c,
+            'traceable(true) is an explicit issue request and stands at INFO');
+
+        TritonBuilder reraised = Triton.makeBuilder().error().warning();
+        System.assertEquals(true, reraised.build().pharos__Do_Not_Create_Issue__c,
+            'At WARNING the implied issue is withdrawn');
+        reraised.level(TritonTypes.Level.ERROR);
+        System.assertEquals(false, reraised.build().pharos__Do_Not_Create_Issue__c,
+            'Back at ERROR the implied issue returns: build() does not depend on call order');
+    }
+
+    @IsTest
+    private static void test_dmlResults_failure_as_warning_creates_no_issue() {
+        List<Database.SaveResult> failed = failedSaveResults();
+
+        Test.startTest();
+        Triton.warning(Triton.t.area(TritonTypes.Area.Accounts).dmlResults(failed));
+        Triton.flush();
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
+        System.assertEquals(1, logs.size(), 'The failed DML should be logged once');
+        System.assertEquals(TritonTypes.Type.DMLResult.name(), logs[0].pharos__Type__c, 'Type should be DMLResult');
+        System.assertEquals(TritonTypes.Level.WARNING.name(), logs[0].Log_Level__c, 'Level should be WARNING');
+        System.assertEquals(true, logs[0].pharos__Do_Not_Create_Issue__c,
+            'A DML failure logged as a WARNING should not open an issue');
+    }
+
+    @IsTest
+    private static void test_logNow_filtered_log_leaves_buffer_untouched() {
+        TritonTestFactory.restrictLevel(TritonTypes.Level.ERROR);
+
+        Test.startTest();
+        Triton.log(Triton.t.summary('buffered').error());
+        Triton.logNow(Triton.t.summary('filtered').debug());
+
+        System.assertEquals(1, Triton.logs.size(), 'A filtered logNow must not touch the buffer');
+        System.assertEquals('buffered', Triton.logs[0].pharos__Summary__c, 'The buffered log is still there');
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
     }
 
     @IsTest
@@ -1668,6 +1898,75 @@ private class TritonTest {
         
         List<pharos__Log__c> logs = [SELECT Id FROM pharos__Log__c];
         System.assertEquals(0, logs.size(), 'No logs should be created with empty buffer');
+    }
+
+    // ─── Logging never throws into the caller ───────────────────────
+
+    @IsTest
+    private static void test_flush_publish_failure_never_throws_and_drops_buffer() {
+        Test.startTest();
+        Triton.log(Triton.t.summary('a').info());
+        Triton.log(Triton.t.summary('b').info());
+        System.assertEquals(2, Triton.logs.size(), 'Both logs should be buffered');
+        TritonTestFactory.failPublishing();
+
+        Triton.flush();
+
+        System.assert(Triton.logs.isEmpty(), 'A failed flush drops the buffer rather than re-queueing it');
+        System.assertEquals(1, TritonHelper.failureCount, 'The swallowed publish failure should be recorded once');
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
+    }
+
+    @IsTest
+    private static void test_flushTop_publish_failure_never_throws_and_keeps_older_logs() {
+        Test.startTest();
+        Triton.log(Triton.t.summary('a').info());
+        Triton.log(Triton.t.summary('b').info());
+        TritonTestFactory.failPublishing();
+
+        Triton.flushTop();
+
+        System.assertEquals(1, Triton.logs.size(), 'Only the newest log is dropped by a failed flushTop');
+        System.assertEquals('a', Triton.logs[0].pharos__Summary__c, 'The older log stays buffered');
+
+        TritonHelper.publishFault = null;
+        Triton.flush();
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
+        System.assertEquals(1, logs.size(), 'Only the older log is published once publishing recovers');
+        System.assertEquals('a', logs[0].pharos__Summary__c, 'The published log is the older one');
+    }
+
+    @IsTest
+    private static void test_logNow_publish_failure_never_throws() {
+        Test.startTest();
+        TritonTestFactory.failPublishing();
+        Triton.logNow(Triton.t.summary('now').error());
+        System.assert(Triton.logs.isEmpty(), 'A failed logNow leaves nothing buffered');
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
+    }
+
+    @IsTest
+    private static void test_log_methods_never_throw_on_null_builder() {
+        Test.startTest();
+        Triton.log(null);
+        Triton.logNow(null);
+        Triton.error(null);
+        Triton.warning(null);
+        Triton.info(null);
+        Triton.debug(null);
+        Triton.fine(null);
+        Triton.finer(null);
+        Triton.finest(null);
+        Test.stopTest();
+
+        System.assert(Triton.logs.isEmpty(), 'A null builder buffers nothing');
+        System.assertEquals(0, TritonHelper.failureCount, 'The null guards return before anything throws');
     }
 
     @IsTest
