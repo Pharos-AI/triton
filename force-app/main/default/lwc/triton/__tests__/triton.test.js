@@ -101,6 +101,8 @@ describe('Triton', () => {
 
     // Create a fresh instance for each test
     triton = new Triton();
+    // The singleton keeps its failure count across tests
+    triton.failedFlushes = 0;
     
     // Clear the logs array to start fresh
     triton.logs = [];
@@ -289,14 +291,17 @@ describe('Triton', () => {
     test('should preserve logs on logNow error', async () => {
       const error = new Error('Flush failed');
       saveComponentLogs.mockRejectedValue(error);
-      const existingLogCount = 1;
-      triton.logs = [new TritonBuilder()];
-      
+      const earlier = new TritonBuilder();
+      triton.logs = [earlier];
+
       const newBuilder = new TritonBuilder();
-      
-      await expect(triton.logNow(newBuilder)).rejects.toThrow('Flush failed');
-      // Both original logs and the new builder should be preserved after error
-      expect(triton.logs).toHaveLength(existingLogCount + 1); // Original + new builder
+
+      // Never rejects, so an awaited logNow inside a catch block cannot derail it
+      await expect(triton.logNow(newBuilder)).resolves.toBeUndefined();
+      // Both are kept for the next flush, the earlier log first
+      expect(triton.logs).toHaveLength(2);
+      expect(triton.logs[0]).toBe(earlier);
+      expect(triton.logs[1]).toBe(newBuilder);
     });
   });
 
@@ -331,8 +336,80 @@ describe('Triton', () => {
       triton.logs = mockLogs;
       saveComponentLogs.mockRejectedValue(error);
       
-      await expect(triton.flush()).rejects.toThrow('Network error');
+      await expect(triton.flush()).resolves.toBeUndefined();
       expect(triton.logs).toEqual(mockLogs); // Logs restored
+    });
+  });
+
+  describe('Flush failure policy', () => {
+    beforeEach(() => {
+      saveComponentLogs.mockReset();
+    });
+
+    test('flush resolves and keeps the logs on a first failure', async () => {
+      const error = new Error('offline');
+      saveComponentLogs.mockRejectedValue(error);
+      const logs = [new TritonBuilder(), new TritonBuilder()];
+      triton.logs = [...logs];
+
+      await expect(triton.flush()).resolves.toBeUndefined();
+
+      expect(triton.logs).toEqual(logs);
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('logs kept'), error);
+    });
+
+    test('drops the failed batch on the third consecutive failure', async () => {
+      const error = new Error('offline');
+      saveComponentLogs.mockRejectedValue(error);
+      triton.logs = [new TritonBuilder()];
+
+      await triton.flush();
+      await triton.flush();
+      expect(triton.logs).toHaveLength(1);
+
+      await triton.flush();
+
+      expect(saveComponentLogs).toHaveBeenCalledTimes(3);
+      expect(triton.logs).toEqual([]);
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('dropping 1 log'), error);
+    });
+
+    test('a successful flush resets the failure count', async () => {
+      const error = new Error('offline');
+      saveComponentLogs
+        .mockRejectedValueOnce(error)
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce({ success: true })
+        .mockRejectedValueOnce(error)
+        .mockRejectedValueOnce(error);
+      triton.logs = [new TritonBuilder()];
+
+      await triton.flush();
+      await triton.flush();
+      await triton.flush();
+      expect(triton.logs).toEqual([]);
+
+      const kept = new TritonBuilder();
+      triton.logs = [kept];
+      await triton.flush();
+      await triton.flush();
+
+      // Two failures since the success, not four in a row: still kept
+      expect(triton.logs).toHaveLength(1);
+      expect(triton.logs[0]).toBe(kept);
+    });
+
+    test('the restored buffer is capped at MAX_BUFFERED_LOGS, oldest dropped', async () => {
+      saveComponentLogs.mockRejectedValue(new Error('offline'));
+      const logs = Array.from({ length: Triton.MAX_BUFFERED_LOGS + 5 }, () => new TritonBuilder());
+      triton.logs = [...logs];
+
+      await triton.flush();
+
+      expect(triton.logs).toHaveLength(Triton.MAX_BUFFERED_LOGS);
+      expect(triton.logs[0]).toBe(logs[5]);
+      expect(triton.logs[triton.logs.length - 1]).toBe(logs[logs.length - 1]);
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('dropped the 5 oldest'));
     });
   });
 
@@ -460,6 +537,8 @@ describe('PerformanceCallBuilder', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     triton = new Triton();
+    // The singleton keeps its failure count across tests
+    triton.failedFlushes = 0;
     triton.logs = []; // Clear logs
     boundTriton = triton.bindToComponent('testComponent');
     mockApexCall = jest.fn();
@@ -559,11 +638,17 @@ describe('TransactionManager', () => {
     });
 
     triton = new Triton();
+    // The singleton keeps its failure count across tests
+    triton.failedFlushes = 0;
     triton.logs = [];
   });
 
   afterEach(() => {
     jest.useRealTimers();
+    // Spies on the singleton outlive the test unless restored
+    if (jest.isMockFunction(triton.flush)) {
+      triton.flush.mockRestore();
+    }
   });
 
   test('should initialize with new transaction when none exists', () => {
@@ -615,6 +700,27 @@ describe('TransactionManager', () => {
     triton.transactionManager.stop();
     expect(triton.transactionManager.isMonitoring).toBe(false);
   });
+
+  test('stop() never rejects when the final flush fails', async () => {
+    jest.spyOn(triton, 'flush').mockRejectedValue(new Error('offline'));
+
+    await expect(triton.transactionManager.stop()).resolves.toBeUndefined();
+  });
+
+  test('restarting the monitor leaves a single polling loop', () => {
+    const flushSpy = jest.spyOn(triton, 'flush').mockResolvedValue();
+
+    triton.transactionManager.start();
+    triton.transactionManager.start();
+
+    const oldBuilder = new TritonBuilder();
+    oldBuilder._createdTimestamp = Date.now() - 15000; // 15 seconds ago
+    triton.logs.push(oldBuilder);
+
+    jest.advanceTimersByTime(5000);
+
+    expect(flushSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('PerformanceTracker', () => {
@@ -624,6 +730,8 @@ describe('PerformanceTracker', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     triton = new Triton();
+    // The singleton keeps its failure count across tests
+    triton.failedFlushes = 0;
     triton.logs = [];
     boundTriton = triton.bindToComponent('testComponent');
     
@@ -773,6 +881,8 @@ describe('Profiling defaults', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     triton = new Triton();
+    // The singleton keeps its failure count across tests
+    triton.failedFlushes = 0;
     triton.logs = [];
     triton.templates.clear();
     boundTriton = triton.bindToComponent('testComponent');
@@ -892,6 +1002,8 @@ describe('SpanContext', () => {
     });
 
     triton = new Triton();
+    // The singleton keeps its failure count across tests
+    triton.failedFlushes = 0;
     triton.logs = [];
   });
 
