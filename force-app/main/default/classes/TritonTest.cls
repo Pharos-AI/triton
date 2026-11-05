@@ -1059,7 +1059,7 @@ private class TritonTest {
         // Verify log properties
         System.assertEquals(TritonTypes.Category.LWC.name(), log.pharos__Category__c);
         System.assertEquals('test type', log.pharos__Type__c);
-        System.assertEquals(TritonTypes.Area.LWC.name(), log.pharos__Area__c);
+        System.assertEquals('test area', log.pharos__Area__c, 'A custom area is kept as sent');
         System.assertEquals('Runtime Info Test', log.pharos__Summary__c);
         System.assertEquals('TestComponent.testFunction', log.pharos__Apex_Name__c);
         
@@ -1158,7 +1158,7 @@ private class TritonTest {
         
         // Verify default/fallback values are used
         System.assertEquals(TritonTypes.Category.LWC.name(), log.pharos__Category__c, 'Should fall back to LWC category');
-        System.assertEquals(TritonTypes.Area.LWC.name(), log.pharos__Area__c, 'Should fall back to LWC area');
+        System.assertEquals('InvalidArea', log.pharos__Area__c, 'A custom area is kept as sent');
         System.assertEquals(TritonTypes.Level.INFO.name(), log.Log_Level__c, 'Should fall back to INFO level');
         System.assertEquals('Error type', log.pharos__Type__c, 'Should use error type');
         System.assertEquals('TestComponent.testFunction', log.pharos__Apex_Name__c, 'Should combine component name and function');
@@ -1168,7 +1168,7 @@ private class TritonTest {
         System.assert(details.contains('Invalid User Id'), 'Should contain user ID error message');
         System.assert(details.contains('Invalid Record Id'), 'Should contain record ID error message');
         System.assert(details.contains('Invalid Log Category'), 'Should contain category error message');
-        System.assert(details.contains('Invalid Log Functional Area'), 'Should contain area error message');
+        System.assert(!details.contains('Invalid Log Functional Area'), 'A custom area is not an error');
         System.assert(details.contains('Invalid Log Level'), 'Should contain level error message');
         
         // Verify null values for invalid IDs
@@ -1178,6 +1178,142 @@ private class TritonTest {
             log.pharos__Related_Objects__c, 
             'Related objects should only contain the valid ID'
         );
+    }
+
+    // ─── LWC areas, levels and null safety ──────────────────────────
+
+    /** A bound component's log at INFO, with no area set. */
+    private static TritonLwc.ComponentLog makeComponentLog(String summary) {
+        TritonLwc.ComponentLog componentLog = new TritonLwc.ComponentLog();
+        componentLog.category = TritonTypes.Category.LWC.name();
+        componentLog.type = 'test type';
+        componentLog.level = TritonTypes.Level.INFO.name();
+        componentLog.summary = summary;
+        TritonLwc.Component component = new TritonLwc.Component();
+        component.name = 'testComponent';
+        component.function = 'testFunction';
+        componentLog.componentInfo = component;
+        return componentLog;
+    }
+
+    private static pharos__Log__c lwcLogBySummary(String summary) {
+        List<pharos__Log__c> logs = [
+            SELECT Id, pharos__Area__c, Log_Level__c, pharos__Details__c, pharos__Apex_Name__c
+            FROM pharos__Log__c
+            WHERE pharos__Summary__c = :summary
+        ];
+        System.assertEquals(1, logs.size(), 'Expected exactly one log with summary ' + summary);
+        return logs[0];
+    }
+
+    private static void assertNoNote(pharos__Log__c log, String note) {
+        System.assert(log.pharos__Details__c == null || !log.pharos__Details__c.contains(note),
+            'Details should not contain the note: ' + note);
+    }
+
+    @IsTest
+    private static void test_resolveArea_maps_known_areas_in_any_spelling() {
+        Map<String, TritonTypes.Area> expected = new Map<String, TritonTypes.Area>{
+            'ACCOUNTS' => TritonTypes.Area.Accounts,
+            'COMMUNITY' => TritonTypes.Area.Community,
+            'LEAD_CONVERSION' => TritonTypes.Area.LeadConversion,
+            'OPPORTUNITY_MANAGEMENT' => TritonTypes.Area.OpportunityManagement,
+            'REST_API' => TritonTypes.Area.RestAPI,
+            'Accounts' => TritonTypes.Area.Accounts,
+            'leadconversion' => TritonTypes.Area.LeadConversion,
+            '  RestAPI  ' => TritonTypes.Area.RestAPI
+        };
+        for (String requested : expected.keySet()) {
+            System.assertEquals(expected.get(requested).name(), TritonLwc.resolveArea(requested),
+                'Known area \'' + requested + '\' should map to its TritonTypes.Area name');
+        }
+    }
+
+    @IsTest
+    private static void test_resolveArea_keeps_custom_area_verbatim() {
+        System.assertEquals('OrderEntry', TritonLwc.resolveArea('OrderEntry'), 'A custom area is kept as sent');
+        System.assertEquals('Order_Entry', TritonLwc.resolveArea('Order_Entry'), 'Underscores in a custom area are kept');
+        System.assertEquals('Billing', TritonLwc.resolveArea(' Billing '), 'A custom area is trimmed');
+    }
+
+    @IsTest
+    private static void test_resolveArea_blank_falls_back_to_lwc() {
+        for (String blank : new List<String>{ null, '', '  ' }) {
+            System.assertEquals(TritonTypes.Area.LWC.name(), TritonLwc.resolveArea(blank),
+                'A blank area lands as LWC');
+        }
+    }
+
+    @IsTest
+    private static void test_saveComponentLogs_custom_area_kept() {
+        TritonLwc.ComponentLog componentLog = makeComponentLog('custom area');
+        componentLog.area = 'OrderEntry';
+
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ componentLog });
+        Test.stopTest();
+
+        pharos__Log__c log = lwcLogBySummary('custom area');
+        System.assertEquals('OrderEntry', log.pharos__Area__c, 'A custom LWC area is kept as sent');
+        assertNoNote(log, 'Invalid Log Functional Area');
+    }
+
+    @IsTest
+    private static void test_saveComponentLogs_blank_area_and_level_default_silently() {
+        TritonLwc.ComponentLog componentLog = makeComponentLog('blank area and level');
+        componentLog.area = null;
+        componentLog.level = null;
+
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ componentLog });
+        Test.stopTest();
+
+        pharos__Log__c log = lwcLogBySummary('blank area and level');
+        System.assertEquals(TritonTypes.Area.LWC.name(), log.pharos__Area__c, 'A blank area lands as LWC');
+        System.assertEquals(TritonTypes.Level.INFO.name(), log.Log_Level__c, 'A blank level lands as INFO');
+        assertNoNote(log, 'Invalid Log Functional Area');
+        assertNoNote(log, 'Invalid Log Level');
+    }
+
+    @IsTest
+    private static void test_saveComponentLogs_null_component_info_still_logs() {
+        TritonLwc.ComponentLog unbound = makeComponentLog('no component info');
+        unbound.componentInfo = null;
+
+        TritonLwc.ComponentLog functionOnly = makeComponentLog('function only');
+        TritonLwc.Component component = new TritonLwc.Component();
+        component.function = 'fn';
+        functionOnly.componentInfo = component;
+
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ unbound, functionOnly });
+        Test.stopTest();
+
+        TritonTestFactory.assertLogCount(2);
+        lwcLogBySummary('no component info');
+        System.assertEquals('fn', lwcLogBySummary('function only').pharos__Apex_Name__c,
+            'With no component name, the operation is the function alone');
+    }
+
+    @IsTest
+    private static void test_saveComponentLogs_null_entry_does_not_drop_others() {
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ null, makeComponentLog('valid') });
+        Test.stopTest();
+
+        TritonTestFactory.assertLogCount(1);
+        lwcLogBySummary('valid');
+    }
+
+    @IsTest
+    private static void test_saveComponentLogs_publish_failure_never_throws() {
+        TritonTestFactory.failPublishing();
+
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ makeComponentLog('lost') });
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
     }
 
     @IsTest
