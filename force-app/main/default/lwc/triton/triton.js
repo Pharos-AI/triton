@@ -424,6 +424,19 @@ export const TYPE = {
 };
 
 /**
+ * Builder for a profiling record: from the bound component's template when it has one, so the
+ * record inherits the component's Area (Apex marks build from Triton.t the same way); otherwise
+ * a plain builder, whose blank Area lands as LWC.
+ * @private
+ * @param {Triton} tritonInstance - The bound Triton proxy, or the shared instance
+ * @returns {TritonBuilder} Builder for the profiling record
+ */
+const profilingBuilder = (tritonInstance) =>
+    typeof tritonInstance.fromTemplate === 'function'
+        ? tritonInstance.fromTemplate()
+        : tritonInstance.makeBuilder();
+
+/**
  * Unified builder for configuring performance call error handling and execution
  * @private
  */
@@ -483,8 +496,9 @@ class PerformanceCallBuilder {
             // Log operation start (only if component is bound)
             if (this.triton._componentId) {
                 this.triton.log(
-                    this.triton.makeBuilder()
+                    profilingBuilder(this.triton)
                         .type(logType)
+                        .level(LEVEL.FINE)
                         .summary(`${operationName} started: ${methodName}`)
                         .details(`Initiating ${operationName.toLowerCase()}: ${methodName}`)
                         .action(methodName)
@@ -500,8 +514,9 @@ class PerformanceCallBuilder {
             // Log successful operation (only if component is bound)
             if (this.triton._componentId) {
                 this.triton.log(
-                    this.triton.makeBuilder()
+                    profilingBuilder(this.triton)
                         .type(logType)
+                        .level(LEVEL.FINE)
                         .summary(`${operationName} completed: ${methodName}`)
                         .details(`Duration: ${duration}ms`)
                         .duration(duration)
@@ -526,13 +541,14 @@ class PerformanceCallBuilder {
             } else if (this.triton._componentId) {
                 // Built-in error logging (only if component is bound)
                 this.triton.log(
-                    this.triton.makeBuilder()
+                    profilingBuilder(this.triton)
                         .type(logType)
                         .summary(`${operationName} failed: ${methodName}`)
                         .details(`Duration: ${duration}ms, Error: ${error.message}`)
                         .duration(duration)
                         .action(methodName)
                         .exception(error)
+                        .level(LEVEL.ERROR)
                         .spanId(spanId)
                         .parentSpanId(parentSpanId)
                 );
@@ -637,8 +653,9 @@ class PerformanceTracker {
         // the two by span id and collapses them into one span, the way it
         // already does for "Backend call started/completed".
         tritonInstance.log(
-            tritonInstance.makeBuilder()
+            profilingBuilder(tritonInstance)
                 .type(TYPE.PERFORMANCE)
+                .level(LEVEL.FINE)
                 .summary(`Performance started: ${tritonInstance._componentId || 'unknown'} - ${markName}`)
                 .action(markName)
                 .spanId(spanId)
@@ -676,8 +693,9 @@ class PerformanceTracker {
 
         // Log the performance data using the mark's captured span context
         tritonInstance.log(
-            tritonInstance.makeBuilder()
+            profilingBuilder(tritonInstance)
                 .type(TYPE.PERFORMANCE)
+                .level(LEVEL.FINE)
                 .summary(`Performance: ${tritonInstance._componentId || 'unknown'} - ${markData.name}`)
                 .details(`Duration: ${duration}ms`)
                 .duration(duration)
@@ -727,8 +745,9 @@ class PerformanceTracker {
         
         // Use the appropriate context for logging
         tritonInstance.log(
-            tritonInstance.makeBuilder()
+            profilingBuilder(tritonInstance)
                 .type(TYPE.COMPONENT_LIFECYCLE)
+                .level(LEVEL.FINER)
                 .summary(`Component lifecycle: ${tritonInstance._componentId || 'unknown'} - ${lifecycleEvent}`)
                 .details(`Component ${lifecycleEvent} event triggered`)
                 .action(`lifecycle-${lifecycleEvent}`)
@@ -747,8 +766,9 @@ class PerformanceTracker {
         
         // Use the appropriate context for logging
         tritonInstance.log(
-            tritonInstance.makeBuilder()
+            profilingBuilder(tritonInstance)
                 .type(TYPE.COMPONENT_RENDER)
+                .level(LEVEL.FINEST)
                 .summary(`Component render: ${tritonInstance._componentId || 'unknown'}`)
                 .details(`Render count: ${componentData.renderCounts}`)
                 .action('component-render')

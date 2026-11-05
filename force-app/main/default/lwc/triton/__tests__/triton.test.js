@@ -762,6 +762,119 @@ describe('PerformanceTracker', () => {
   });
 });
 
+describe('Profiling defaults', () => {
+  // Profiling records carry fixed levels, so one Log_Level__mdt threshold selects a
+  // verbosity tier: spans at FINE (as Apex marks), failures at ERROR, lifecycle at
+  // FINER, render at FINEST.
+  let triton;
+  let boundTriton;
+  let mockApexCall;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    triton = new Triton();
+    triton.logs = [];
+    triton.templates.clear();
+    boundTriton = triton.bindToComponent('testComponent');
+    mockApexCall = jest.fn();
+
+    let timeCounter = 1000;
+    window.performance.now = jest.fn(() => timeCounter += 100);
+  });
+
+  test('backend call started and completed records log at FINE', async () => {
+    mockApexCall.mockResolvedValue('ok');
+
+    await boundTriton.timeBackendCall('loadData', mockApexCall).execute();
+
+    expect(triton.logs).toHaveLength(2);
+    const [started, completed] = triton.logs;
+    expect(started.summary).toHaveBeenCalledWith('Backend call started: loadData');
+    expect(started.level).toHaveBeenLastCalledWith(LEVEL.FINE);
+    expect(completed.summary).toHaveBeenCalledWith('Backend call completed: loadData');
+    expect(completed.level).toHaveBeenLastCalledWith(LEVEL.FINE);
+  });
+
+  test('a failed backend call logs at ERROR', async () => {
+    const error = new Error('Backend error');
+    mockApexCall.mockRejectedValue(error);
+
+    await boundTriton.timeBackendCall('loadData', mockApexCall).withoutRethrow().execute();
+
+    const failedRecord = triton.logs[triton.logs.length - 1];
+    expect(failedRecord.summary).toHaveBeenCalledWith('Backend call failed: loadData');
+    expect(failedRecord.exception).toHaveBeenCalledWith(error);
+    expect(failedRecord.level).toHaveBeenLastCalledWith(LEVEL.ERROR);
+  });
+
+  test('a failed user interaction logs at ERROR', async () => {
+    const error = new Error('Click failed');
+    const interaction = jest.fn().mockRejectedValue(error);
+
+    await boundTriton.timeUserInteraction('save', interaction).withoutRethrow().execute();
+
+    const failedRecord = triton.logs[triton.logs.length - 1];
+    expect(failedRecord.summary).toHaveBeenCalledWith('User interaction failed: save');
+    expect(failedRecord.exception).toHaveBeenCalledWith(error);
+    expect(failedRecord.level).toHaveBeenLastCalledWith(LEVEL.ERROR);
+  });
+
+  test('performance mark records log at FINE', () => {
+    boundTriton.startPerformanceMark('m');
+    boundTriton.endPerformanceMark('m');
+
+    expect(triton.logs).toHaveLength(2);
+    const [opening, completion] = triton.logs;
+    expect(opening.level).toHaveBeenLastCalledWith(LEVEL.FINE);
+    expect(completion.level).toHaveBeenLastCalledWith(LEVEL.FINE);
+  });
+
+  test('lifecycle records log at FINER', () => {
+    boundTriton.trackComponentLifecycle('connected');
+
+    expect(triton.logs).toHaveLength(1);
+    expect(triton.logs[0].level).toHaveBeenLastCalledWith(LEVEL.FINER);
+  });
+
+  test('render records log at FINEST', () => {
+    boundTriton.trackComponentRender();
+
+    expect(triton.logs).toHaveLength(1);
+    expect(triton.logs[0].level).toHaveBeenLastCalledWith(LEVEL.FINEST);
+  });
+
+  test('profiling records start from the component template', () => {
+    const template = new TritonBuilder();
+    boundTriton.setTemplate(template);
+
+    boundTriton.startPerformanceMark('m');
+
+    expect(template.clone).toHaveBeenCalled();
+    const opening = triton.logs[triton.logs.length - 1];
+    expect(opening).toBe(template.clone.mock.results[0].value);
+    expect(opening.level).toHaveBeenLastCalledWith(LEVEL.FINE);
+  });
+
+  test('every profiling record starts from the component template', async () => {
+    // So each one inherits the component's Area, whichever helper wrote it.
+    const template = new TritonBuilder();
+    boundTriton.setTemplate(template);
+    mockApexCall.mockResolvedValueOnce('ok').mockRejectedValueOnce(new Error('Backend error'));
+
+    boundTriton.startPerformanceMark('m');
+    boundTriton.endPerformanceMark('m');
+    boundTriton.trackComponentLifecycle('connected');
+    boundTriton.trackComponentRender();
+    await boundTriton.timeBackendCall('loadData', mockApexCall).execute();
+    await boundTriton.timeBackendCall('loadData', mockApexCall).withoutRethrow().execute();
+
+    // mark open + close, lifecycle, render, call started + completed, call started + failed
+    expect(triton.logs).toHaveLength(8);
+    const clones = template.clone.mock.results.map(result => result.value);
+    triton.logs.forEach(record => expect(clones).toContain(record));
+  });
+});
+
 describe('SpanContext', () => {
   let triton;
 
