@@ -947,4 +947,79 @@ private class TritonFlowTest {
 
         TritonTestFactory.assertNoLogs();
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Group 7: Deferred batch hand-off — no loss, no duplicates
+    // ═══════════════════════════════════════════════════════════════════
+
+    @IsTest
+    private static void test_addLogs_schedule_failure_publishes_every_drained_log() {
+        TritonTestFactory.resetFlowState();
+        // Another transaction's logs, waiting in the cache for a batch.
+        TritonHelper.cacheFlowLogs('txother', new List<pharos__Log__c>{
+            TritonTestFactory.makeLogRecord('o1'),
+            TritonTestFactory.makeLogRecord('o2')
+        });
+        TritonFlowFlushBatch.scheduleInTests = true;
+        TritonTestFactory.failScheduling();
+
+        Test.startTest();
+        TritonFlowFlushBatch.addLogs(
+            new List<pharos__Log__c>{ TritonTestFactory.makeLogRecord('m1') }, 'txmine');
+
+        System.assert(TritonFlowFlushBatch.pendingLogs.isEmpty(),
+            'Logs drained into the failed batch must not stay pending');
+        System.assert(TritonHelper.getFlowLogCacheKeys().isEmpty(),
+            'The failed batch constructor already removed every cache key');
+        Test.stopTest();
+
+        // Every drained log, this transaction's and the other one's, is published.
+        TritonTestFactory.assertLogCount(3);
+    }
+
+    @IsTest
+    private static void test_addLogs_successful_schedule_hands_pending_logs_to_batch() {
+        TritonTestFactory.resetFlowState();
+        TritonFlowFlushBatch.scheduleInTests = true;
+
+        Test.startTest();
+        TritonFlowFlushBatch.addLogs(
+            new List<pharos__Log__c>{ TritonTestFactory.makeLogRecord('a') }, 'tx1');
+        TritonFlowFlushBatch.addLogs(
+            new List<pharos__Log__c>{ TritonTestFactory.makeLogRecord('b') }, 'tx1');
+
+        // Holds whether or not the first scheduled job is visible to the second call.
+        for (pharos__Log__c pending : TritonFlowFlushBatch.pendingLogs) {
+            System.assertNotEquals('a', pending.pharos__Summary__c,
+                'A log handed to a scheduled batch must not stay pending');
+        }
+        for (String key : TritonHelper.getFlowLogCacheKeys()) {
+            for (pharos__Log__c cached : TritonHelper.getCachedFlowLogs(key)) {
+                System.assertNotEquals('a', cached.pharos__Summary__c,
+                    'A log handed to a scheduled batch must not be cached for a second batch');
+            }
+        }
+        System.assertEquals(0, TritonHelper.failureCount, 'Scheduling should have succeeded');
+        Test.stopTest();
+
+        System.assert(TritonTestFactory.countFlowFlushBatchJobs() >= 1,
+            'The first call should have scheduled a batch');
+    }
+
+    @IsTest
+    private static void test_addLogs_publish_failure_never_throws() {
+        TritonTestFactory.resetFlowState();
+        TritonTestFactory.failPublishing();
+
+        Test.startTest();
+        // A null transaction id fails the cache write, so this takes the immediate path.
+        TritonFlowFlushBatch.addLogs(
+            new List<pharos__Log__c>{ TritonTestFactory.makeLogRecord('x') }, null);
+
+        System.assert(TritonFlowFlushBatch.pendingLogs.isEmpty(),
+            'The pending buffer is cleared even when the publish fails');
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
+    }
 }

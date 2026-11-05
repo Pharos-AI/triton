@@ -50,6 +50,15 @@ public class TritonTestFactory {
         TritonHelper.publishFault = new DmlException('Simulated publish failure');
     }
 
+    /**
+     * Makes the next deferred Flow batch schedule fail, after its constructor has
+     * drained the cache. Pair with TritonFlowFlushBatch.scheduleInTests = true, since
+     * addLogs skips scheduling in tests by default.
+     */
+    public static void failScheduling() {
+        TritonFlowFlushBatch.scheduleFault = new AsyncException('Simulated schedule failure');
+    }
+
     // ─── Record Creation ────────────────────────────────────────────
 
     /**

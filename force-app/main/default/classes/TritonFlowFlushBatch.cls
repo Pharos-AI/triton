@@ -21,6 +21,10 @@
  *
  * The batch constructor reads all pending cache entries (from all transactions),
  * so the execute method can publish everything in one pharos.Logger.flush() call.
+ *
+ * Never throws into the Flow. If a batch cannot be scheduled, every log its
+ * constructor drained is published immediately instead; a publish that fails drops
+ * the logs it carried (see TritonHelper.publishLogs).
  */
 global class TritonFlowFlushBatch implements Database.Batchable<SObject> {
 
@@ -39,6 +43,14 @@ global class TritonFlowFlushBatch implements Database.Batchable<SObject> {
     // Instance state — serialized with the batch job
     @TestVisible
     private List<pharos__Log__c> logsToFlush;
+
+    /** Test seam: when set, scheduleBatch throws it inside its own guard. Only tests set it. */
+    @TestVisible
+    private static Exception scheduleFault;
+
+    /** Test seam: lets a test reach the scheduling path, which addLogs skips in tests by default. */
+    @TestVisible
+    private static Boolean scheduleInTests = false;
 
     /**
      * Constructor: collects all pending flow logs from Org Cache.
@@ -63,35 +75,42 @@ global class TritonFlowFlushBatch implements Database.Batchable<SObject> {
     }
 
     /**
-     * Buffers logs for deferred flush. Handles all failure cases internally —
-     * never throws. Every log is guaranteed to be either cached+batched or
-     * immediately flushed.
+     * Buffers logs for deferred flush. Never throws. Each log is cached for a batch,
+     * handed to a scheduled batch, or published immediately; a publish that fails
+     * drops the logs it carried (see TritonHelper.publishLogs).
      * @param logs The log records to buffer
      * @param transactionId The current transaction ID (used as cache key)
      */
     public static void addLogs(List<pharos__Log__c> logs, String transactionId) {
-        pendingLogs.addAll(logs);
-
-        // Cache stores SObjects directly — no JSON serialization.
-        // Platform enforces the 100KB per-key limit; cacheFlowLogs returns
-        // false if the write fails (size exceeded or cache unavailable).
-        if (!TritonHelper.cacheFlowLogs(transactionId, pendingLogs)) {
-            flushAndClearPending();
-            return;
-        }
-
-        // In test context, skip batch scheduling — the batch constructor
-        // eagerly drains the cache, and System.scheduleBatch with a delay
-        // does not execute during Test.stopTest(). Tests flush cached logs
-        // manually by constructing a batch and calling execute().
-        if (Test.isRunningTest()) {
-            return;
-        }
-
+        if (logs == null || logs.isEmpty()) return;
         try {
-            scheduleBatchIfNeeded();
+            pendingLogs.addAll(logs);
+
+            // Cache stores SObjects directly — no JSON serialization.
+            // Platform enforces the 100KB per-key limit; cacheFlowLogs returns
+            // false if the write fails (size exceeded or cache unavailable).
+            if (!TritonHelper.cacheFlowLogs(transactionId, pendingLogs)) {
+                publishPendingNow(null); // nothing was cached
+                return;
+            }
+
+            // In test context, skip batch scheduling unless a test opts in — the
+            // batch constructor eagerly drains the cache, and System.scheduleBatch
+            // with a delay does not execute during Test.stopTest(). Tests flush cached
+            // logs manually by constructing a batch and calling execute().
+            if (Test.isRunningTest() && !scheduleInTests) {
+                return;
+            }
+
+            if (scheduleBatchIfNeeded()) {
+                // The constructor drained this transaction's key (and every other one):
+                // those logs now belong to the scheduled batch, or scheduleBatch has
+                // already published them. Keeping them would cache them again.
+                pendingLogs.clear();
+            }
         } catch (Exception e) {
-            flushAndClearPending();
+            TritonHelper.recordFailure('flow batch hand-off', e, 0);
+            publishPendingNow(transactionId);
         }
     }
 
@@ -108,39 +127,61 @@ global class TritonFlowFlushBatch implements Database.Batchable<SObject> {
     }
 
     /**
-     * Flushes the pending buffer immediately and clears it.
+     * Publishes this transaction's pending logs now and clears the buffer. Removes the
+     * transaction's cache key first, so no later batch republishes them.
+     * @param cachedTransactionId The transaction whose cache key to remove, or null when nothing was cached
      */
-    private static void flushAndClearPending() {
-        flush(pendingLogs);
+    private static void publishPendingNow(String cachedTransactionId) {
+        if (cachedTransactionId != null) {
+            TritonHelper.removeFlowLogs(cachedTransactionId);
+        }
+        List<pharos__Log__c> toPublish = new List<pharos__Log__c>(pendingLogs);
         pendingLogs.clear();
+        TritonHelper.publishLogs(toPublish);
     }
 
     /**
      * Schedules a new batch only if no TritonFlowFlushBatch is already
      * queued or processing. This prevents batch job proliferation when
      * multiple Flows run concurrently.
+     * @return true when it constructed (and so drained the cache into) a batch
      */
     @TestVisible
-    private static void scheduleBatchIfNeeded() {
+    private static Boolean scheduleBatchIfNeeded() {
         Integer existingJobs = [
             SELECT COUNT() FROM AsyncApexJob
             WHERE ApexClass.Name = :BATCH_CLASS_NAME
             AND Status IN :ACTIVE_BATCH_STATUSES
         ];
-        if (existingJobs == 0) {
-            scheduleBatch();
+        if (existingJobs > 0) {
+            return false;
         }
+        scheduleBatch();
+        return true;
     }
 
     /**
-     * Schedules a new deferred flush batch with a unique job name.
+     * Schedules a new deferred flush batch with a unique job name. Never throws:
+     * the constructor has already removed every cache key it read, so this instance
+     * holds the only copy of those logs, and a failed schedule publishes them now.
      */
+    @TestVisible
     private static void scheduleBatch() {
-        System.scheduleBatch(
-            new TritonFlowFlushBatch(),
-            BATCH_JOB_PREFIX + Datetime.now().getTime(),
-            TritonHelper.Config.getFlowFlushBatchDelayMinutes()
-        );
+        TritonFlowFlushBatch batch = null;
+        try {
+            batch = new TritonFlowFlushBatch(); // removes every key it reads
+            if (scheduleFault != null) throw scheduleFault;
+            System.scheduleBatch(
+                batch,
+                BATCH_JOB_PREFIX + Datetime.now().getTime(),
+                TritonHelper.Config.getFlowFlushBatchDelayMinutes()
+            );
+        } catch (Exception e) {
+            TritonHelper.recordFailure('flow batch schedule', e, 0);
+            if (batch != null) {
+                TritonHelper.publishLogs(batch.logsToFlush);
+            }
+        }
     }
 
     global Iterable<SObject> start(Database.BatchableContext bc) {
@@ -153,7 +194,8 @@ global class TritonFlowFlushBatch implements Database.Batchable<SObject> {
 
     /**
      * After processing, checks if new logs arrived during batch execution.
-     * If so, schedules another batch to handle them.
+     * If so, schedules another batch to handle them; if that schedule fails,
+     * they are published immediately (see scheduleBatch).
      */
     global void finish(Database.BatchableContext bc) {
         if (!TritonHelper.getFlowLogCacheKeys().isEmpty()) {
@@ -162,10 +204,12 @@ global class TritonFlowFlushBatch implements Database.Batchable<SObject> {
     }
 
     /**
-     * For testing — reset static state between test methods.
+     * For testing — reset static state and the test seams between test methods.
      */
     @TestVisible
     private static void reset() {
         pendingLogs.clear();
+        scheduleFault = null;
+        scheduleInTests = false;
     }
 }

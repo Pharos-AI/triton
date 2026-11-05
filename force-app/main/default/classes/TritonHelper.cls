@@ -216,6 +216,16 @@ public with sharing class TritonHelper {
     }
 
     /**
+     * Removes a transaction's flow log cache entry, so no later batch publishes it.
+     * Null-safe: a null transaction id has no cache entry.
+     * @param transactionId The transaction ID whose cache entry to remove
+     */
+    public static void removeFlowLogs(String transactionId) {
+        if (transactionId == null) return;
+        removeFlowLogCacheKey(buildFlowCacheKey(transactionId));
+    }
+
+    /**
     * Compares 2 log levels.
     * @param value -- this is the value compared against
     * @param toCompare -- comparison performed against this value
