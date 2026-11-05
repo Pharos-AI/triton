@@ -981,4 +981,18 @@ private class TritonMarkTest {
         }
         Test.stopTest();
     }
+
+    @IsTest
+    private static void test_flush_failure_inside_open_mark_never_throws() {
+        Test.startTest();
+        Triton.startMark();
+        Triton.log(Triton.t.summary('inside the mark').info());
+        TritonTestFactory.failPublishing();
+        Triton.flush();
+        Triton.endMark();
+        Test.stopTest();
+
+        System.assertEquals(false, Triton.hasOpenMark(), 'The mark still closes after a failed flush');
+        System.assertEquals(requestId(), Triton.currentSpanId(), 'The span stack is back at its request root');
+    }
 }

@@ -36,35 +36,41 @@ global with sharing class TritonFlow {
                     Label='Log' 
                     Description='Creates a log for a flow or process builder')
     public static List<FlowLogOutput> log(List<FlowLog> flowLogs) {
-        // Master kill switch: skip all log construction, but preserve the
-        // invocable contract of one output per input.
-        if (TritonHelper.Config.isLoggingDisabled()) {
-            List<FlowLogOutput> disabledOutputs = new List<FlowLogOutput>();
-            for (Integer i = 0; i < flowLogs.size(); i++) {
-                disabledOutputs.add(new FlowLogOutput());
+        List<FlowLogOutput> outputs = new List<FlowLogOutput>();
+        Integer expected = flowLogs == null ? 0 : flowLogs.size();
+        try {
+            // Master kill switch: skip all log construction; the outputs are still
+            // padded below to one per input.
+            if (expected > 0 && !TritonHelper.Config.isLoggingDisabled()) {
+                for (FlowLog flowLog : flowLogs) {
+                    FlowLogOutput output = new FlowLogOutput();
+                    try {
+                        output = processFlowLog(flowLog);
+                    } catch (Exception e) {
+                        // One bad entry never costs the interview, or the other entries.
+                        TritonHelper.recordFailure('flow log', e, 1);
+                    }
+                    outputs.add(output);
+                }
+                if (TritonHelper.Config.isFlowFlushBatchDisabled()) {
+                    // Publishes synchronously in this transaction. Triton.flush() never throws.
+                    Triton.flush();
+                } else {
+                    // Hands the logs to the deferred batch. addLogs never throws.
+                    List<pharos__Log__c> buffered = Triton.drain();
+                    if (!buffered.isEmpty()) {
+                        TritonFlowFlushBatch.addLogs(buffered, Triton.TRANSACTION_ID);
+                    }
+                }
             }
-            return disabledOutputs;
+        } catch (Exception e) {
+            TritonHelper.recordFailure('flow log', e, 0);
         }
-
-        List<FlowLogOutput> flowLogOutputs = new List<FlowLogOutput>();
-        for (FlowLog flowLog : flowLogs) {
-            FlowLogOutput result = processFlowLog(flowLog);
-            flowLogOutputs.add(result);
+        // The invocable contract: one output per input, whatever happened above.
+        while (outputs.size() < expected) {
+            outputs.add(new FlowLogOutput());
         }
-        // When the deferred batch is disabled, publish synchronously in-transaction.
-        // Triton.flush() drains and publishes its own buffer — no logs are lost.
-        if (TritonHelper.Config.isFlowFlushBatchDisabled()) {
-            Triton.flush();
-            return flowLogOutputs;
-        }
-
-        // Drain buffered logs and defer to batch flush instead of immediate publish.
-        // addLogs handles all failure cases internally — no logs are ever lost.
-        List<pharos__Log__c> buffered = Triton.drain();
-        if (!buffered.isEmpty()) {
-            TritonFlowFlushBatch.addLogs(buffered, Triton.TRANSACTION_ID);
-        }
-        return flowLogOutputs;
+        return outputs;
     }
     
     @TestVisible

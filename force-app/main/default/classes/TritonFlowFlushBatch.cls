@@ -96,14 +96,15 @@ global class TritonFlowFlushBatch implements Database.Batchable<SObject> {
     }
 
     /**
-     * Publishes a list of logs via pharos.Logger in a single flush.
+     * Publishes a list of logs in a single flush, through TritonHelper.publishLogs.
+     * Never throws: a failed publish drops the logs and is written to the debug log.
      */
     private static void flush(List<SObject> logs) {
-        pharos.Logger logger = pharos.Logger.getInstance();
+        List<pharos__Log__c> records = new List<pharos__Log__c>();
         for (SObject log : logs) {
-            logger.add((pharos__Log__c) log);
+            records.add((pharos__Log__c) log);
         }
-        logger.flush();
+        TritonHelper.publishLogs(records);
     }
 
     /**

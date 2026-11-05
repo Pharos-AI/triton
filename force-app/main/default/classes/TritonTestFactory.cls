@@ -39,6 +39,17 @@ public class TritonTestFactory {
         TritonCacheManager.resetMock();
     }
 
+    // ─── Fault Injection ────────────────────────────────────────────
+
+    /**
+     * Makes every publish in this test fail inside TritonHelper.publishLogs, the
+     * single choke point every Triton publish goes through. pharos.Logger is managed
+     * code and cannot be stubbed, so this is the seam.
+     */
+    public static void failPublishing() {
+        TritonHelper.publishFault = new DmlException('Simulated publish failure');
+    }
+
     // ─── Record Creation ────────────────────────────────────────────
 
     /**

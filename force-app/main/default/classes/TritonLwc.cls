@@ -31,117 +31,121 @@ global with sharing class TritonLwc {
     */
     @AuraEnabled
     public static void saveComponentLogs(List<ComponentLog> componentLogs) {
-        if (TritonHelper.Config.isLoggingDisabled()) {
-            return;
-        }
-
-        String transactionId = Triton.startTransaction();
-        Triton.withCache();
-        Boolean transactionIdFromCache = Triton.TRANSACTION_ID != transactionId;
-        transactionId = Triton.TRANSACTION_ID;
-
-        for (ComponentLog componentLog : componentLogs) {
-            Id userId = null;
-            Id[] relatedIds = new Id[0];
-            TritonTypes.Category category = TritonTypes.Category.LWC;
-            TritonTypes.Area area = TritonTypes.Area.LWC;
-            TritonTypes.Level level = TritonTypes.Level.INFO;
-            String details = componentLog.details == null ? '' : componentLog.details;
-
-            //transaction was not resumed from cache
-            //transaction id was provided by the component
-            if(!transactionIdFromCache && String.isNotBlank(componentLog.transactionId)) {
-                transactionId = componentLog.transactionId;
-                Triton.resumeTransaction(transactionId);
-                transactionIdFromCache = true;
+        try {
+            if (TritonHelper.Config.isLoggingDisabled()) {
+                return;
             }
-            try {
-                userId = UserInfo.getUserId();
-                if(!String.isBlank(componentLog.userId)) {
-                    userId = Id.valueOf(componentLog.userId);
+
+            String transactionId = Triton.startTransaction();
+            Triton.withCache();
+            Boolean transactionIdFromCache = Triton.TRANSACTION_ID != transactionId;
+            transactionId = Triton.TRANSACTION_ID;
+
+            for (ComponentLog componentLog : componentLogs) {
+                Id userId = null;
+                Id[] relatedIds = new Id[0];
+                TritonTypes.Category category = TritonTypes.Category.LWC;
+                TritonTypes.Area area = TritonTypes.Area.LWC;
+                TritonTypes.Level level = TritonTypes.Level.INFO;
+                String details = componentLog.details == null ? '' : componentLog.details;
+
+                //transaction was not resumed from cache
+                //transaction id was provided by the component
+                if(!transactionIdFromCache && String.isNotBlank(componentLog.transactionId)) {
+                    transactionId = componentLog.transactionId;
+                    Triton.resumeTransaction(transactionId);
+                    transactionIdFromCache = true;
                 }
-            } catch (Exception e) {
-                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid User Id: {0}. Context user will be used.', componentLog.userId);
-            }
-
-            if(componentLog.relatedObjectIds?.size() > 0) {
-                List<String> validIds = new List<String>();
-                for(String idStr : componentLog.relatedObjectIds) {
-                    try {
-                        // Attempt to convert to Id to validate
-                        Id validId = Id.valueOf(idStr);
-                        validIds.add(validId);
-                    } catch (Exception e) {
-                        details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Record Id: {0}. This ID will be skipped.', idStr);
+                try {
+                    userId = UserInfo.getUserId();
+                    if(!String.isBlank(componentLog.userId)) {
+                        userId = Id.valueOf(componentLog.userId);
                     }
+                } catch (Exception e) {
+                    details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid User Id: {0}. Context user will be used.', componentLog.userId);
                 }
-                relatedIds = validIds;
-            }
 
-            try {
-                category = TritonTypes.Category.valueOf(componentLog.category);
-            } catch(Exception e) {
-                //invalid category
-                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Category: {0}. Default LWC category will be used.', componentLog.category);
-            }
+                if(componentLog.relatedObjectIds?.size() > 0) {
+                    List<String> validIds = new List<String>();
+                    for(String idStr : componentLog.relatedObjectIds) {
+                        try {
+                            // Attempt to convert to Id to validate
+                            Id validId = Id.valueOf(idStr);
+                            validIds.add(validId);
+                        } catch (Exception e) {
+                            details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Record Id: {0}. This ID will be skipped.', idStr);
+                        }
+                    }
+                    relatedIds = validIds;
+                }
 
-            String areaStr = String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.componentInfo.name;
+                try {
+                    category = TritonTypes.Category.valueOf(componentLog.category);
+                } catch(Exception e) {
+                    //invalid category
+                    details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Category: {0}. Default LWC category will be used.', componentLog.category);
+                }
 
-            try {
-                area = TritonTypes.Area.valueOf(areaStr);
-            } catch(Exception e) {
-                //invalid area
-                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Functional Area: {0}. Default LWC area will be used.', areaStr);
-            }
+                String areaStr = String.isNotBlank(componentLog.area) ? componentLog.area : componentLog.componentInfo.name;
 
-            String levelStr = componentLog.level;
+                try {
+                    area = TritonTypes.Area.valueOf(areaStr);
+                } catch(Exception e) {
+                    //invalid area
+                    details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Functional Area: {0}. Default LWC area will be used.', areaStr);
+                }
 
-            try {   
-                level = TritonTypes.Level.valueOf(levelStr);
-            } catch(Exception e) {
-                //invalid log level
-                details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Level: {0}. Default INFO level will be used.', levelStr);
-            }
+                String levelStr = componentLog.level;
 
-            details += TritonHelper.formatLwcRuntimeInfo(componentLog.runtimeInfo);
-            
-            TritonBuilder builder = Triton.makeBuilder();
-            if(level == TritonTypes.Level.ERROR) {
-                builder.createIssue();
-            }
-            
-            Triton.log(builder
-                            //category will be fetched from the componentLog
-                            .category(category)
-                            //type will be fetched from the componentLog directly, of from the error. If neither are set, Frontend will be used
-                            .type(String.isNotBlank(componentLog.type) ? componentLog.type :
-                                    componentLog.error != null ? componentLog.error.type : TritonTypes.Type.Frontend.name())
-                            //area will be fetched from the componentLog directly if set. Otherwise component name will be used
-                            .area(area)
-                            //summary will be fetched from the componentLog directly if set. Otherwise, error message will be used if provided.
-                            .summary(String.isNotBlank(componentLog.summary) ? componentLog.summary :
-                                    componentLog.error != null ? componentLog.error.message : null)
-                            .stackTrace(componentLog.stack)
-                            .details(details)
-                            .transactionId(transactionId)
-                            .spanId(componentLog.spanId)
-                            .parentSpanId(componentLog.parentSpanId)
-                            .userId(userId)
-                            //apex name will be set to component.function or just component.name if function is not set
-                            .operation(componentLog.componentInfo.name + 
-                                    (String.isNotBlank(componentLog.componentInfo.function) ? '.' + componentLog.componentInfo.function : ''))
-                            .relatedObjects(relatedIds)
-                            //created timestamp will be either set from the componentLog if provided, otherwise current timestamp will be used
-                            .createdTimestamp(componentLog.createdTimestamp != null ? Double.valueOf(componentLog.createdTimestamp) : Double.valueOf(System.now().getTime()))
-                            //log level will be taken from the componentLog if provided, otherwise INFO will be used
-                            .level(level)
-                            .duration(componentLog.duration)
-                            .action(componentLog.action)
-                            .withoutLimitInfo()
-                            );
-        }               
-        
-        Triton.flush();
+                try {   
+                    level = TritonTypes.Level.valueOf(levelStr);
+                } catch(Exception e) {
+                    //invalid log level
+                    details += Triton.SPACE_SEP + TritonHelper.formatMessage('Invalid Log Level: {0}. Default INFO level will be used.', levelStr);
+                }
+
+                details += TritonHelper.formatLwcRuntimeInfo(componentLog.runtimeInfo);
+
+                TritonBuilder builder = Triton.makeBuilder();
+                if(level == TritonTypes.Level.ERROR) {
+                    builder.createIssue();
+                }
+
+                Triton.log(builder
+                                //category will be fetched from the componentLog
+                                .category(category)
+                                //type will be fetched from the componentLog directly, of from the error. If neither are set, Frontend will be used
+                                .type(String.isNotBlank(componentLog.type) ? componentLog.type :
+                                        componentLog.error != null ? componentLog.error.type : TritonTypes.Type.Frontend.name())
+                                //area will be fetched from the componentLog directly if set. Otherwise component name will be used
+                                .area(area)
+                                //summary will be fetched from the componentLog directly if set. Otherwise, error message will be used if provided.
+                                .summary(String.isNotBlank(componentLog.summary) ? componentLog.summary :
+                                        componentLog.error != null ? componentLog.error.message : null)
+                                .stackTrace(componentLog.stack)
+                                .details(details)
+                                .transactionId(transactionId)
+                                .spanId(componentLog.spanId)
+                                .parentSpanId(componentLog.parentSpanId)
+                                .userId(userId)
+                                //apex name will be set to component.function or just component.name if function is not set
+                                .operation(componentLog.componentInfo.name + 
+                                        (String.isNotBlank(componentLog.componentInfo.function) ? '.' + componentLog.componentInfo.function : ''))
+                                .relatedObjects(relatedIds)
+                                //created timestamp will be either set from the componentLog if provided, otherwise current timestamp will be used
+                                .createdTimestamp(componentLog.createdTimestamp != null ? Double.valueOf(componentLog.createdTimestamp) : Double.valueOf(System.now().getTime()))
+                                //log level will be taken from the componentLog if provided, otherwise INFO will be used
+                                .level(level)
+                                .duration(componentLog.duration)
+                                .action(componentLog.action)
+                                .withoutLimitInfo()
+                                );
+            }               
+
+            Triton.flush();
+        } catch (Exception e) {
+            TritonHelper.recordFailure('LWC save', e, componentLogs == null ? 0 : componentLogs.size());
+        }
     }
 
     /**

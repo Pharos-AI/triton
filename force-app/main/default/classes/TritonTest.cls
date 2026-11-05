@@ -1670,6 +1670,75 @@ private class TritonTest {
         System.assertEquals(0, logs.size(), 'No logs should be created with empty buffer');
     }
 
+    // ─── Logging never throws into the caller ───────────────────────
+
+    @IsTest
+    private static void test_flush_publish_failure_never_throws_and_drops_buffer() {
+        Test.startTest();
+        Triton.log(Triton.t.summary('a').info());
+        Triton.log(Triton.t.summary('b').info());
+        System.assertEquals(2, Triton.logs.size(), 'Both logs should be buffered');
+        TritonTestFactory.failPublishing();
+
+        Triton.flush();
+
+        System.assert(Triton.logs.isEmpty(), 'A failed flush drops the buffer rather than re-queueing it');
+        System.assertEquals(1, TritonHelper.failureCount, 'The swallowed publish failure should be recorded once');
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
+    }
+
+    @IsTest
+    private static void test_flushTop_publish_failure_never_throws_and_keeps_older_logs() {
+        Test.startTest();
+        Triton.log(Triton.t.summary('a').info());
+        Triton.log(Triton.t.summary('b').info());
+        TritonTestFactory.failPublishing();
+
+        Triton.flushTop();
+
+        System.assertEquals(1, Triton.logs.size(), 'Only the newest log is dropped by a failed flushTop');
+        System.assertEquals('a', Triton.logs[0].pharos__Summary__c, 'The older log stays buffered');
+
+        TritonHelper.publishFault = null;
+        Triton.flush();
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
+        System.assertEquals(1, logs.size(), 'Only the older log is published once publishing recovers');
+        System.assertEquals('a', logs[0].pharos__Summary__c, 'The published log is the older one');
+    }
+
+    @IsTest
+    private static void test_logNow_publish_failure_never_throws() {
+        Test.startTest();
+        TritonTestFactory.failPublishing();
+        Triton.logNow(Triton.t.summary('now').error());
+        System.assert(Triton.logs.isEmpty(), 'A failed logNow leaves nothing buffered');
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
+    }
+
+    @IsTest
+    private static void test_log_methods_never_throw_on_null_builder() {
+        Test.startTest();
+        Triton.log(null);
+        Triton.logNow(null);
+        Triton.error(null);
+        Triton.warning(null);
+        Triton.info(null);
+        Triton.debug(null);
+        Triton.fine(null);
+        Triton.finer(null);
+        Triton.finest(null);
+        Test.stopTest();
+
+        System.assert(Triton.logs.isEmpty(), 'A null builder buffers nothing');
+        System.assertEquals(0, TritonHelper.failureCount, 'The null guards return before anything throws');
+    }
+
     @IsTest
     private static void test_limit_info() {
         TritonTestFactory.assertNoLogs();

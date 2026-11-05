@@ -895,4 +895,56 @@ private class TritonFlowTest {
         System.assertEquals(1, outputs.size(), 'Output cardinality preserved');
         TritonTestFactory.assertNoLogs();
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Group 6: Logging never fails the interview
+    // ═══════════════════════════════════════════════════════════════════
+
+    @IsTest
+    private static void test_log_null_entry_keeps_output_cardinality_and_other_logs() {
+        TritonTestFactory.resetFlowState();
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Flow_Flush_Batch__c = true);
+
+        Test.startTest();
+        List<TritonFlow.FlowLogOutput> outputs = TritonFlow.log(
+            new List<TritonFlow.FlowLog>{ null, TritonTestFactory.makeFlowLog('ok') });
+        Test.stopTest();
+
+        System.assertEquals(2, outputs.size(), 'One output per input, including the entry that failed');
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
+        System.assertEquals(1, logs.size(), 'The bad entry must not cost the good one');
+        System.assertEquals('ok', logs[0].pharos__Summary__c, 'The good entry is the one published');
+    }
+
+    @IsTest
+    private static void test_log_publish_failure_never_fails_the_interview() {
+        TritonTestFactory.resetFlowState();
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Flow_Flush_Batch__c = true);
+        TritonTestFactory.failPublishing();
+
+        Test.startTest();
+        List<TritonFlow.FlowLogOutput> outputs = TritonFlow.log(new List<TritonFlow.FlowLog>{
+            TritonTestFactory.makeFlowLog('a'),
+            TritonTestFactory.makeFlowLog('b')
+        });
+        Test.stopTest();
+
+        System.assertEquals(2, outputs.size(), 'One output per input when publishing fails');
+        TritonTestFactory.assertNoLogs();
+    }
+
+    @IsTest
+    private static void test_batch_execute_publish_failure_never_throws() {
+        List<pharos__Log__c> injected = new List<pharos__Log__c>{
+            TritonTestFactory.makeLogRecord('fail-1'),
+            TritonTestFactory.makeLogRecord('fail-2')
+        };
+        TritonTestFactory.failPublishing();
+
+        Test.startTest();
+        new TritonFlowFlushBatch(injected).execute(null, injected);
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
+    }
 }

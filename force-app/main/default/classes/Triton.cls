@@ -33,25 +33,17 @@
  *       .summary('Critical failure')
  *       .exception(e)
  *       .level(Level.ERROR));
+ *
+ * Never throws into the caller: log(), the level methods, logNow(), flush() and
+ * flushTop() catch their own failures; a log that cannot be published is dropped and
+ * the failure written to the debug log at ERROR. Two limits remain. A builder argument
+ * such as Triton.t... is evaluated in the caller's code before Triton runs, so Triton
+ * cannot catch what throws there. And a System.LimitException cannot be caught by any Apex.
  */
 
 global with sharing class Triton {
 
     public static final String SPACE_SEP = '\n\n';
-
-    /**
-     * Underlying pharos Logger instance — lazy-initialized.
-     */
-    @TestVisible
-    private static pharos.Logger logger {
-        get {
-            if (logger == null) {
-                logger = pharos.Logger.getInstance();
-            }
-            return logger;
-        }
-        private set;
-    }
 
     private static TritonBuilder template {
         get {
@@ -178,22 +170,17 @@ global with sharing class Triton {
     }
 
     /**
-    * Persist Log records immediately.
-    * Use this method to persist logs to the database right away.
-    * If platform event allocation is near capacity (95%), logs will be scheduled
-    * for delayed publishing with exponential backoff using a singleton batch.
+    * Publishes every buffered log in one pharos.Logger flush and empties the buffer.
+    * Never throws: if publishing fails, the buffered logs are dropped and the failure is
+    * written to the debug log at ERROR (see TritonHelper.publishLogs). A
+    * System.LimitException cannot be caught by any Apex and still ends the transaction.
     */
     public static void flush() {
-        // Check if we have any logs to flush
         if (logs.isEmpty()) {
             return;
         }
-
-        for(pharos__Log__c log : logs) {
-            logger.add(log);
-        }
-        logger.flush();
-        logs.clear();
+        // Buffer emptied first: a failed publish drops, never re-queues.
+        TritonHelper.publishLogs(drain());
     }
 
     /**
@@ -209,19 +196,14 @@ global with sharing class Triton {
     }
 
     /**
-    * Persist the last Log in the queue only, immediately.
-    * Use this method to persist a single log to the database right away.
-    * If platform event allocation is near capacity (95%), the log will be scheduled
-    * for delayed publishing with exponential backoff using a singleton batch.
+    * Publishes only the newest buffered log, immediately, and removes it from the buffer.
+    * Never throws; a failed publish drops that log (see flush()).
     */
     public static void flushTop() {
-        if (logs.size() == 0) {
+        if (logs.isEmpty()) {
             return;
         }
-
-        logger.add(logs.get(logs.size() - 1));
-        logger.flush();
-        logs.remove(logs.size() - 1);
+        TritonHelper.publishLogs(new List<pharos__Log__c>{ logs.remove(logs.size() - 1) });
     }
 
     /**
@@ -339,39 +321,45 @@ global with sharing class Triton {
     /**
     * Adds a log to the buffer and reports whether it was buffered: the body of log(),
     * with the outcome returned rather than discarded. A mark whose opening record was
-    * filtered out must not push a span id that no record will carry.
+    * filtered out must not push a span id that no record will carry. Never throws: a
+    * null builder, or one that fails to build, is reported as not buffered.
     * @param builder TritonBuilder instance containing log details
-    * @return true when the log was buffered, false when it was filtered out
+    * @return true when the log was buffered, false when it was filtered out or failed
     */
     private static Boolean doLog(TritonBuilder builder) {
-        if (TritonHelper.Config.isLoggingDisabled()) {
+        try {
+            if (builder == null || TritonHelper.Config.isLoggingDisabled()) {
+                return false;
+            }
+
+            // Component-scoped log levels match on the Apex Name, which is otherwise
+            // only derived from the stacktrace later, in prepareForLogging -- too late
+            // for the check below. Resolve it up front only when a component-scoped
+            // level exists, so orgs without one never pay for the stacktrace.
+            if (TritonHelper.Config.hasComponentScopedLevels()) {
+                builder.resolveStackTraceAndOperation();
+            }
+
+            pharos__Log__c log = builder.build();
+
+            if (!TritonHelper.Config.isLogAllowed(log)) {
+                return false;
+            }
+
+            // Inside an open mark, ordinary logs get a hierarchy instead of a flat list of
+            // siblings under one request node. Told, not asked: the mark state lives here,
+            // so TritonBuilder is handed the ambient parent rather than calling back for it.
+            if (!openMarks.isEmpty()) {
+                builder.ambientSpanContext(ambientParentSpanId());
+            }
+
+            builder.prepareForLogging(TRANSACTION_ID);
+            logs.add(builder.build());
+            return true;
+        } catch (Exception e) {
+            TritonHelper.recordFailure('log', e, 1);
             return false;
         }
-
-        // Component-scoped log levels match on the Apex Name, which is otherwise
-        // only derived from the stacktrace later, in prepareForLogging -- too late
-        // for the check below. Resolve it up front only when a component-scoped
-        // level exists, so orgs without one never pay for the stacktrace.
-        if (TritonHelper.Config.hasComponentScopedLevels()) {
-            builder.resolveStackTraceAndOperation();
-        }
-
-        pharos__Log__c log = builder.build();
-
-        if (!TritonHelper.Config.isLogAllowed(log)) {
-            return false;
-        }
-
-        // Inside an open mark, ordinary logs get a hierarchy instead of a flat list of
-        // siblings under one request node. Told, not asked: the mark state lives here,
-        // so TritonBuilder is handed the ambient parent rather than calling back for it.
-        if (!openMarks.isEmpty()) {
-            builder.ambientSpanContext(ambientParentSpanId());
-        }
-
-        builder.prepareForLogging(TRANSACTION_ID);
-        logs.add(builder.build());
-        return true;
     }
 
     /**
@@ -589,12 +577,34 @@ global with sharing class Triton {
         return String.isBlank(mark.parentSpanId) ? builder : builder.parentSpanId(mark.parentSpanId);
     }
 
-    public static void error(TritonBuilder builder) { log(builder.error()); }
-    public static void warning(TritonBuilder builder) { log(builder.warning()); }
-    public static void info(TritonBuilder builder) { log(builder.info()); }
-    public static void debug(TritonBuilder builder) { log(builder.debug()); }
-    public static void fine(TritonBuilder builder) { log(builder.fine()); }
-    public static void finer(TritonBuilder builder) { log(builder.finer()); }
-    public static void finest(TritonBuilder builder) { log(builder.finest()); }
+    public static void error(TritonBuilder builder) { logAtLevel(builder, TritonTypes.Level.ERROR); }
+    public static void warning(TritonBuilder builder) { logAtLevel(builder, TritonTypes.Level.WARNING); }
+    public static void info(TritonBuilder builder) { logAtLevel(builder, TritonTypes.Level.INFO); }
+    public static void debug(TritonBuilder builder) { logAtLevel(builder, TritonTypes.Level.DEBUG); }
+    public static void fine(TritonBuilder builder) { logAtLevel(builder, TritonTypes.Level.FINE); }
+    public static void finer(TritonBuilder builder) { logAtLevel(builder, TritonTypes.Level.FINER); }
+    public static void finest(TritonBuilder builder) { logAtLevel(builder, TritonTypes.Level.FINEST); }
+
+    /**
+    * Applies the level inside the guard, so builder.error() runs in Triton, not in the
+    * caller, and then buffers the log. Never throws.
+    * @param builder -- TritonBuilder instance containing log details, or null
+    * @param level -- the level the shorthand method stands for
+    */
+    private static void logAtLevel(TritonBuilder builder, TritonTypes.Level level) {
+        try {
+            if (builder != null) {
+                if (level == TritonTypes.Level.ERROR) {
+                    builder.error();
+                } else {
+                    builder.level(level);
+                }
+            }
+        } catch (Exception e) {
+            TritonHelper.recordFailure('log', e, 1);
+            return;
+        }
+        doLog(builder);
+    }
 
 }
