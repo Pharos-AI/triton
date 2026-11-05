@@ -42,6 +42,7 @@ Read (never modify) every non-test `*.cls`/`*.trigger`, every `lwc/**/<name>.js`
 - `dishonest-level` — `ERROR` on non-failures, or loop chatter above `FINE`.
 - `missing-context` — record-oriented logs with no `.relatedObject(s)`; callouts with no `.integrationPayload(...)`.
 - `low-comfort` — old, untested, business-critical files a rollout should treat gently.
+- `managed-object-trigger-publish` — `Triton.logNow(`, `Triton.flush(` or `Triton.flushTop(` on a path reached from a trigger on a managed-package object (an SObject API name carrying another package's namespace, e.g. `ns__Invoice__c` — compare against `namespace` in `sfdx-project.json`), including calls made from the trigger's handler classes. The write belongs to the package and often to a hidden integration user you cannot test as. Triton 2.0.0+ never throws on a failed publish, but an exhausted governor limit still fails the write, and a vendored pre-2.0.0 Triton throws. Note the Triton version found; recommend `Triton.log` plus one `Triton.flush()` as the handler's last statement, no `logNow`, and the `runAs` test from `instrument-apex` §3j.
 
 For each finding, record: file, line (where applicable), finding key, severity (`hard`/`judgment`), and a one-line note.
 
