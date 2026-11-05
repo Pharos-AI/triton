@@ -117,11 +117,21 @@ if (Triton.TRANSACTION_ID == null) {
 }
 ```
 
-Log the affected record ids at INFO: `.relatedObjects(Trigger.newMap != null ? Trigger.newMap.keySet() : Trigger.oldMap.keySet())`.
+Log the affected record ids at INFO. Before insert has no ids yet (both maps are null), delete has no `newMap`, and insert and undelete have no `oldMap`, so build the set null-safely:
+
+```apex
+Set<Id> recordIds = Trigger.newMap != null ? Trigger.newMap.keySet()
+                  : Trigger.oldMap != null ? Trigger.oldMap.keySet()
+                  : new Set<Id>();
+Triton.info(Triton.t.summary('<Handler> ' + Trigger.operationType).relatedObjects(recordIds));
+```
+
+Logging in a trigger must never fail the write — see §3j.
 
 **Batchable** — statics do **not** survive between `execute` chunks, so:
 - Implement `Database.Stateful`.
-- In the **constructor** (or `start`), capture the id in an instance field: `this.txId = Triton.startTransaction();`
+- Accept the caller's id in the **constructor** and only *store* it there (`this.txId = txId;` — callers pass `Triton.TRANSACTION_ID`). Never call `Triton.startTransaction()` in the constructor: it runs in the enqueuing caller's transaction, so it would overwrite the caller's `Triton.TRANSACTION_ID` (and its cached id) and re-root the caller's later logs under the batch.
+- In **`start`**, establish the id resume-first: `if (String.isBlank(this.txId)) { this.txId = Triton.startTransaction(); } else { Triton.resumeTransaction(this.txId); }`
 - At the **top of each `execute`**, re-establish it: `Triton.resumeTransaction(this.txId);`
 - **`Triton.flush()` at the end of each `execute`** (each chunk is its own transaction; flushing per chunk is governor-safe and prevents buffered logs from being dropped).
 - In **`finish`**: `Triton.resumeTransaction(this.txId);` … final log … `Triton.flush(); Triton.stopTransaction();`
@@ -148,7 +158,7 @@ System.enqueueJob(new MyQueueable(payload, Triton.TRANSACTION_ID));
 
 ### 3c — Try-catch instrumentation (log and rethrow)
 
-`.exception(e)` sets the type (from the exception), **ERROR** level, summary (from `e.getMessage()`), stack trace, details, and `createIssue()` — so don't add a redundant `.level(...)`. If you want a custom summary, chain `.summary(...)` **after** `.exception(e)` (otherwise `.exception()` overwrites it). Use `Triton.logNow(...)` so the error persists even if the transaction later dies:
+`.exception(e)` sets the type (from the exception), **ERROR** level, summary (from `e.getMessage()`), stack trace, details, and `createIssue()` — so don't add a redundant `.level(...)`. Downgrading it — `Triton.warning(Triton.t.exception(e))` — keeps the exception detail but withdraws the issue, because an issue implied by an error follows the final level; an explicit `.createIssue()` keeps it. If you want a custom summary, chain `.summary(...)` **after** `.exception(e)` (otherwise `.exception()` overwrites it). Use `Triton.logNow(...)` so the error persists even if the transaction later dies:
 
 ```apex
 } catch (Exception e) {
@@ -210,7 +220,7 @@ Manual timing as shown above remains correct for a **one-off** duration on a sin
 
 ### 3d — DML result logging
 
-`dmlResults(...)` inspects `SaveResult`/`DeleteResult`/`UpsertResult`/`MergeResult`/`UndeleteResult` and **only emits a log when there are failures** (it sets Type=DMLResult, ERROR level, and the failed ids as related objects). Use it after partial-success DML (`allOrNone = false`):
+`dmlResults(...)` inspects `SaveResult`/`DeleteResult`/`UpsertResult`/`MergeResult`/`UndeleteResult`. When any row failed it sets Type=DMLResult, ERROR level, issue creation, a summary with the failure count, the per-row errors as details, and the failed ids as related objects. When every row succeeded — or the list is null or empty — it marks the builder as skipped and **no log is emitted**, whichever method you pass it to (`Triton.log`, `logNow`, `error`, `warning`, …), so you never need an `if` around it. Use it after partial-success DML (`allOrNone = false`). To record expected partial failures without opening an issue, pass it to `Triton.warning(...)`: a level below ERROR withdraws the issue a failure implies.
 
 ```apex
 List<Database.SaveResult> results = Database.insert(records, false);
@@ -319,6 +329,43 @@ Triton.finest(Triton.t.summary('loop').details('i=' + i));
 
 **PII carve-out.** "Everything available" **never** includes secrets or PII — passwords, tokens, session ids, SSNs, card numbers. Serialize a redacted copy of any object that may hold them; when in doubt, omit the field and add `// TODO: sanitize before logging`. This overrides the "attach maximum data" rule every time.
 
+### 3j — Trigger handlers: logging must never fail the write
+
+A trigger runs inside someone else's DML. On a managed-package object — or any object a system or integration user writes to (the Automated Process user, a platform integration user, a package's own integration user) — a throw from your handler rolls back a write you don't own and can't easily test as. Logging must never be the reason that happens.
+
+**What Triton guarantees (2.0.0+).** `Triton.log` and the level methods, `logNow`, `flush`, `flushTop`, the Flow invocable and the LWC endpoint catch their own failures and never throw into the caller. If Pharos refuses a publish, the affected logs are dropped and the failure is written to the Apex debug log at `ERROR`; the business write goes ahead.
+
+**What is still your job:**
+1. **Keep builder arguments null-safe.** The builder expression is evaluated in your code before Triton is called, so Triton cannot catch what throws there: `Trigger.newMap.keySet()` in before insert (both maps are null), `record.Parent__r.Name` on an unqueried relationship, `e.getCause().getMessage()` when there is no cause. Use the record-id idiom from §3b.
+2. **Stay inside governor limits.** `System.LimitException` cannot be caught — not by Triton, not by you. In a 200-record trigger, buffer with `Triton.log(...)` (never `logNow` in a loop), flush once at the end of the handler, and keep per-record `details` lean (no full `JSON.serialize(Trigger.new)` at DEBUG/FINE).
+3. **Don't wrap business logic to log it.** Never add a `try/catch` around the handler's own work just to log; where a catch already exists, log and keep its existing throw/return (§3c).
+4. **On managed-package objects, publish once.** Prefer `Triton.log(...)` plus a single `Triton.flush()` as the handler's last statement over `logNow`. The audit skill flags `logNow`/`flush` on these paths for review (`managed-object-trigger-publish`).
+
+**Test it.** Perform the triggering DML as a low-privilege user and assert the write landed:
+
+```apex
+@IsTest
+private static void test_<handler>_write_survives_a_restricted_user() {
+    User restricted = new User(
+        ProfileId = [SELECT Id FROM Profile WHERE Name = 'Minimum Access - Salesforce' LIMIT 1].Id,
+        Alias = 'trtnrst', Email = 'restricted@example.com',
+        Username = 'restricted.' + System.currentTimeMillis() + '@example.com',
+        LastName = 'Restricted', TimeZoneSidKey = 'GMT', LocaleSidKey = 'en_US',
+        EmailEncodingKey = 'UTF-8', LanguageLocaleKey = 'en_US');
+    insert restricted;
+    // Assign only the permission sets the object needs.
+
+    System.runAs(restricted) {
+        Test.startTest();
+        insert new <Object>(<required fields>);
+        Test.stopTest();
+    }
+    System.assertEquals(1, [SELECT COUNT() FROM <Object>], 'The instrumented trigger must not fail the write');
+}
+```
+
+Know what this does not prove. `System.runAs` enforces record sharing only, not object or field permissions. And a User you can create in a test does not reproduce a hidden platform integration user — their licence and permissions can't be given to a test user. A passing `runAs` test shows the handler survives a restricted human user; Triton's never-throw guarantee is what covers the hidden ones.
+
 ## Step 4 — Review diff with user
 
 Present the full diff (old vs new) in a collapsed format:
@@ -335,6 +382,7 @@ Present the full diff (old vs new) in a collapsed format:
 - N callout/integration logs added
 - N System.debug calls replaced
 - Flush added at N transaction boundaries
+- Trigger handlers: write-safety per §3j (null-safe builder args, one flush, runAs test added)
 - Signature changes: <none | added optional `transactionId` to <method> (sanctioned)>
 
 ### Key changes
@@ -376,7 +424,8 @@ Parse the JSON output:
 - Always **resume-first**: `resumeTransaction(id)` if an id is supplied, else `startTransaction()` (or `withCache()`). Never blindly `startTransaction()` on an entry point that may be mid-chain.
 - **Never use `withCache()` on `@AuraEnabled(Cacheable=true)` methods** — cacheable Apex (what `@wire` calls) is read-only for Platform Cache, so it can't stitch. Use the explicit `transactionId` param + `resumeTransaction` there. See https://resources.pharos.ai/wire-cache-antipattern
 - **Scale per-log data to level (§3i):** ERROR/WARNING/INFO get maximum context — serialize inputs/state into `.details()` + `.relatedObjects(...)`; DEBUG gets named variables only; FINE/FINER/FINEST stay terse markers. The PII carve-out always wins over "attach maximum data."
-- Batchable classes must be `Database.Stateful`, capture the id in an instance field, resume per `execute`, and flush per `execute` and in `finish`.
+- Batchable classes must be `Database.Stateful`, store the caller's id in the constructor and establish it in `start` (never `startTransaction()` in the constructor), resume per `execute`, and flush per `execute` and in `finish`.
+- Logging must never fail the write (§3j): keep builder arguments null-safe, publish once per trigger handler on managed-package objects, and add the `runAs` test.
 - Thread the transaction id through every async dispatch (`enqueueJob`, `executeBatch`, `@future`, `System.schedule`).
 - Call `Triton.stopTransaction()` only at a true end-of-chain boundary — never in every method.
 - Never change exception-handling behavior — only add logging before existing throws. Use `Triton.logNow(...)` for errors; put custom `.summary()` after `.exception()`.
