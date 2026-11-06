@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <classAccesses>
+        <apexClass>LogLimitsController</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
     <customMetadataTypeAccesses>
         <enabled>true</enabled>
         <name>Log_Level__mdt</name>
@@ -62,6 +66,16 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>false</editable>
+        <field>pharos__Log__c.Email_Invocations_Limit__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>pharos__Log__c.Email_Invocations__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
         <field>pharos__Log__c.Future_Calls_Limit__c</field>
         <readable>true</readable>
     </fieldPermissions>
@@ -83,6 +97,11 @@
     <fieldPermissions>
         <editable>false</editable>
         <field>pharos__Log__c.Log_Level__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>pharos__Log__c.Parent_Span_Id__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
@@ -113,6 +132,11 @@
     <fieldPermissions>
         <editable>false</editable>
         <field>pharos__Log__c.Queueable_Jobs__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>pharos__Log__c.Span_Id__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>

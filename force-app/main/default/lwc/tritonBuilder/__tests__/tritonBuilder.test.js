@@ -121,9 +121,23 @@ describe('TritonBuilder', () => {
 
     test('runtimeInfo() should handle undefined input with default empty object', () => {
       const result = builder.runtimeInfo();
-      
+
       expect(result).toBe(builder);
       expect(builder._runtimeInfo).toEqual({});
+    });
+
+    test('spanId() should set the span ID and return builder for chaining', () => {
+      const result = builder.spanId('span-123');
+
+      expect(result).toBe(builder);
+      expect(builder._spanId).toBe('span-123');
+    });
+
+    test('parentSpanId() should set the parent span ID and return builder for chaining', () => {
+      const result = builder.parentSpanId('parent-span-456');
+
+      expect(result).toBe(builder);
+      expect(builder._parentSpanId).toBe('parent-span-456');
     });
   });
 
@@ -258,6 +272,29 @@ describe('TritonBuilder', () => {
 
       expect(isNotTriton).toHaveBeenCalled();
       expect(getFunctionName).toHaveBeenCalled();
+    });
+
+    test('exception() sets the ERROR level', () => {
+      expect(new TritonBuilder().exception(new Error('x')).build().level).toBe('ERROR');
+    });
+
+    test('exception() overrides an earlier level', () => {
+      const log = new TritonBuilder().level('INFO').exception(new Error('x')).build();
+
+      expect(log.level).toBe('ERROR');
+    });
+
+    test('a level set after exception() wins', () => {
+      const log = new TritonBuilder().exception(new Error('x')).level('WARNING').build();
+
+      expect(log.level).toBe('WARNING');
+    });
+
+    test('exception() tolerates a missing error', () => {
+      // A promise rejected with no reason hands undefined to the catch block.
+      let result;
+      expect(() => { result = new TritonBuilder().exception(undefined); }).not.toThrow();
+      expect(result.build().level).toBe('ERROR');
     });
   });
 
@@ -428,7 +465,9 @@ describe('TritonBuilder', () => {
         .timestamp(timestamp)
         .userId('user-456')
         .relatedObjects(['obj-1'])
-        .runtimeInfo(runtimeInfo);
+        .runtimeInfo(runtimeInfo)
+        .spanId('span-abc')
+        .parentSpanId('span-parent');
 
       builder._componentInfo = componentInfo;
       builder._error = error;
@@ -452,7 +491,9 @@ describe('TritonBuilder', () => {
         stack: 'test stack',
         userId: 'user-456',
         runtimeInfo: runtimeInfo,
-        relatedObjectIds: ['obj-1']
+        relatedObjectIds: ['obj-1'],
+        spanId: 'span-abc',
+        parentSpanId: 'span-parent'
       });
     });
 
@@ -475,7 +516,9 @@ describe('TritonBuilder', () => {
         stack: undefined,
         userId: undefined,
         runtimeInfo: undefined,
-        relatedObjectIds: undefined
+        relatedObjectIds: undefined,
+        spanId: undefined,
+        parentSpanId: undefined
       });
     });
 

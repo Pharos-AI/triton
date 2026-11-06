@@ -1,11 +1,27 @@
 {
   "packageDirectories": [
     {
+      "versionName": "ver 2.0",
+      "versionNumber": "2.0.0.NEXT",
       "path": "force-app",
-      "default": true
+      "default": true,
+      "package": "Pharos Triton",
+      "versionDescription": "Pharos Triton is a powerful, open-source logging framework for Salesforce, designed to integrate seamlessly with the Pharos.ai observability platform. It provides comprehensive logging capabilities across all Salesforce contexts including Apex, Flows, Lightning Web Components, and integrations.",
+      "dependencies": [
+        {
+          "package": "Pharos@2.284.5-1"
+        }
+      ]
     }
   ],
   "namespace": "",
   "sfdcLoginUrl": "https://login.salesforce.com",
-  "sourceApiVersion": "61.0"
+  "sourceApiVersion": "61.0",
+  "packageAliases": {
+    "Pharos Triton": "0Hog50000000pNVCAY",
+    "Pharos@2.284.5-1": "04tg7000000bJ8XAAU",
+    "Pharos Triton@0.1.0-1": "04tg50000009kjZAAQ",
+    "Pharos Triton@0.2.0-1": "04tg5000000A8YzAAK",
+    "Pharos Triton@2.0.0-1": "04tg5000000GnHhAAK"
+  }
 }

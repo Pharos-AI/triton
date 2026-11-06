@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Disable_Logging__c</fullName>
+    <defaultValue>false</defaultValue>
+    <description>When checked, all Triton logging (Apex, Flow, LWC) is disabled. Logs are short-circuited before they are built or persisted.</description>
+    <externalId>false</externalId>
+    <inlineHelpText>Master kill switch. When checked, Triton creates and persists no logs.</inlineHelpText>
+    <label>Disable Logging</label>
+    <type>Checkbox</type>
+</CustomField>

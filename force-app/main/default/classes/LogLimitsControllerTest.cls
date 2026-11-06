@@ -27,7 +27,7 @@ private class LogLimitsControllerTest {
         
         // Create a log with Triton
         TritonBuilder builder = Triton.makeBuilder()
-            .category(TritonTypes.Category.Debug)
+            .category(TritonTypes.Category.Apex)
             .type(TritonTypes.Type.Backend)
             .area(TritonTypes.Area.OpportunityManagement)
             .summary('Test Log with Limits')
@@ -66,8 +66,8 @@ private class LogLimitsControllerTest {
             .attribute(TritonBuilder.SOSL_QUERIES_LIMIT, 20);
         
         // Log the entry
-        Triton.instance.logs.add(builder.build());
-        Triton.instance.flushTop();
+        Triton.logs.add(builder.build());
+        Triton.flushTop();
         
         // Stop test to process platform events
         Test.stopTest();
@@ -128,7 +128,7 @@ private class LogLimitsControllerTest {
         
         // Create a log with partial data using Triton
         TritonBuilder builder = Triton.makeBuilder()
-            .category(TritonTypes.Category.Debug)
+            .category(TritonTypes.Category.Apex)
             .type(TritonTypes.Type.Backend)
             .area(TritonTypes.Area.OpportunityManagement)
             .summary('Test Log with Partial Limits')
@@ -145,8 +145,8 @@ private class LogLimitsControllerTest {
             .attribute(TritonBuilder.DML_ROWS_LIMIT, 10000);
         
         // Log the entry
-        Triton.instance.logs.add(builder.build());
-        Triton.instance.flushTop();
+        Triton.logs.add(builder.build());
+        Triton.flushTop();
         // Stop test to process platform events
         Test.stopTest();
         

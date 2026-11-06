@@ -27,6 +27,8 @@ jest.mock('c/tritonBuilder', () => {
       userId: jest.fn().mockReturnThis(),
       runtimeInfo: jest.fn().mockReturnThis(),
       timestamp: jest.fn().mockReturnThis(),
+      spanId: jest.fn().mockReturnThis(),
+      parentSpanId: jest.fn().mockReturnThis(),
       componentDetails: jest.fn().mockReturnThis(),
       clone: jest.fn().mockImplementation(() => {
         // Return a new mock with the same structure
@@ -44,6 +46,8 @@ jest.mock('c/tritonBuilder', () => {
           userId: jest.fn().mockReturnThis(),
           runtimeInfo: jest.fn().mockReturnThis(),
           timestamp: jest.fn().mockReturnThis(),
+          spanId: jest.fn().mockReturnThis(),
+          parentSpanId: jest.fn().mockReturnThis(),
           componentDetails: jest.fn().mockReturnThis(),
           build: jest.fn().mockReturnValue({ mockBuiltLog: true }),
           clone: jest.fn().mockReturnThis(),
@@ -97,6 +101,8 @@ describe('Triton', () => {
 
     // Create a fresh instance for each test
     triton = new Triton();
+    // The singleton keeps its failure count across tests
+    triton.failedFlushes = 0;
     
     // Clear the logs array to start fresh
     triton.logs = [];
@@ -237,13 +243,15 @@ describe('Triton', () => {
       expect(TritonBuilder).toHaveBeenCalled();
     });
 
-    test('should refresh builder', () => {
+    test('should refresh builder with span context', () => {
       const mockBuilder = new TritonBuilder();
       const result = triton.refreshBuilder(mockBuilder);
-      
+
       expect(result).toBe(mockBuilder);
       expect(mockBuilder.runtimeInfo).toHaveBeenCalledWith({ mockRuntimeInfo: true });
       expect(mockBuilder.timestamp).toHaveBeenCalled();
+      expect(mockBuilder.spanId).toHaveBeenCalledWith('mock-transaction-id');
+      expect(mockBuilder.parentSpanId).toHaveBeenCalled();
     });
 
     test('should set component info when component is bound', () => {
@@ -283,14 +291,35 @@ describe('Triton', () => {
     test('should preserve logs on logNow error', async () => {
       const error = new Error('Flush failed');
       saveComponentLogs.mockRejectedValue(error);
-      const existingLogCount = 1;
-      triton.logs = [new TritonBuilder()];
-      
+      const earlier = new TritonBuilder();
+      triton.logs = [earlier];
+
       const newBuilder = new TritonBuilder();
-      
-      await expect(triton.logNow(newBuilder)).rejects.toThrow('Flush failed');
-      // Both original logs and the new builder should be preserved after error
-      expect(triton.logs).toHaveLength(existingLogCount + 1); // Original + new builder
+
+      // Never rejects, so an awaited logNow inside a catch block cannot derail it
+      await expect(triton.logNow(newBuilder)).resolves.toBeUndefined();
+      // Both are kept for the next flush, the earlier log first
+      expect(triton.logs).toHaveLength(2);
+      expect(triton.logs[0]).toBe(earlier);
+      expect(triton.logs[1]).toBe(newBuilder);
+    });
+
+    test.each([
+      ['undefined', undefined],
+      ['null', null],
+      ['a built log instead of its builder', { mockBuiltLog: true }]
+    ])('logNow given %s resolves and keeps the buffered logs', async (_label, notABuilder) => {
+      const earlier = [new TritonBuilder(), new TritonBuilder()];
+      triton.logs = [...earlier];
+
+      // Never rejects, even when handed something that is not a builder
+      await expect(triton.logNow(notABuilder)).resolves.toBeUndefined();
+
+      expect(saveComponentLogs).not.toHaveBeenCalled();
+      expect(triton.logs).toHaveLength(2);
+      expect(triton.logs[0]).toBe(earlier[0]);
+      expect(triton.logs[1]).toBe(earlier[1]);
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('needs a builder'), expect.any(TypeError));
     });
   });
 
@@ -325,8 +354,80 @@ describe('Triton', () => {
       triton.logs = mockLogs;
       saveComponentLogs.mockRejectedValue(error);
       
-      await expect(triton.flush()).rejects.toThrow('Network error');
+      await expect(triton.flush()).resolves.toBeUndefined();
       expect(triton.logs).toEqual(mockLogs); // Logs restored
+    });
+  });
+
+  describe('Flush failure policy', () => {
+    beforeEach(() => {
+      saveComponentLogs.mockReset();
+    });
+
+    test('flush resolves and keeps the logs on a first failure', async () => {
+      const error = new Error('offline');
+      saveComponentLogs.mockRejectedValue(error);
+      const logs = [new TritonBuilder(), new TritonBuilder()];
+      triton.logs = [...logs];
+
+      await expect(triton.flush()).resolves.toBeUndefined();
+
+      expect(triton.logs).toEqual(logs);
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('logs kept'), error);
+    });
+
+    test('drops the failed batch on the third consecutive failure', async () => {
+      const error = new Error('offline');
+      saveComponentLogs.mockRejectedValue(error);
+      triton.logs = [new TritonBuilder()];
+
+      await triton.flush();
+      await triton.flush();
+      expect(triton.logs).toHaveLength(1);
+
+      await triton.flush();
+
+      expect(saveComponentLogs).toHaveBeenCalledTimes(3);
+      expect(triton.logs).toEqual([]);
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('dropping 1 log'), error);
+    });
+
+    test('a successful flush resets the failure count', async () => {
+      const error = new Error('offline');
+      saveComponentLogs
+        .mockRejectedValueOnce(error)
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce({ success: true })
+        .mockRejectedValueOnce(error)
+        .mockRejectedValueOnce(error);
+      triton.logs = [new TritonBuilder()];
+
+      await triton.flush();
+      await triton.flush();
+      await triton.flush();
+      expect(triton.logs).toEqual([]);
+
+      const kept = new TritonBuilder();
+      triton.logs = [kept];
+      await triton.flush();
+      await triton.flush();
+
+      // Two failures since the success, not four in a row: still kept
+      expect(triton.logs).toHaveLength(1);
+      expect(triton.logs[0]).toBe(kept);
+    });
+
+    test('the restored buffer is capped at MAX_BUFFERED_LOGS, oldest dropped', async () => {
+      saveComponentLogs.mockRejectedValue(new Error('offline'));
+      const logs = Array.from({ length: Triton.MAX_BUFFERED_LOGS + 5 }, () => new TritonBuilder());
+      triton.logs = [...logs];
+
+      await triton.flush();
+
+      expect(triton.logs).toHaveLength(Triton.MAX_BUFFERED_LOGS);
+      expect(triton.logs[0]).toBe(logs[5]);
+      expect(triton.logs[triton.logs.length - 1]).toBe(logs[logs.length - 1]);
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('dropped the 5 oldest'));
     });
   });
 
@@ -406,20 +507,22 @@ describe('Triton', () => {
   });
 
   describe('Constants', () => {
-    test('should export AREA constants', () => {
-      expect(AREA.ACCOUNTS).toBe('ACCOUNTS');
-      expect(AREA.COMMUNITY).toBe('COMMUNITY');
-      expect(AREA.LEAD_CONVERSION).toBe('LEAD_CONVERSION');
-      expect(AREA.OPPORTUNITY_MANAGEMENT).toBe('OPPORTUNITY_MANAGEMENT');
-      expect(AREA.REST_API).toBe('REST_API');
+    test('AREA values are the Apex TritonTypes.Area names', () => {
+      // LWC logs group with the Apex and Flow logs of the same feature only when the
+      // strings match the server-side enum names exactly.
+      expect(AREA).toEqual({
+        ACCOUNTS: 'Accounts',
+        COMMUNITY: 'Community',
+        LEAD_CONVERSION: 'LeadConversion',
+        OPPORTUNITY_MANAGEMENT: 'OpportunityManagement',
+        REST_API: 'RestAPI'
+      });
     });
 
     test('should export CATEGORY constants', () => {
       expect(CATEGORY.LWC).toBe('LWC');
       expect(CATEGORY.AURA).toBe('Aura');
-      expect(CATEGORY.WARNING).toBe('Warning');
-      expect(CATEGORY.DEBUG).toBe('Debug');
-      expect(CATEGORY.EVENT).toBe('Event');
+      expect(Object.keys(CATEGORY)).toHaveLength(2);
     });
 
     test('should export LEVEL constants', () => {
@@ -452,6 +555,8 @@ describe('PerformanceCallBuilder', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     triton = new Triton();
+    // The singleton keeps its failure count across tests
+    triton.failedFlushes = 0;
     triton.logs = []; // Clear logs
     boundTriton = triton.bindToComponent('testComponent');
     mockApexCall = jest.fn();
@@ -551,11 +656,17 @@ describe('TransactionManager', () => {
     });
 
     triton = new Triton();
+    // The singleton keeps its failure count across tests
+    triton.failedFlushes = 0;
     triton.logs = [];
   });
 
   afterEach(() => {
     jest.useRealTimers();
+    // Spies on the singleton outlive the test unless restored
+    if (jest.isMockFunction(triton.flush)) {
+      triton.flush.mockRestore();
+    }
   });
 
   test('should initialize with new transaction when none exists', () => {
@@ -607,6 +718,27 @@ describe('TransactionManager', () => {
     triton.transactionManager.stop();
     expect(triton.transactionManager.isMonitoring).toBe(false);
   });
+
+  test('stop() never rejects when the final flush fails', async () => {
+    jest.spyOn(triton, 'flush').mockRejectedValue(new Error('offline'));
+
+    await expect(triton.transactionManager.stop()).resolves.toBeUndefined();
+  });
+
+  test('restarting the monitor leaves a single polling loop', () => {
+    const flushSpy = jest.spyOn(triton, 'flush').mockResolvedValue();
+
+    triton.transactionManager.start();
+    triton.transactionManager.start();
+
+    const oldBuilder = new TritonBuilder();
+    oldBuilder._createdTimestamp = Date.now() - 15000; // 15 seconds ago
+    triton.logs.push(oldBuilder);
+
+    jest.advanceTimersByTime(5000);
+
+    expect(flushSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('PerformanceTracker', () => {
@@ -616,6 +748,8 @@ describe('PerformanceTracker', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     triton = new Triton();
+    // The singleton keeps its failure count across tests
+    triton.failedFlushes = 0;
     triton.logs = [];
     boundTriton = triton.bindToComponent('testComponent');
     
@@ -629,10 +763,38 @@ describe('PerformanceTracker', () => {
     const initialLogCount = triton.logs.length;
     
     boundTriton.startPerformanceMark(markName);
+    // The opening record ships immediately, so the span exists while the mark
+    // is open and logs written meanwhile have a real parent to nest under.
+    expect(triton.logs.length).toBe(initialLogCount + 1);
+
     boundTriton.endPerformanceMark(markName);
     
-    // Should create a performance log
-    expect(triton.logs.length).toBe(initialLogCount + 1);
+    // Two records, one span: the backend pairs them by span id, the same way it
+    // pairs "Backend call started/completed".
+    expect(triton.logs.length).toBe(initialLogCount + 2);
+    const [opening, completion] = triton.logs.slice(-2);
+    expect(opening.summary).toHaveBeenCalledWith(
+      expect.stringContaining('Performance started:')
+    );
+    expect(opening.spanId.mock.calls[0][0]).toBe(completion.spanId.mock.calls[0][0]);
+    expect(completion.duration).toHaveBeenCalled();
+  });
+
+  test('an open mark is already a real span for logs written under it', () => {
+    // Before the opening record existed, a log written while the mark was open
+    // named a span that had not been emitted — and never would be if the mark
+    // stayed open. Measured on a live purchase trace: 60 LWC spans pointing at
+    // three span ids that were absent from it, 30 under a single one.
+    const initialLogCount = triton.logs.length;
+
+    boundTriton.startPerformanceMark('slow-thing');
+    const openMarkSpanId = triton.spanContext.current();
+
+    boundTriton.log(boundTriton.info(TYPE.FRONTEND, AREA.ACCOUNTS).summary('work'));
+
+    const [opening, work] = triton.logs.slice(initialLogCount);
+    expect(opening.spanId).toHaveBeenCalledWith(openMarkSpanId);
+    expect(work.parentSpanId).toHaveBeenCalledWith(openMarkSpanId);
   });
 
   test('should warn when ending non-existent mark', () => {
@@ -693,15 +855,280 @@ describe('PerformanceTracker', () => {
     boundTriton.endPerformanceMark('mark1');
     boundTriton2.endPerformanceMark('mark2');
     
-    expect(triton.logs.length).toBe(initialLogCount + 2);
+    // Two marks, each an opening record plus a completion.
+    expect(triton.logs.length).toBe(initialLogCount + 4);
   });
 
   test('should create component data for unknown components', () => {
     const componentData = triton.performance.getComponentData('unknown');
-    
+
     expect(componentData).toBeDefined();
     expect(componentData.marks).toBeInstanceOf(Map);
     expect(componentData.renderCounts).toBe(0);
     expect(componentData.lifecycleEvents).toBeInstanceOf(Map);
+  });
+
+  test('should clear all marks', () => {
+    boundTriton.startPerformanceMark('mark1');
+    boundTriton.startPerformanceMark('mark2');
+
+    triton.performance.clearAllMarks();
+
+    const componentData = triton.performance.getComponentData(boundTriton._componentKey);
+    expect(componentData.marks.size).toBe(0);
+  });
+
+  test('should identify active mark span IDs', () => {
+    boundTriton.startPerformanceMark('mark1');
+
+    // The mock generateTransactionId always returns 'mock-transaction-id'
+    // so isActiveMarkSpanId checks against that
+    expect(triton.performance.isActiveMarkSpanId('mock-transaction-id')).toBe(true);
+    expect(triton.performance.isActiveMarkSpanId('non-existent-span')).toBe(false);
+  });
+});
+
+describe('Profiling defaults', () => {
+  // Profiling records carry fixed levels, so one Log_Level__mdt threshold selects a
+  // verbosity tier: spans at FINE (as Apex marks), failures at ERROR, lifecycle at
+  // FINER, render at FINEST.
+  let triton;
+  let boundTriton;
+  let mockApexCall;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    triton = new Triton();
+    // The singleton keeps its failure count across tests
+    triton.failedFlushes = 0;
+    triton.logs = [];
+    triton.templates.clear();
+    boundTriton = triton.bindToComponent('testComponent');
+    mockApexCall = jest.fn();
+
+    let timeCounter = 1000;
+    window.performance.now = jest.fn(() => timeCounter += 100);
+  });
+
+  test('backend call started and completed records log at FINE', async () => {
+    mockApexCall.mockResolvedValue('ok');
+
+    await boundTriton.timeBackendCall('loadData', mockApexCall).execute();
+
+    expect(triton.logs).toHaveLength(2);
+    const [started, completed] = triton.logs;
+    expect(started.summary).toHaveBeenCalledWith('Backend call started: loadData');
+    expect(started.level).toHaveBeenLastCalledWith(LEVEL.FINE);
+    expect(completed.summary).toHaveBeenCalledWith('Backend call completed: loadData');
+    expect(completed.level).toHaveBeenLastCalledWith(LEVEL.FINE);
+  });
+
+  test('a failed backend call logs at ERROR', async () => {
+    const error = new Error('Backend error');
+    mockApexCall.mockRejectedValue(error);
+
+    await boundTriton.timeBackendCall('loadData', mockApexCall).withoutRethrow().execute();
+
+    const failedRecord = triton.logs[triton.logs.length - 1];
+    expect(failedRecord.summary).toHaveBeenCalledWith('Backend call failed: loadData');
+    expect(failedRecord.exception).toHaveBeenCalledWith(error);
+    expect(failedRecord.level).toHaveBeenLastCalledWith(LEVEL.ERROR);
+  });
+
+  test('a failed user interaction logs at ERROR', async () => {
+    const error = new Error('Click failed');
+    const interaction = jest.fn().mockRejectedValue(error);
+
+    await boundTriton.timeUserInteraction('save', interaction).withoutRethrow().execute();
+
+    const failedRecord = triton.logs[triton.logs.length - 1];
+    expect(failedRecord.summary).toHaveBeenCalledWith('User interaction failed: save');
+    expect(failedRecord.exception).toHaveBeenCalledWith(error);
+    expect(failedRecord.level).toHaveBeenLastCalledWith(LEVEL.ERROR);
+  });
+
+  test('a call rejected with no reason is logged, and resolves null without rethrow', async () => {
+    mockApexCall.mockRejectedValue(undefined);
+
+    const result = await boundTriton.timeBackendCall('loadData', mockApexCall).withoutRethrow().execute();
+
+    expect(result).toBeNull();
+    const failedRecord = triton.logs[triton.logs.length - 1];
+    expect(failedRecord.summary).toHaveBeenCalledWith('Backend call failed: loadData');
+    expect(failedRecord.exception).toHaveBeenCalledWith(undefined);
+    expect(failedRecord.level).toHaveBeenLastCalledWith(LEVEL.ERROR);
+  });
+
+  test('performance mark records log at FINE', () => {
+    boundTriton.startPerformanceMark('m');
+    boundTriton.endPerformanceMark('m');
+
+    expect(triton.logs).toHaveLength(2);
+    const [opening, completion] = triton.logs;
+    expect(opening.level).toHaveBeenLastCalledWith(LEVEL.FINE);
+    expect(completion.level).toHaveBeenLastCalledWith(LEVEL.FINE);
+  });
+
+  test('lifecycle records log at FINER', () => {
+    boundTriton.trackComponentLifecycle('connected');
+
+    expect(triton.logs).toHaveLength(1);
+    expect(triton.logs[0].level).toHaveBeenLastCalledWith(LEVEL.FINER);
+  });
+
+  test('render records log at FINEST', () => {
+    boundTriton.trackComponentRender();
+
+    expect(triton.logs).toHaveLength(1);
+    expect(triton.logs[0].level).toHaveBeenLastCalledWith(LEVEL.FINEST);
+  });
+
+  test('profiling records start from the component template', () => {
+    const template = new TritonBuilder();
+    boundTriton.setTemplate(template);
+
+    boundTriton.startPerformanceMark('m');
+
+    expect(template.clone).toHaveBeenCalled();
+    const opening = triton.logs[triton.logs.length - 1];
+    expect(opening).toBe(template.clone.mock.results[0].value);
+    expect(opening.level).toHaveBeenLastCalledWith(LEVEL.FINE);
+  });
+
+  test('every profiling record starts from the component template', async () => {
+    // So each one inherits the component's Area, whichever helper wrote it.
+    const template = new TritonBuilder();
+    boundTriton.setTemplate(template);
+    mockApexCall.mockResolvedValueOnce('ok').mockRejectedValueOnce(new Error('Backend error'));
+
+    boundTriton.startPerformanceMark('m');
+    boundTriton.endPerformanceMark('m');
+    boundTriton.trackComponentLifecycle('connected');
+    boundTriton.trackComponentRender();
+    await boundTriton.timeBackendCall('loadData', mockApexCall).execute();
+    await boundTriton.timeBackendCall('loadData', mockApexCall).withoutRethrow().execute();
+
+    // mark open + close, lifecycle, render, call started + completed, call started + failed
+    expect(triton.logs).toHaveLength(8);
+    const clones = template.clone.mock.results.map(result => result.value);
+    triton.logs.forEach(record => expect(clones).toContain(record));
+  });
+});
+
+describe('SpanContext', () => {
+  let triton;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    Object.defineProperty(window, 'sessionStorage', {
+      value: {
+        getItem: jest.fn().mockReturnValue(null),
+        setItem: jest.fn(),
+        removeItem: jest.fn()
+      },
+      writable: true,
+      configurable: true
+    });
+
+    triton = new Triton();
+    // The singleton keeps its failure count across tests
+    triton.failedFlushes = 0;
+    triton.logs = [];
+  });
+
+  test('should initialize span context on construction', () => {
+    expect(triton.spanContext).toBeDefined();
+  });
+
+  test('should reset span context on startTransaction', () => {
+    triton.startTransaction();
+    const current = triton.spanContext.current();
+
+    expect(current).toBe(triton.transactionId);
+  });
+
+  test('should reset span context on resumeTransaction', () => {
+    triton.resumeTransaction('resume-txn-id');
+    const current = triton.spanContext.current();
+
+    expect(current).toBe('resume-txn-id');
+  });
+
+  test('should clear span context on stopTransaction', () => {
+    triton.startTransaction();
+    triton.spanContext.push('child-span');
+    triton.stopTransaction();
+
+    expect(triton.spanContext.current()).toBeNull();
+  });
+
+  test('push/pop should manage stack correctly', () => {
+    triton.spanContext.reset('root');
+    triton.spanContext.push('child1');
+    triton.spanContext.push('child2');
+
+    expect(triton.spanContext.current()).toBe('child2');
+    expect(triton.spanContext.parent()).toBe('child1');
+
+    triton.spanContext.pop('child2');
+    expect(triton.spanContext.current()).toBe('child1');
+  });
+
+  test('pop should handle out-of-order removal', () => {
+    triton.spanContext.reset('root');
+    triton.spanContext.push('a');
+    triton.spanContext.push('b');
+    triton.spanContext.push('c');
+
+    // Remove middle element
+    triton.spanContext.pop('b');
+    const stack = triton.spanContext.getStack();
+
+    expect(stack).toEqual(['root', 'a', 'c']);
+  });
+
+  test('enterStep should reset to root and push step span', () => {
+    triton.startTransaction();
+    triton.spanContext.push('old-child');
+
+    const stepId = triton.enterStep('step-1');
+
+    expect(stepId).toBe('step-1');
+    const stack = triton.spanContext.getStack();
+    expect(stack).toEqual([triton.transactionId, 'step-1']);
+  });
+
+  test('enterStep should auto-generate span ID if not provided', () => {
+    const stepId = triton.enterStep();
+
+    expect(stepId).toBe('mock-transaction-id'); // from mocked generateTransactionId
+  });
+
+  test('getStableParent should skip active mark spans', () => {
+    triton.spanContext.reset('root');
+    triton.spanContext.push('stable-parent');
+    triton.spanContext.push('active-mark-span');
+
+    const isActiveMark = (id) => id === 'active-mark-span';
+    const parent = triton.spanContext.getStableParent(isActiveMark);
+
+    expect(parent).toBe('stable-parent');
+  });
+
+  test('enableSpanPersistence should enable sessionStorage', () => {
+    triton.enableSpanPersistence();
+    triton.spanContext.push('persisted-span');
+
+    expect(window.sessionStorage.setItem).toHaveBeenCalled();
+  });
+
+  test('clear should empty the stack', () => {
+    triton.spanContext.reset('root');
+    triton.spanContext.push('child');
+    triton.spanContext.clear();
+
+    expect(triton.spanContext.current()).toBeNull();
+    expect(triton.spanContext.getStack()).toEqual([]);
   });
 });

@@ -12,7 +12,7 @@
  * 
  * Key components:
  * - Area enum: Defines functional areas from a business perspective (e.g., OpportunityManagement, RestAPI)
- * - Category enum: Provides high-level classification of log entries (e.g., Apex, Flow, Integration)
+ * - Category enum: Provides high-level classification of log entries (e.g., Apex, Flow, LWC)
  * - Level enum: Defines log severity levels from ERROR to FINEST
  * - Type enum: Offers technical classification of log entries (e.g., Backend, Frontend, DMLResult)
  * 
@@ -39,19 +39,15 @@ public with sharing class TritonTypes {
 
     /**
     * Category.
-    * Provides general classification. Defaults are Error, Warning, Event, Debug.
+    * Identifies the technology that produced the log entry.
     * This value will be written to the Category field.
-    * These values should reflect what kind of log entry they represent at a high level.
+    * Severity is expressed via the Level field, not the category.
     */
     public enum Category {
         Apex,
         Flow,
         LWC,
-        Aura,
-        Warning,
-        Event,
-        Debug,
-        Integration
+        Aura
     }
     /**
     * Log Levels.

@@ -28,8 +28,11 @@ public with sharing class TritonBuilder {
     public static final String STACKTRACE_PARSE_RESULT = 'pharos__Stacktrace_Parse_Result__c';
     public static final String USER_ID = 'pharos__User_Id__c';
     public static final String FLOW_API_NAME = 'pharos__Flow_API_Name__c';
+    public static final String FLOW_VERSION = 'pharos__Flow_Version__c';
     public static final String DO_NOT_CREATE_ISSUE = 'pharos__Do_Not_Create_Issue__c';
     public static final String REQUEST_ID = 'pharos__Request_Id_External__c';
+    public static final String SPAN_ID = 'Span_Id__c';
+    public static final String PARENT_SPAN_ID = 'Parent_Span_Id__c';
 
     /** transaction limit field names */
     @TestVisible
@@ -95,10 +98,31 @@ public with sharing class TritonBuilder {
 
     @TestVisible
     private Boolean includeLimitInfo = true;
+    @TestVisible
+    private Boolean traceable = false;
+
     private pharos.LogBuilder builder;
     
     @TestVisible
     private Boolean fullLimitInfoRequested = false;
+
+    private String fullSummary;
+    @TestVisible
+    private String executionContextDetails;
+    private String categoryValue;
+    @TestVisible
+    private String currentSpanId;
+    @TestVisible
+    private String currentParentSpanId;
+
+    /** Set by dmlResults when there is nothing to report; Triton.doLog then emits nothing. Per log, so not cloned. */
+    private Boolean suppressed = false;
+    /** Issue requested as a side effect of error(), exception() or a failed dmlResults(): follows the final level. Cloned. */
+    @TestVisible
+    private Boolean issueImplied = false;
+    /** Issue requested explicitly by createIssue() or traceable(true): always stands. Cloned. */
+    @TestVisible
+    private Boolean issueRequested = false;
 
     public TritonBuilder cloneBuilder() {
         pharos__Log__c clonedLog = this.builder.build().clone(false, true, false, false);
@@ -111,6 +135,13 @@ public with sharing class TritonBuilder {
         
         cloned.includeLimitInfo = this.includeLimitInfo;
         cloned.fullLimitInfoRequested = this.fullLimitInfoRequested;
+        cloned.traceable = this.traceable;
+        cloned.categoryValue = this.categoryValue;
+        cloned.currentSpanId = this.currentSpanId;
+        cloned.currentParentSpanId = this.currentParentSpanId;
+        cloned.issueImplied = this.issueImplied;
+        cloned.issueRequested = this.issueRequested;
+        // fullSummary, executionContextDetails and suppressed are intentionally NOT cloned — per-log values
         cloned.initBuilder();
         return cloned;
     }
@@ -132,6 +163,7 @@ public with sharing class TritonBuilder {
     * @return this builder instance
     */
     public TritonBuilder category(TritonTypes.Category c) {
+        this.categoryValue = c.name();
         this.builder.category(c.name());
         return this;
     }
@@ -187,6 +219,67 @@ public with sharing class TritonBuilder {
     }
 
     /**
+    * True when this builder has nothing to report: dmlResults() was given null, empty or
+    * all-success results. Triton emits nothing for a suppressed builder, whichever
+    * method it is passed to.
+    * @return whether the log is suppressed
+    */
+    public Boolean isSuppressed() {
+        return this.suppressed;
+    }
+
+    /**
+     * Convenience methods for setting common levels.
+     * error() also requests an issue, which is withdrawn at build() time if the final
+     * level ends up below ERROR.
+     */
+    public TritonBuilder error() {
+        return this.level(TritonTypes.Level.ERROR).impliedIssue();
+    }
+    public TritonBuilder error(String summary) { return this.summary(summary).error(); }
+
+    public TritonBuilder warning() {
+        return this.level(TritonTypes.Level.WARNING);
+    }
+    public TritonBuilder warning(String summary) { return this.summary(summary).warning(); }
+
+    public TritonBuilder info() {
+        return this.level(TritonTypes.Level.INFO);
+    }
+    public TritonBuilder info(String summary) { return this.summary(summary).info(); }
+
+    public TritonBuilder debug() {
+        return this.level(TritonTypes.Level.DEBUG);
+    }
+    public TritonBuilder debug(String summary) { return this.summary(summary).debug(); }
+
+    public TritonBuilder fine() {
+        return this.level(TritonTypes.Level.FINE);
+    }
+    public TritonBuilder fine(String summary) { return this.summary(summary).fine(); }
+
+    public TritonBuilder finer() {
+        return this.level(TritonTypes.Level.FINER);
+    }
+    public TritonBuilder finer(String summary) { return this.summary(summary).finer(); }
+
+    public TritonBuilder finest() {
+        return this.level(TritonTypes.Level.FINEST);
+    }
+    public TritonBuilder finest(String summary) { return this.summary(summary).finest(); }
+
+    /**
+     * Captures the current Salesforce execution context.
+     * For triggers: operation type, sObject, batch size.
+     * For async contexts (batch, queueable, scheduled, future): labels the context type.
+     * Appended to details at build time.
+     */
+    public TritonBuilder apexExecutionContext() {
+        this.executionContextDetails = TritonHelper.formatExecutionContext();
+        return this;
+    }
+
+    /**
     * Set operation from a String value
     * @param operation -- operation String value
     * @return this builder instance
@@ -202,9 +295,10 @@ public with sharing class TritonBuilder {
     * @return this builder instance
     */
     public TritonBuilder summary(String value) {
-		this.builder.summary(value);
+        this.fullSummary = value;
+        this.builder.summary(value != null && value.length() > 255 ? value.left(255) : value);
         return this;
-	}
+    }
 
     /**
     * Set log details from a String value
@@ -247,13 +341,25 @@ public with sharing class TritonBuilder {
 	}
 
     /**
-    * Set issue creation flag
+    * Set issue creation flag. An explicit request: the issue stands at any level.
     * @return this builder instance
     */
     public TritonBuilder createIssue() {
 		this.builder.createIssue();
+		this.issueRequested = true;
 		return this;
-	}    
+	}
+
+    /**
+    * Requests an issue as a side effect of an error. Unlike createIssue(), the request
+    * follows the final level: build() withdraws it when the level is below ERROR.
+    * @return this builder instance
+    */
+    private TritonBuilder impliedIssue() {
+        this.builder.createIssue();
+        this.issueImplied = true;
+        return this;
+    }
 
     /**
     * Set user Id for the log
@@ -377,6 +483,28 @@ public with sharing class TritonBuilder {
     }
 
     /**
+    * Set span ID for the log
+    * @param spanId -- String value representing the span identifier
+    * @return this builder instance
+    */
+    public TritonBuilder spanId(String spanId) {
+        this.currentSpanId = spanId;
+        this.builder.attribute(SPAN_ID, spanId);
+        return this;
+    }
+
+    /**
+    * Set parent span ID for the log
+    * @param parentSpanId -- String value representing the parent span identifier
+    * @return this builder instance
+    */
+    public TritonBuilder parentSpanId(String parentSpanId) {
+        this.currentParentSpanId = parentSpanId;
+        this.builder.attribute(PARENT_SPAN_ID, parentSpanId);
+        return this;
+    }
+
+    /**
     * Set integration payload from HTTP request/response
     * @param request -- HttpRequest instance
     * @param response -- HttpResponse instance
@@ -419,6 +547,18 @@ public with sharing class TritonBuilder {
     }
 
     /**
+    * Set flow version for the log, following the native flow error log convention
+    * (plain API name + separate version). The managed field is Text, so the
+    * numeric version is stored in its canonical string form.
+    * @param version -- flow version number
+    * @return this builder instance
+    */
+    public TritonBuilder flowVersion(Decimal version) {
+        this.builder.attribute(FLOW_VERSION, version == null ? null : String.valueOf(version));
+        return this;
+    }
+
+    /**
     * Set to not include limit info in the log record
     * @return this builder instance
     */
@@ -444,6 +584,31 @@ public with sharing class TritonBuilder {
     */
     public TritonBuilder attribute(String name, Object value) {
         this.builder.attribute(name, value);
+        return this;
+    }
+
+    /**
+    * Set a trace point on the log
+    * @return this builder instance
+    */
+    public TritonBuilder tracePoint() {
+        if (this.traceable) {
+            this.builder.tracePoint();
+            System.debug('TRACEPOINT:'+ this.builder.getTraceId());
+        }
+        return this;
+    }
+
+    /**
+    * Set traceable flag
+    * @param traceable -- Boolean value to set the traceable flag
+    * @return this builder instance
+    */
+    public TritonBuilder traceable(Boolean traceable) {
+        this.traceable = traceable;
+        if(traceable) {
+            this.createIssue();
+        }
         return this;
     }
 
@@ -505,7 +670,8 @@ public with sharing class TritonBuilder {
     /**
     * Configure builder for an exception
     * Sets type from exception type (or defaults to Backend), sets error level,
-    * sets summary from exception message, sets details and stack trace from exception
+    * sets summary from exception message, sets details and stack trace from exception.
+    * Requests an issue, which is withdrawn if the final level ends up below ERROR
     * @param e -- Exception to configure the builder with
     * @return this builder instance
     */
@@ -513,16 +679,212 @@ public with sharing class TritonBuilder {
         if (e == null) return this;
 
         // Use exception type, Backend if blank
-        this.type(String.isBlank(e.getTypeName()) ? 
-            TritonTypes.Type.Backend.name() : 
+        this.type(String.isBlank(e.getTypeName()) ?
+            TritonTypes.Type.Backend.name() :
             e.getTypeName());
-        
-        this.category(TritonTypes.Category.APEX)
-            .level(TritonTypes.Level.ERROR)
+
+        this.level(TritonTypes.Level.ERROR)
             .summary(e.getMessage())
             .stackTrace(e.getStackTraceString())
             .details(String.valueOf(e) + Triton.SPACE_SEP + e.getStackTraceString())
-            .createIssue();
+            .impliedIssue();
+
+        return this;
+    }
+
+    /**
+     * Formats DML operation results and adds them to the log
+     * Area should be set via template or explicitly before calling this method.
+     * When any row failed, the log is a DMLResult at ERROR with an issue. When every row
+     * succeeded, or the list is null or empty, the builder is suppressed and Triton
+     * emits nothing for it.
+     * @param dmlResults List of Database.SaveResult, DeleteResult, UpsertResult, UndeleteResult, or MergeResult
+     * @return TritonBuilder for chaining
+     */
+    public TritonBuilder dmlResults(List<Object> dmlResults) {
+        if (dmlResults == null || dmlResults.isEmpty()) {
+            this.suppressed = true;
+            return this;
+        }
+
+        Set<String> failedIds = new Set<String>();
+        List<String> errorMessages = new List<String>();
+        String operation;
+        Integer failCount = 0;
+        Integer totalCount = dmlResults.size();
+
+        for(Object result : dmlResults) {
+            if(result instanceof Database.SaveResult) {
+                operation = 'Save';
+                Database.SaveResult sr = (Database.SaveResult)result;
+                if(!sr.isSuccess()) {
+                    failCount++;
+                    if (sr.getId() != null) {
+                        failedIds.add(sr.getId());
+                    }
+                    for(Database.Error err : sr.getErrors()) {
+                        errorMessages.add(TritonHelper.formatDMLError(err, sr.getId()));
+                    }
+                }
+            } else if(result instanceof Database.DeleteResult) {
+                operation = 'Delete';
+                Database.DeleteResult dr = (Database.DeleteResult)result;
+                if(!dr.isSuccess()) {
+                    failCount++;
+                    if (dr.getId() != null) {
+                        failedIds.add(dr.getId());
+                    }
+                    for(Database.Error err : dr.getErrors()) {
+                        errorMessages.add(TritonHelper.formatDMLError(err, dr.getId()));
+                    }
+                }
+            } else if(result instanceof Database.UndeleteResult) {
+                operation = 'Undelete';
+                Database.UndeleteResult ur = (Database.UndeleteResult)result;
+                if(!ur.isSuccess()) {
+                    failCount++;
+                    if (ur.getId() != null) {
+                        failedIds.add(ur.getId());
+                    }
+                    for(Database.Error err : ur.getErrors()) {
+                        errorMessages.add(TritonHelper.formatDMLError(err, ur.getId()));
+                    }
+                }
+            } else if(result instanceof Database.UpsertResult) {
+                operation = 'Upsert';
+                Database.UpsertResult ur = (Database.UpsertResult)result;
+                if(!ur.isSuccess()) {
+                    failCount++;
+                    if (ur.getId() != null) {
+                        failedIds.add(ur.getId());
+                    }
+                    for(Database.Error err : ur.getErrors()) {
+                        errorMessages.add(TritonHelper.formatDMLError(err, ur.getId()));
+                    }
+                }
+            } else if(result instanceof Database.MergeResult) {
+                operation = 'Merge';
+                Database.MergeResult mr = (Database.MergeResult)result;
+                if(!mr.isSuccess()) {
+                    failCount++;
+                    if (mr.getId() != null) {
+                        failedIds.add(mr.getId());
+                    }
+                    for(Database.Error err : mr.getErrors()) {
+                        errorMessages.add(TritonHelper.formatDMLError(err, mr.getId()));
+                    }
+                }
+            }
+        }
+
+        // Only log if there are errors
+        this.suppressed = errorMessages.isEmpty();
+        if(!errorMessages.isEmpty()) {
+            return this.type(TritonTypes.Type.DMLResult)
+                .operation(operation)
+                .summary(TritonHelper.formatMessage('DML Operation ({0}) Failed: {1} of {2} records failed.',
+                                                    new String[]{operation,
+                                                                String.valueOf(failCount),
+                                                                String.valueOf(totalCount)}))
+                .details(String.join(errorMessages, '\n\n'))
+                .stackTrace(TritonHelper.getCurrentStackTrace())
+                .relatedObjects(failedIds)
+                .error();
+        }
+
+        return this;
+    }
+
+    /**
+    * Ensures span IDs are populated with sensible defaults when not explicitly set.
+    * Uses the request ID as span ID fallback for Apex-originated logs.
+    */
+    private void ensureSpanIds() {
+        if (String.isBlank(this.currentSpanId)) {
+            this.builder.attribute(SPAN_ID, TritonHelper.requestId());
+        }
+    }
+
+    /**
+    * Captures the stacktrace and derives the operation from it when neither was
+    * supplied explicitly. Idempotent: once a stacktrace is present this is a
+    * no-op, so it is safe to call before the log level check and again from
+    * prepareForLogging.
+    *
+    * Triton.log() calls this ahead of the log level check when component-scoped
+    * log levels are configured, because matching on component name requires the
+    * Apex Name to already be resolved. Throwing and filtering a stacktrace is
+    * comparatively expensive, which is why the early call is gated rather than
+    * unconditional.
+    * @see TritonHelper.Config.hasComponentScopedLevels
+    * @return this builder instance
+    */
+    public TritonBuilder resolveStackTraceAndOperation() {
+        pharos__Log__c tempLog = this.builder.build();
+        if(String.isBlank(tempLog.pharos__Stacktrace__c)) {
+            String stackTrace = TritonHelper.getCurrentStackTrace();
+            this.stackTrace(stackTrace);
+
+            // Set operation from stacktrace if not provided
+            if(String.isBlank(tempLog.pharos__Apex_Name__c)) {
+                this.operation(TritonHelper.getOperation(stackTrace));
+            }
+        }
+        return this;
+    }
+
+    /**
+    * Stamps ambient span context onto a log emitted inside an open mark: its own span
+    * id, parented to the innermost mark (or, outermost, to the transaction span). This
+    * is what gives Apex logs a hierarchy instead of a flat list of siblings under one
+    * request node.
+    *
+    * Called by Triton.log() only while a mark is open, and passed the ambient parent
+    * it resolved -- the mark state is Triton's, so this method is told rather than
+    * asking. A log emitted by code that never calls startMark is never routed here and
+    * keeps exactly the span fields it has today: the request id as the span id, and no
+    * parent. A mark filtered out by Log_Level__mdt is still an open mark, so parenting
+    * stays transparent but the data shape does not -- surrounding logs get a fresh span
+    * id rather than the request id, which is why a blank ambientParent still mints one.
+    *
+    * Explicitly set values always win. TritonLwc forwards the browser's span ids
+    * straight through, and overwriting them would sever every LWC to Apex trace.
+    * @param ambientParent -- the enclosing span id, or blank when there is none
+    * @return this builder instance
+    * @see Triton.startMark
+    */
+    public TritonBuilder ambientSpanContext(String ambientParent) {
+        if (String.isBlank(this.currentSpanId)) {
+            this.spanId(TritonHelper.generateUUID4());
+        }
+        // Left unset rather than set to null when there is no ambient parent, so the
+        // field is simply absent instead of explicitly empty -- as Triton.markBuilder
+        // does for the paired mark records.
+        if (String.isBlank(this.currentParentSpanId) && String.isNotBlank(ambientParent)) {
+            this.parentSpanId(ambientParent);
+        }
+        return this;
+    }
+
+    /**
+    * Prepares the builder for logging by auto-enriching with runtime context.
+    * Called by Triton.log() to add stacktrace, operation, tracepoint, and limits.
+    * @param transactionId -- Transaction ID to associate with this log
+    * @return this builder instance
+    */
+    public TritonBuilder prepareForLogging(String transactionId) {
+        // Set transaction ID
+        this.transactionId(transactionId);
+
+        resolveStackTraceAndOperation();
+
+        // Add tracepoint and limits
+        this.tracePoint().limitInfo();
+
+        // Capture execution context for Apex logs only
+        if (this.categoryValue == TritonTypes.Category.Apex.name()) {
+            this.apexExecutionContext();
+        }
 
         return this;
     }
@@ -532,6 +894,41 @@ public with sharing class TritonBuilder {
     * @return pharos__Log__c instance
     */
     public pharos__Log__c build() {
-		return this.builder.build();
-	}
+        ensureSpanIds();
+        pharos__Log__c log = this.builder.build();
+
+        // Default category to Apex when not explicitly set
+        if(String.isNotBlank(categoryValue)) {
+            log.pharos__Category__c = categoryValue;
+        } else if(String.isBlank(log.pharos__Category__c)) {
+            log.pharos__Category__c = TritonTypes.Category.Apex.name();
+        }
+
+        // Default to the running user when not explicitly set, so user-scoped
+        // log level rules can match at filter time (before the flush-time fill)
+        if(String.isBlank(log.pharos__User_Id__c)) {
+            log.pharos__User_Id__c = UserInfo.getUserId();
+        }
+
+        // Auto-carryover: if summary was truncated, append full text to details
+        if(String.isNotBlank(fullSummary) && fullSummary.length() > 255) {
+            log.pharos__Details__c = (String.isNotBlank(log.pharos__Details__c) ?
+                log.pharos__Details__c + Triton.SPACE_SEP : '') + fullSummary;
+        }
+
+        // Append execution context if captured
+        if(String.isNotBlank(executionContextDetails)) {
+            log.pharos__Details__c = (String.isNotBlank(log.pharos__Details__c) ?
+                log.pharos__Details__c + Triton.SPACE_SEP : '') + executionContextDetails;
+        }
+
+        // An issue implied by an error follows the final level, whatever the call order;
+        // an explicit createIssue() always stands.
+        if (this.issueImplied) {
+            log.pharos__Do_Not_Create_Issue__c =
+                !(this.issueRequested || log.Log_Level__c == TritonTypes.Level.ERROR.name());
+        }
+
+        return log;
+    }
 }

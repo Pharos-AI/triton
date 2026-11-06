@@ -18,6 +18,18 @@ let instance = null;
 
 export default class Triton {
     /**
+     * Most logs the buffer keeps after a failed flush; the oldest are dropped beyond it
+     * @type {number}
+     */
+    static MAX_BUFFERED_LOGS = 500;
+
+    /**
+     * Consecutive failed flushes after which the failing batch is dropped
+     * @type {number}
+     */
+    static MAX_FLUSH_ATTEMPTS = 3;
+
+    /**
      * Buffer to store logs before sending to server
      * @private
      * @type {Array}
@@ -32,6 +44,13 @@ export default class Triton {
     templates = new Map();
 
     category = CATEGORY.LWC;
+
+    /**
+     * Consecutive failed flushes; reset by a successful flush or a drop
+     * @private
+     * @type {number}
+     */
+    failedFlushes = 0;
     
     /**
      * Current transaction ID
@@ -50,10 +69,12 @@ export default class Triton {
         if (instance) {
             return instance;
         }
-        this.transactionManager = new TransactionManager(this);        
+        this.transactionManager = new TransactionManager(this);
         this.transactionId = this.transactionManager.initialize();
+        this.spanContext = new SpanContext();
+        this.spanContext.reset(this.transactionId);
         this.performance = new PerformanceTracker(this);
-        
+
         instance = this;
         return instance;
     }
@@ -107,6 +128,8 @@ export default class Triton {
      */
     startTransaction() {
         this.transactionId = this.transactionManager.start();
+        this.spanContext.reset(this.transactionId);
+        this.performance.clearAllMarks();
         return this.transactionId;
     }
 
@@ -117,15 +140,19 @@ export default class Triton {
      */
     resumeTransaction(transactionId) {
         this.transactionId = this.transactionManager.resume(transactionId);
+        this.spanContext.reset(this.transactionId);
     }
 
     /**
      * Stops the current transaction and auto-flush monitor
      * Flushes any remaining logs
+     * @returns {Promise} Settles once the final flush has been attempted; never rejects
      */
     stopTransaction() {
-        this.transactionManager.stop();
+        const flushed = this.transactionManager.stop();
         this.transactionId = null;
+        this.spanContext.clear();
+        return flushed;
     }
 
     /**
@@ -192,12 +219,16 @@ export default class Triton {
     }
 
     /**
-     * Sends all buffered logs to the server and clears the buffer
-     * @returns {Promise} Promise that resolves when logs are flushed
+     * Sends all buffered logs to the server and clears the buffer.
+     * Never rejects: logging must not derail the caller's own error handling. A failed batch
+     * is put back at the front of the buffer for the next flush, and dropped once
+     * MAX_FLUSH_ATTEMPTS flushes in a row have failed.
+     * @returns {Promise} Resolves with the server response, or undefined when there was
+     * nothing to flush or the flush failed
      */
     async flush() {
-        if(this.logs.length === 0) {
-            return;
+        if (this.logs.length === 0) {
+            return undefined;
         }
 
         // Save current logs and clear buffer to prevent duplicates
@@ -208,12 +239,20 @@ export default class Triton {
             const data = await saveComponentLogs({
                 componentLogs: logsToFlush.map(builder => builder.build())
             });
+            this.failedFlushes = 0;
             return data;
         } catch (error) {
-            console.error('Error flushing logs:', error);
-            // Restore logs that failed to flush
-            this.logs.unshift(...logsToFlush);
-            throw error;
+            this.failedFlushes += 1;
+            if (this.failedFlushes >= Triton.MAX_FLUSH_ATTEMPTS) {
+                this.failedFlushes = 0;
+                console.error(`Triton: dropping ${logsToFlush.length} log(s) after ${Triton.MAX_FLUSH_ATTEMPTS} failed flushes`, error);
+            } else {
+                console.error('Triton: flush failed; logs kept for the next flush', error);
+                // Failed logs go first: they are older than anything logged during the flush
+                this.logs = [...logsToFlush, ...this.logs];
+                this._trimBuffer();
+            }
+            return undefined;
         }
     }
 
@@ -229,24 +268,40 @@ export default class Triton {
     }
 
     /**
-     * Immediately flushes a single log builder
+     * Immediately flushes a single log builder; the other buffered logs stay buffered.
+     * Never rejects (see flush()): if the server can't take the log it is kept for later flushes,
+     * and anything that is not a builder is reported to the console and not logged.
      * @param {TritonBuilder} builder - Builder instance to log
      * @returns {Promise} Promise that resolves when the log is flushed
      */
     async logNow(builder) {
-        const currentLogs = [...this.logs];
+        const earlier = [...this.logs];
         this.logs = [];
-        this.log(builder);
-        
         try {
-            const data = await this.flush();
-            // Add back any logs that were buffered during flush
-            this.logs.push(...currentLogs);  
-            return data;
+            this.log(builder);
         } catch (error) {
-            // Also preserve logs on error
-            this.logs.push(...currentLogs);  
-            throw error;
+            this.logs = earlier;
+            console.error('Triton: logNow needs a builder; nothing was logged', error);
+            return undefined;
+        }
+
+        const data = await this.flush();
+        // Earlier logs first, then anything kept by a failed flush or logged meanwhile
+        this.logs = [...earlier, ...this.logs];
+        this._trimBuffer();
+        return data;
+    }
+
+    /**
+     * Drops the oldest buffered logs beyond MAX_BUFFERED_LOGS, so a server that keeps
+     * refusing logs cannot grow the buffer without bound
+     * @private
+     */
+    _trimBuffer() {
+        const excess = this.logs.length - Triton.MAX_BUFFERED_LOGS;
+        if (excess > 0) {
+            this.logs.splice(0, excess);
+            console.warn(`Triton: log buffer full; dropped the ${excess} oldest log(s)`);
         }
     }
 
@@ -267,7 +322,30 @@ export default class Triton {
         return builder
             .runtimeInfo(captureRuntimeInfo())
             .transactionId(this.transactionId)
-            .timestamp(Date.now());
+            .timestamp(Date.now())
+            .spanId(generateTransactionId())
+            .parentSpanId(this.spanContext.current());
+    }
+
+    /**
+     * Enters a new logical step (e.g., wizard step), resetting the span stack
+     * to the transaction root and pushing a new span for the step.
+     * @param {string} [stepSpanId] - Optional custom span ID for the step (auto-generated if omitted)
+     * @returns {string} The span ID for this step
+     */
+    enterStep(stepSpanId) {
+        const spanId = stepSpanId || generateTransactionId();
+        this.spanContext.reset(this.transactionId);
+        this.spanContext.push(spanId);
+        return spanId;
+    }
+
+    /**
+     * Enables sessionStorage persistence for the span context stack.
+     * Useful for multi-page flows where span hierarchy must survive navigation.
+     */
+    enableSpanPersistence() {
+        this.spanContext.persist();
     }
 
     /**
@@ -345,15 +423,16 @@ export default class Triton {
 }
 
 /**
- * Enumeration of available log areas
+ * Standard functional areas. Values are the Apex TritonTypes.Area names, so LWC logs group with
+ * the Apex and Flow logs of the same feature. .area() accepts any other String as a custom area.
  * @enum {string}
  */
 export const AREA = {
-    ACCOUNTS: 'ACCOUNTS',
-    COMMUNITY: 'COMMUNITY',
-    LEAD_CONVERSION: 'LEAD_CONVERSION',
-    OPPORTUNITY_MANAGEMENT: 'OPPORTUNITY_MANAGEMENT',
-    REST_API: 'REST_API'
+    ACCOUNTS: 'Accounts',
+    COMMUNITY: 'Community',
+    LEAD_CONVERSION: 'LeadConversion',
+    OPPORTUNITY_MANAGEMENT: 'OpportunityManagement',
+    REST_API: 'RestAPI'
 };
 
 /**
@@ -362,10 +441,7 @@ export const AREA = {
  */
 export const CATEGORY = {
     LWC: 'LWC',
-    AURA: 'Aura',
-    WARNING: 'Warning',
-    DEBUG: 'Debug',
-    EVENT: 'Event'
+    AURA: 'Aura'
 };
 
 /**
@@ -395,6 +471,19 @@ export const TYPE = {
     USER_INTERACTION: 'UserInteraction',
     PERFORMANCE: 'Performance'
 };
+
+/**
+ * Builder for a profiling record: from the bound component's template when it has one, so the
+ * record inherits the component's Area (Apex marks build from Triton.t the same way); otherwise
+ * a plain builder, whose blank Area lands as LWC.
+ * @private
+ * @param {Triton} tritonInstance - The bound Triton proxy, or the shared instance
+ * @returns {TritonBuilder} Builder for the profiling record
+ */
+const profilingBuilder = (tritonInstance) =>
+    typeof tritonInstance.fromTemplate === 'function'
+        ? tritonInstance.fromTemplate()
+        : tritonInstance.makeBuilder();
 
 /**
  * Unified builder for configuring performance call error handling and execution
@@ -435,7 +524,12 @@ class PerformanceCallBuilder {
      */
     async execute() {
         const startTime = this.triton.performance.getCurrentTime();
-        
+
+        // Capture span context at call start
+        const spanId = generateTransactionId();
+        const parentSpanId = this.triton.spanContext.current();
+        this.triton.spanContext.push(spanId);
+
         // Use explicit method name and determine log type based on call type
         const methodName = this.methodName;
         let logType, operationName;
@@ -451,61 +545,72 @@ class PerformanceCallBuilder {
             // Log operation start (only if component is bound)
             if (this.triton._componentId) {
                 this.triton.log(
-                    this.triton.makeBuilder()
+                    profilingBuilder(this.triton)
                         .type(logType)
+                        .level(LEVEL.FINE)
                         .summary(`${operationName} started: ${methodName}`)
                         .details(`Initiating ${operationName.toLowerCase()}: ${methodName}`)
                         .action(methodName)
+                        .spanId(spanId)
+                        .parentSpanId(parentSpanId)
                 );
             }
-            
+
             const result = await this.callFunction();
             const endTime = this.triton.performance.getCurrentTime();
             const duration = endTime - startTime;
-            
+
             // Log successful operation (only if component is bound)
             if (this.triton._componentId) {
                 this.triton.log(
-                    this.triton.makeBuilder()
+                    profilingBuilder(this.triton)
                         .type(logType)
+                        .level(LEVEL.FINE)
                         .summary(`${operationName} completed: ${methodName}`)
                         .details(`Duration: ${duration}ms`)
                         .duration(duration)
                         .action(methodName)
+                        .spanId(spanId)
+                        .parentSpanId(parentSpanId)
                 );
             }
-            
+
             return result;
-            
+
         } catch (error) {
             const endTime = this.triton.performance.getCurrentTime();
             const duration = endTime - startTime;
-            
+
             // Use custom error handler if provided, otherwise use built-in
             if (this.customErrorHandler) {
-                const context = this.callType === 'backend' 
+                const context = this.callType === 'backend'
                     ? { methodName, duration }
                     : { interactionName: methodName, duration };
                 this.customErrorHandler(error, context);
             } else if (this.triton._componentId) {
                 // Built-in error logging (only if component is bound)
                 this.triton.log(
-                    this.triton.makeBuilder()
+                    profilingBuilder(this.triton)
                         .type(logType)
                         .summary(`${operationName} failed: ${methodName}`)
-                        .details(`Duration: ${duration}ms, Error: ${error.message}`)
+                        .details(`Duration: ${duration}ms, Error: ${error?.message}`)
                         .duration(duration)
                         .action(methodName)
                         .exception(error)
+                        .level(LEVEL.ERROR)
+                        .spanId(spanId)
+                        .parentSpanId(parentSpanId)
                 );
             }
-            
+
             // Rethrow if configured
             if (this.shouldRethrow) {
                 throw error;
             }
-            
+
             return null;
+        } finally {
+            this.triton.spanContext.pop(spanId);
         }
     }
 }
@@ -576,13 +681,36 @@ class PerformanceTracker {
         const componentKey = tritonInstance._componentKey || 'unknown';
         const componentData = this.getComponentData(componentKey);
         const startTime = this.getCurrentTime();
-        
+
+        const spanId = generateTransactionId();
+        const parentSpanId = tritonInstance.spanContext.current();
+        tritonInstance.spanContext.push(spanId);
+
         componentData.marks.set(markName, {
             name: markName,
             startTime: startTime,
-            componentKey: componentKey
+            componentKey: componentKey,
+            spanId: spanId,
+            parentSpanId: parentSpanId
         });
-        
+
+        // Publish the opening record straight away, under the same span id the
+        // completion will carry. Without it the span only appears when endMark()
+        // runs, so every log written meanwhile is parented to a span that does
+        // not exist yet — and never will, if the mark is left open by an
+        // unmounted component, a navigation or an exception. The backend pairs
+        // the two by span id and collapses them into one span, the way it
+        // already does for "Backend call started/completed".
+        tritonInstance.log(
+            profilingBuilder(tritonInstance)
+                .type(TYPE.PERFORMANCE)
+                .level(LEVEL.FINE)
+                .summary(`Performance started: ${tritonInstance._componentId || 'unknown'} - ${markName}`)
+                .action(markName)
+                .spanId(spanId)
+                .parentSpanId(parentSpanId)
+        );
+
         return markName;
     }
 
@@ -596,28 +724,60 @@ class PerformanceTracker {
         const endTime = this.getCurrentTime();
         const componentKey = tritonInstance._componentKey || 'unknown';
         const componentData = this.getComponentData(componentKey);
-        
+
         const markData = componentData.marks.get(markName);
-        
+
         if (!markData) {
             console.warn(`Performance mark '${markName}' not found for component ${tritonInstance._componentId || 'unknown'}`);
             return;
         }
-        
+
         const duration = endTime - markData.startTime;
-        
+
+        // Remove this mark's span from the context stack
+        tritonInstance.spanContext.pop(markData.spanId);
+
         // Clean up the mark
         componentData.marks.delete(markName);
-        
-        // Log the performance data using the appropriate context
+
+        // Log the performance data using the mark's captured span context
         tritonInstance.log(
-            tritonInstance.makeBuilder()
+            profilingBuilder(tritonInstance)
                 .type(TYPE.PERFORMANCE)
+                .level(LEVEL.FINE)
                 .summary(`Performance: ${tritonInstance._componentId || 'unknown'} - ${markData.name}`)
                 .details(`Duration: ${duration}ms`)
                 .duration(duration)
                 .action(markData.name)
+                .spanId(markData.spanId)
+                .parentSpanId(markData.parentSpanId)
         );
+    }
+
+    /**
+     * Checks if a span ID belongs to an active performance mark
+     * @param {string} spanId - Span ID to check
+     * @returns {boolean}
+     */
+    isActiveMarkSpanId(spanId) {
+        for (const [, componentData] of this.componentInstances) {
+            for (const [, markData] of componentData.marks) {
+                if (markData.spanId === spanId) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Clears all active marks across all components.
+     * Called on new transaction to prevent stale marks.
+     */
+    clearAllMarks() {
+        for (const [, componentData] of this.componentInstances) {
+            componentData.marks.clear();
+        }
     }
 
     /**
@@ -634,8 +794,9 @@ class PerformanceTracker {
         
         // Use the appropriate context for logging
         tritonInstance.log(
-            tritonInstance.makeBuilder()
+            profilingBuilder(tritonInstance)
                 .type(TYPE.COMPONENT_LIFECYCLE)
+                .level(LEVEL.FINER)
                 .summary(`Component lifecycle: ${tritonInstance._componentId || 'unknown'} - ${lifecycleEvent}`)
                 .details(`Component ${lifecycleEvent} event triggered`)
                 .action(`lifecycle-${lifecycleEvent}`)
@@ -654,12 +815,148 @@ class PerformanceTracker {
         
         // Use the appropriate context for logging
         tritonInstance.log(
-            tritonInstance.makeBuilder()
+            profilingBuilder(tritonInstance)
                 .type(TYPE.COMPONENT_RENDER)
+                .level(LEVEL.FINEST)
                 .summary(`Component render: ${tritonInstance._componentId || 'unknown'}`)
                 .details(`Render count: ${componentData.renderCounts}`)
                 .action('component-render')
         );
+    }
+}
+
+/**
+ * Manages span hierarchy tracking with an in-memory stack.
+ * Optionally persists to sessionStorage for cross-navigation scenarios.
+ * @private
+ */
+class SpanContext {
+    static STORAGE_KEY = 'tritonContextStack';
+
+    constructor(options = {}) {
+        this._stack = [];
+        this._persist = options.persist || false;
+    }
+
+    /**
+     * Returns the current span stack
+     * @returns {string[]}
+     */
+    getStack() {
+        if (this._persist) {
+            try {
+                const stored = sessionStorage.getItem(SpanContext.STORAGE_KEY);
+                if (stored) {
+                    this._stack = JSON.parse(stored);
+                }
+            } catch (e) {
+                // fall back to in-memory
+            }
+        }
+        return this._stack;
+    }
+
+    /**
+     * Replaces the span stack
+     * @param {string[]} stack
+     */
+    setStack(stack) {
+        this._stack = stack;
+        if (this._persist) {
+            try {
+                sessionStorage.setItem(SpanContext.STORAGE_KEY, JSON.stringify(stack));
+            } catch (e) {
+                // fall back to in-memory
+            }
+        }
+    }
+
+    /**
+     * Push a span ID onto the stack
+     * @param {string} spanId
+     */
+    push(spanId) {
+        const stack = this.getStack();
+        stack.push(spanId);
+        this.setStack(stack);
+    }
+
+    /**
+     * Remove a specific span ID from the stack (supports out-of-order pops)
+     * @param {string} spanId
+     */
+    pop(spanId) {
+        const stack = this.getStack();
+        const index = stack.lastIndexOf(spanId);
+        if (index !== -1) {
+            stack.splice(index, 1);
+            this.setStack(stack);
+        }
+    }
+
+    /**
+     * Returns the current (top) span ID
+     * @returns {string|null}
+     */
+    current() {
+        const stack = this.getStack();
+        return stack.length > 0 ? stack[stack.length - 1] : null;
+    }
+
+    /**
+     * Returns the parent span ID (second from top)
+     * @returns {string|null}
+     */
+    parent() {
+        const stack = this.getStack();
+        return stack.length > 1 ? stack[stack.length - 2] : null;
+    }
+
+    /**
+     * Reset the stack to contain only the root ID
+     * @param {string} rootId
+     */
+    reset(rootId) {
+        this.setStack(rootId ? [rootId] : []);
+    }
+
+    /**
+     * Clear the stack entirely
+     */
+    clear() {
+        this._stack = [];
+        if (this._persist) {
+            try {
+                sessionStorage.removeItem(SpanContext.STORAGE_KEY);
+            } catch (e) {
+                // ignore
+            }
+        }
+    }
+
+    /**
+     * Enable sessionStorage persistence
+     */
+    persist() {
+        this._persist = true;
+        // Write current in-memory stack to storage
+        this.setStack(this._stack);
+    }
+
+    /**
+     * Returns a stable parent span ID by skipping active mark spans.
+     * Walks the stack from top down, skipping any span IDs that match active marks.
+     * @param {Function} isActiveMarkFn - Predicate: (spanId) => boolean
+     * @returns {string|null}
+     */
+    getStableParent(isActiveMarkFn) {
+        const stack = this.getStack();
+        for (let i = stack.length - 1; i >= 0; i--) {
+            if (!isActiveMarkFn(stack[i])) {
+                return stack[i];
+            }
+        }
+        return null;
     }
 }
 
@@ -669,12 +966,14 @@ class PerformanceTracker {
  */
 class TransactionManager {
     static STORAGE_KEY = 'tritonTransactionId';
-    static AUTO_FLUSH_CHECK_INTERVAL = 5000; // 10 seconds
-    static AUTO_FLUSH_DELAY = 10000; // 1 minute
+    static AUTO_FLUSH_CHECK_INTERVAL = 5000; // poll every 5 seconds
+    static AUTO_FLUSH_DELAY = 10000; // flush once the newest buffered log is 10 seconds old
 
     constructor(triton) {
         this.triton = triton;
         this._transactionId = null; // Memory storage fallback
+        // Bumped on every stop, so a superseded polling loop can tell and exit
+        this._monitorGeneration = 0;
     }
 
     /**
@@ -756,11 +1055,14 @@ class TransactionManager {
 
     /**
      * Stops current transaction and monitoring
+     * @returns {Promise} Settles once the final flush has been attempted; never rejects
      */
     stop() {
         this.stopAutoFlushMonitor();
-        this.triton.flush();
+        const flushed = this.triton.flush()
+            .catch(error => console.error('Triton: final flush failed', error));
         this.removeItem();
+        return flushed;
     }
 
     /**
@@ -768,13 +1070,14 @@ class TransactionManager {
      * @private
      */
     async startAutoFlushMonitor() {
-        // Clear any existing monitor
+        // Clear any existing monitor: its loop sees a newer generation and exits
         this.stopAutoFlushMonitor();
         
         this.isMonitoring = true;
+        const generation = this._monitorGeneration;
         
         const checkAndFlush = async () => {
-            if (!this.isMonitoring) return;
+            if (!this.isMonitoring || generation !== this._monitorGeneration) return;
 
             try {
                 const now = Date.now();
@@ -790,8 +1093,8 @@ class TransactionManager {
                 console.error('Error in auto-flush monitor:', error);
             }
 
-            // Schedule next check if still monitoring
-            if (this.isMonitoring) {
+            // Schedule next check if this loop is still the current monitor
+            if (this.isMonitoring && generation === this._monitorGeneration) {
                 setTimeout(checkAndFlush, TransactionManager.AUTO_FLUSH_CHECK_INTERVAL);
             }
         };
@@ -806,5 +1109,6 @@ class TransactionManager {
      */
     stopAutoFlushMonitor() {
         this.isMonitoring = false;
+        this._monitorGeneration += 1;
     }
 }

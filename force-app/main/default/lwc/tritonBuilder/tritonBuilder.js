@@ -10,6 +10,9 @@
 
 import { isNotTriton, getFunctionName } from 'c/tritonUtils';
 
+// Mirrors LEVEL.ERROR in c/triton; not imported, which would be a circular import.
+const ERROR_LEVEL = 'ERROR';
+
 export default class TritonBuilder {
 
     /**
@@ -103,6 +106,26 @@ export default class TritonBuilder {
     }
 
     /**
+     * Sets the span ID for this log entry
+     * @param {string} spanId - Unique span identifier
+     * @returns {TritonBuilder} Builder instance for chaining
+     */
+    spanId(spanId) {
+        this._spanId = spanId;
+        return this;
+    }
+
+    /**
+     * Sets the parent span ID for this log entry
+     * @param {string} parentSpanId - Parent span identifier
+     * @returns {TritonBuilder} Builder instance for chaining
+     */
+    parentSpanId(parentSpanId) {
+        this._parentSpanId = parentSpanId;
+        return this;
+    }
+
+    /**
      * Sets the created timestamp
      * @param {number} [timestamp] - Optional timestamp to set (defaults to current time)
      * @returns {TritonBuilder} Builder instance for chaining
@@ -113,11 +136,18 @@ export default class TritonBuilder {
     }
 
     /**
-     * Sets the error information
+     * Sets the error information and the ERROR level, as Apex's exception(e) does, so the
+     * server opens an issue. A .level(...) chained after this call still wins.
+     * A missing error (a promise rejected with no reason) only sets the level.
      * @param {Error|Object} error - Error object to process
      * @returns {TritonBuilder} Builder instance for chaining
      */
     exception(error) {
+        this._level = ERROR_LEVEL;
+        if (!error) {
+            return this;
+        }
+
         this._error = {};
 
         if (error.body) {
@@ -250,7 +280,9 @@ export default class TritonBuilder {
             stack: this._stack,
             userId: this._userId,
             runtimeInfo: this._runtimeInfo,
-            relatedObjectIds: this._relatedObjectIds
+            relatedObjectIds: this._relatedObjectIds,
+            spanId: this._spanId,
+            parentSpanId: this._parentSpanId
         };
     }
 

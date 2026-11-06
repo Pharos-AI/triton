@@ -23,6 +23,7 @@
 global with sharing class TritonFlow {
     private static final String INVALID_LOG_LEVEL = 'Unable to locate log level: {0}. Default INFO level will be used.';
     private static final String INVALID_CATEGORY = 'Unable to locate category: {0}. Default Flow category will be used.';
+    private static final String INVALID_FLOW_VERSION = 'Unable to parse flow version: {0}. Flow Version will not be set.';
     
     /**
      * @description
@@ -35,13 +36,41 @@ global with sharing class TritonFlow {
                     Label='Log' 
                     Description='Creates a log for a flow or process builder')
     public static List<FlowLogOutput> log(List<FlowLog> flowLogs) {
-        List<FlowLogOutput> flowLogOutputs = new List<FlowLogOutput>();
-        for (FlowLog flowLog : flowLogs) {
-            FlowLogOutput result = processFlowLog(flowLog);
-            flowLogOutputs.add(result);
+        List<FlowLogOutput> outputs = new List<FlowLogOutput>();
+        Integer expected = flowLogs == null ? 0 : flowLogs.size();
+        try {
+            // Master kill switch: skip all log construction; the outputs are still
+            // padded below to one per input.
+            if (expected > 0 && !TritonHelper.Config.isLoggingDisabled()) {
+                for (FlowLog flowLog : flowLogs) {
+                    FlowLogOutput output = new FlowLogOutput();
+                    try {
+                        output = processFlowLog(flowLog);
+                    } catch (Exception e) {
+                        // One bad entry never costs the interview, or the other entries.
+                        TritonHelper.recordFailure('flow log', e, 1);
+                    }
+                    outputs.add(output);
+                }
+                if (TritonHelper.Config.isFlowFlushBatchDisabled()) {
+                    // Publishes synchronously in this transaction. Triton.flush() never throws.
+                    Triton.flush();
+                } else {
+                    // Hands the logs to the deferred batch. addLogs never throws.
+                    List<pharos__Log__c> buffered = Triton.drain();
+                    if (!buffered.isEmpty()) {
+                        TritonFlowFlushBatch.addLogs(buffered, Triton.TRANSACTION_ID);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            TritonHelper.recordFailure('flow log', e, 0);
         }
-        Triton.instance.flush();
-        return flowLogOutputs;
+        // The invocable contract: one output per input, whatever happened above.
+        while (outputs.size() < expected) {
+            outputs.add(new FlowLogOutput());
+        }
+        return outputs;
     }
     
     @TestVisible
@@ -70,11 +99,20 @@ global with sharing class TritonFlow {
             }
         }
         
+        Decimal flowVersion;
+        if (String.isNotBlank(flowLog.flowVersion)) {
+            try {
+                flowVersion = Decimal.valueOf(flowLog.flowVersion.trim());
+            } catch (Exception e) {
+                flowDetails += Triton.SPACE_SEP + TritonHelper.formatMessage(INVALID_FLOW_VERSION, flowLog.flowVersion);
+            }
+        }
+
         //resume or start transaction if one isn't already in progress
         if(String.isNotBlank(flowLog.transactionId)) {
-            Triton.instance.resumeTransaction(flowLog.transactionId);
-        } else if(Triton.instance.TRANSACTION_ID == null) {
-            Triton.instance.startTransaction();
+            Triton.resumeTransaction(flowLog.transactionId);
+        } else if(Triton.TRANSACTION_ID == null) {
+            Triton.startTransaction();
         }
                 
         TritonBuilder builder = Triton.makeBuilder();
@@ -97,6 +135,10 @@ global with sharing class TritonFlow {
                                     .totalActiveSession(true))
                 .level(level);
 
+        if (flowVersion != null) {
+            builder.flowVersion(flowVersion);
+        }
+
         // if the log level is ERROR, create an issue
         if(level == TritonTypes.Level.ERROR) {
             builder.createIssue();
@@ -115,7 +157,7 @@ global with sharing class TritonFlow {
                         flowLog.additionalFields));
             }
         }
-        Triton.instance.addLog(builder);
+        Triton.log(builder);
         return result;
     }
 
@@ -140,6 +182,8 @@ global with sharing class TritonFlow {
         global String interviewGUID;
         @InvocableVariable(Required=false Label='Flow API Name')
         global String flowApiName;
+        @InvocableVariable(Required=false Label='Flow Version')
+        global String flowVersion;
         @InvocableVariable(Required=false Label='Level')
         global String level;
         @InvocableVariable(Required=false Label='Transaction ID')

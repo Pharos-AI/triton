@@ -23,8 +23,77 @@
 public with sharing class TritonHelper {
 
     private static final String TRANSACTION_CACHE_KEY = 'tritonTransactionId';
-    private static final Integer DEFAULT_TRANSACTION_CACHE_DURATION = 300;
-    
+
+    // Packaged defaults for the operational knobs, used when the org-level value
+    // (TritonSettings__c) is blank or unreadable. Referenced by TritonConfig.
+    private static final Integer DEFAULT_CACHE_TTL_SECONDS = 300;
+    private static final Integer DEFAULT_FLOW_FLUSH_BATCH_DELAY_MINUTES = 1;
+
+    // ─── Configuration ───────────────────────────────────────────────
+
+    /**
+     * Single entry point for all metadata-backed Triton configuration: the
+     * org-level feature switches (TritonSettings__c) and the log-level rules
+     * (Log_Level__mdt). Lazily initialized once per transaction. Tests mutate
+     * the instance's @TestVisible data rather than reading real org config.
+     */
+    public static TritonConfig Config {
+        get {
+            if (Config == null) {
+                Config = new TritonConfig();
+            }
+            return Config;
+        }
+        private set;
+    }
+
+    // ─── Publishing ──────────────────────────────────────────────────
+
+    /** Test seam: when set, publishLogs throws it inside its own guard. Only tests set it. */
+    @TestVisible
+    private static Exception publishFault;
+
+    /** Failures Triton swallowed in this transaction. Test-visible for assertions. */
+    @TestVisible
+    private static Integer failureCount = 0;
+
+    /**
+     * The one place Triton hands log records to the Pharos package. Never throws.
+     * On failure the records are dropped, not retried: after a failed flush the managed
+     * logger's own buffer is opaque, so re-adding them could publish duplicates.
+     * @param records -- the log records to publish
+     * @return true when published; false when publishing failed and the records were dropped
+     */
+    public static Boolean publishLogs(List<pharos__Log__c> records) {
+        if (records == null || records.isEmpty()) return true;
+        try {
+            if (publishFault != null) throw publishFault;
+            // Inside the guard: getInstance can throw too.
+            pharos.Logger logger = pharos.Logger.getInstance();
+            for (pharos__Log__c record : records) {
+                logger.add(record);
+            }
+            logger.flush();
+            return true;
+        } catch (Exception e) {
+            recordFailure('publish', e, records.size());
+            return false;
+        }
+    }
+
+    /**
+     * Records a failure Triton swallowed so that it never reaches the caller.
+     * Pharos cannot report a failure that may be its own, so this goes to the debug log at ERROR.
+     * @param operation -- what Triton was doing ('publish', 'log', ...)
+     * @param e -- the swallowed exception
+     * @param droppedLogs -- how many logs the failure cost
+     */
+    public static void recordFailure(String operation, Exception e, Integer droppedLogs) {
+        failureCount++;
+        System.debug(LoggingLevel.ERROR, 'Triton ' + operation + ' failed, ' + droppedLogs
+            + ' log(s) dropped: ' + e.getTypeName() + ': ' + e.getMessage());
+    }
+
     /**
      * Generates a user-specific cache key
      * @return Cache key specific to current user
@@ -34,24 +103,24 @@ public with sharing class TritonHelper {
     }
     
     /**
-     * Saves transaction ID to platform cache with user-specific key
+     * Saves transaction ID to Org cache with user-specific key
      * @param transactionId Transaction ID to cache
      */
     public static void cacheTransactionId(String transactionId) {
         try {
-            Cache.Session.put(getUserCacheKey(), transactionId, DEFAULT_TRANSACTION_CACHE_DURATION);
+            TritonCacheManager.put(getUserCacheKey(), transactionId, Config.getCacheTtlSeconds());
         } catch (Exception e) {
             // Silently handle cache failures - logging system should continue without cache
         }
     }
 
     /**
-     * Retrieves transaction ID from platform cache using user-specific key
+     * Retrieves transaction ID from Org cache using user-specific key
      * @return Cached transaction ID or null if not found
      */
     public static String getCachedTransactionId() {
         try {
-            return (String)Cache.Session.get(getUserCacheKey());
+            return (String) TritonCacheManager.get(getUserCacheKey());
         } catch (Exception e) {
             // Silently handle cache failures - logging system should continue without cache
             return null;
@@ -59,21 +128,101 @@ public with sharing class TritonHelper {
     }
 
     /**
-     * Clears transaction ID from platform cache
+     * Clears transaction ID from Org cache
      */
     public static void clearCachedTransactionId() {
-        Cache.Session.remove(getUserCacheKey());
+        TritonCacheManager.remove(getUserCacheKey());
+    }
+
+    // ─── Flow Log Org Cache helpers ───────────────────────────────────────
+
+    private static final String FLOW_LOG_CACHE_PREFIX = 'flFlush';
+    private static final String NON_ALPHANUMERIC_PATTERN = '[^a-zA-Z0-9]';
+
+    /**
+     * Builds a cache-safe key from a transaction ID by stripping non-alphanumeric characters.
+     * Org Cache keys must be alphanumeric only.
+     */
+    private static String buildFlowCacheKey(String transactionId) {
+        return FLOW_LOG_CACHE_PREFIX + transactionId.replaceAll(NON_ALPHANUMERIC_PATTERN, '');
     }
 
     /**
-    * Creates a key for log level based on:
-    * @param category -- log category field
-    * @param tye -- log type field
-    * @param area -- log functional area field
-    * @return -- a string with values in the following format: Category:{0};Type:{1};Area:{2}
-    */
-    public static String buildLogLevelKey(String category, String type, String area) {
-        return String.format('Category:{0};Type:{1};Area:{2}', new String[]{category, type, area});
+     * Saves flow logs to Org Cache keyed by transaction ID.
+     * Stores SObjects directly — no JSON serialization.
+     * Overwrites previous entry for the same transaction (last write wins).
+     * @param transactionId The transaction ID used as cache key suffix
+     * @param logs The list of log records to cache
+     * @return true if cache write succeeded, false otherwise
+     */
+    public static Boolean cacheFlowLogs(String transactionId, List<pharos__Log__c> logs) {
+        try {
+            TritonCacheManager.put(buildFlowCacheKey(transactionId), logs, Config.getCacheTtlSeconds());
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Retrieves flow logs from Org Cache by key.
+     * Casts directly from cached Object — no JSON deserialization.
+     * @param key The full cache key (including prefix)
+     * @return List of cached log records, or empty list on failure
+     */
+    public static List<pharos__Log__c> getCachedFlowLogs(String key) {
+        try {
+            Object data = TritonCacheManager.get(key);
+            if (data != null) {
+                return (List<pharos__Log__c>) data;
+            }
+        } catch (Exception e) {
+            // Silently handle cache failures
+        }
+        return new List<pharos__Log__c>();
+    }
+
+    /**
+     * Returns all Org Cache keys matching the flow log prefix.
+     * Used by the flush batch to discover pending logs across transactions.
+     * @return Set of cache keys for pending flow logs
+     */
+    public static Set<String> getFlowLogCacheKeys() {
+        try {
+            Set<String> allKeys = TritonCacheManager.getKeys();
+            Set<String> flowKeys = new Set<String>();
+            for (String key : allKeys) {
+                if (key.startsWith(FLOW_LOG_CACHE_PREFIX)) {
+                    flowKeys.add(key);
+                }
+            }
+            return flowKeys;
+        } catch (Exception e) {
+            // Silently handle cache failures
+        }
+        return new Set<String>();
+    }
+
+    /**
+     * Removes a flow log cache entry after processing.
+     * @param key The full cache key to remove
+     */
+    public static void removeFlowLogCacheKey(String key) {
+        try {
+            TritonCacheManager.remove(key);
+        } catch (Exception e) {
+            // Silently handle cache failures
+        }
+    }
+
+    /**
+     * Removes a transaction's flow log cache entry, so no later batch publishes it.
+     * Null-safe: a null transaction id has no cache entry.
+     * @param transactionId The transaction ID whose cache entry to remove
+     */
+    public static void removeFlowLogs(String transactionId) {
+        if (transactionId == null) return;
+        removeFlowLogCacheKey(buildFlowCacheKey(transactionId));
     }
 
     /**
@@ -105,11 +254,38 @@ public with sharing class TritonHelper {
     }
 
     /**
-     * Returns the current stack trace as a string, excluding any Triton-related entries.
-     * This method works by throwing and catching an exception to obtain the stack trace,
-     * then filtering out any lines containing 'Triton' to provide a clean trace of the
-     * actual application code path.
-     * 
+     * The Triton framework's own runtime classes. Stack frames belonging to these
+     * are dropped when filtering a trace or deriving an operation, so that a log
+     * is always attributed to the calling application code rather than to Triton.
+     *
+     * Matched by exact class name rather than by looking for 'Triton' anywhere in
+     * the frame, which would also swallow application classes whose names merely
+     * contain the word (a customer's TritonWrapper, or this framework's own test
+     * classes). Add an entry here when a new runtime class is introduced.
+     */
+    private static final Set<String> TRITON_FRAMEWORK_CLASSES = new Set<String>{
+        'Triton',
+        'TritonBuilder',
+        'TritonCacheManager',
+        'TritonFlow',
+        'TritonFlowFlushBatch',
+        'TritonHelper',
+        'TritonLwc',
+        // Defensive, as the comment above asks: TritonSpanContext never logs, and a
+        // mark's trace is captured before any call into it, so no test can reach a
+        // trace where this entry is what removes a frame.
+        'TritonSpanContext',
+        'TritonTypes'
+    };
+
+    private static final String CLASS_FRAME_PREFIX = 'Class.';
+
+    /**
+     * Returns the current stack trace as a string, excluding the Triton framework's
+     * own entries. This method works by throwing and catching an exception to obtain
+     * the stack trace, then filtering out framework frames to provide a clean trace
+     * of the actual application code path.
+     *
      * @return String The filtered stack trace with lines joined by newline characters
      */
     public static String getCurrentStackTrace() {
@@ -121,8 +297,9 @@ public with sharing class TritonHelper {
     }
 
     /**
-     * Test-visible method that processes a stack trace string and filters out Triton-related entries.
-     * 
+     * Test-visible method that processes a stack trace string and filters out the
+     * Triton framework's own entries.
+     *
      * @param stackTraceString The raw stack trace string to process
      * @return String The filtered stack trace with lines joined by newline characters
      */
@@ -131,11 +308,40 @@ public with sharing class TritonHelper {
         List<String> stackLines = new List<String>();
         for(String line : stackTraceString.split('\n')) {
             String trimmedLine = line.trim();
-            if (!trimmedLine.contains('Triton')) {
+            if (!isTritonFrame(trimmedLine)) {
                 stackLines.add(trimmedLine);
             }
         }
         return String.join(stackLines, '\n');
+    }
+
+    /**
+     * True when a stack trace frame belongs to a Triton framework class.
+     *
+     * Frames look like 'Class.[namespace.]MyClass[.InnerClass].method: line n, column m'.
+     * Every segment except the trailing method name is checked against
+     * TRITON_FRAMEWORK_CLASSES, so both namespaced and inner-class frames are
+     * recognised while a caller's method that merely happens to be named after a
+     * framework class is not. Triggers and anonymous blocks are always caller code.
+     *
+     * @param stackLine A single, trimmed stack trace line
+     * @return true when the frame is Triton's own
+     */
+    @TestVisible
+    private static Boolean isTritonFrame(String stackLine) {
+        if (String.isBlank(stackLine) || !stackLine.startsWith(CLASS_FRAME_PREFIX)) return false;
+
+        // Drop the 'Class.' prefix and the trailing ': line n, column m'.
+        String frame = stackLine.substringAfter(CLASS_FRAME_PREFIX);
+        Integer colonIndex = frame.indexOf(':');
+        if (colonIndex != -1) frame = frame.substring(0, colonIndex);
+
+        List<String> segments = frame.trim().split('\\.');
+        // Stop before the last segment: that is the method name.
+        for (Integer i = 0; i < segments.size() - 1; i++) {
+            if (TRITON_FRAMEWORK_CLASSES.contains(segments.get(i))) return true;
+        }
+        return false;
     }
 
     /**
@@ -275,7 +481,7 @@ public with sharing class TritonHelper {
 
         /**
          * Controls whether stack trace is enhanced by Pharos
-         * Only applicable to Apex and Integration logs
+         * Only applicable to Apex logs
          */
         public PostProcessingControlsBuilder stackTrace(Boolean value) {
             controls.put(STACK_TRACE_KEY, value);
@@ -320,11 +526,14 @@ public with sharing class TritonHelper {
     }
 
     /**
-     * Extracts the operation (Class.Method) from a stack trace string
-     * Takes the topmost non-Triton entry from the stack trace
-     * 
+     * Extracts the operation from a stack trace string.
+     * Takes the topmost entry that does not belong to the Triton framework itself,
+     * so the operation names the calling application code.
+     *
      * @param stackTrace The stack trace string to parse
-     * @return String in format "ClassName.MethodName"
+     * @return The frame text before the line/column suffix, retaining the stack's
+     *         own 'Class.' prefix (for example 'Class.AccountService.update'), or
+     *         an empty string when no suitable frame is found
      */
     public static String getOperation(String stackTrace) {
         if (String.isBlank(stackTrace)) return '';
@@ -338,10 +547,10 @@ public with sharing class TritonHelper {
             
             // Line format is typically: Class.Method: line n, column m
             String trimmedLine = line.trim();
-            
-            // Skip Triton-related entries
-            if (trimmedLine.contains('Triton')) continue;
-            
+
+            // Skip the Triton framework's own entries
+            if (isTritonFrame(trimmedLine)) continue;
+
             // Extract the Class.Method part (everything before the first colon)
             Integer colonIndex = trimmedLine.indexOf(':');
             if (colonIndex == -1) continue;
@@ -455,7 +664,422 @@ public with sharing class TritonHelper {
         if (fields != null && !fields.isEmpty()) {
             errorMsg += ' | Fields: ' + String.join(fields, ', ');
         }
-        
+
         return errorMsg;
+    }
+
+    /**
+     * Detects and formats the current Salesforce execution context.
+     * For triggers: captures operation type, sObject name, and record count.
+     * For async contexts: labels the execution type.
+     * Returns empty string for standard synchronous execution.
+     */
+    public static String formatExecutionContext() {
+        List<String> parts = new List<String>();
+
+        if(Trigger.isExecuting) {
+            parts.add('Execution Context: Trigger');
+            parts.add('Operation: ' + Trigger.operationType);
+            String sObjectName = Trigger.new != null && !Trigger.new.isEmpty()
+                ? Trigger.new[0].getSObjectType().getDescribe().getName()
+                : Trigger.old != null && !Trigger.old.isEmpty()
+                    ? Trigger.old[0].getSObjectType().getDescribe().getName()
+                    : 'Unknown';
+            parts.add('Object: ' + sObjectName);
+            Integer batchSize = Trigger.new != null ? Trigger.new.size() : Trigger.old.size();
+            parts.add('Batch Size: ' + batchSize);
+        } else if(System.isBatch()) {
+            parts.add('Execution Context: Batch');
+        } else if(System.isQueueable()) {
+            parts.add('Execution Context: Queueable');
+        } else if(System.isScheduled()) {
+            parts.add('Execution Context: Scheduled');
+        } else if(System.isFuture()) {
+            parts.add('Execution Context: Future');
+        }
+
+        return parts.isEmpty() ? '' : String.join(parts, '\n');
+    }
+
+    // ─── Configuration types ─────────────────────────────────────────
+
+    /**
+     * Holds all metadata-backed Triton configuration and the policy that
+     * consumes it: the org-level feature switches (TritonSettings__c) and
+     * log-level filtering (Log_Level__mdt). Reached via TritonHelper.Config.
+     */
+    public class TritonConfig {
+
+        /**
+         * Cached org-level Triton settings, read once per transaction.
+         * @TestVisible so tests inject flag values without DML.
+         */
+        @TestVisible
+        TritonSettings__c settings {
+            get {
+                if (settings == null) {
+                    settings = TritonSettings__c.getOrgDefaults();
+                }
+                return settings;
+            }
+            set;
+        }
+
+        /**
+         * Raw Log_Level__mdt records. @TestVisible so tests supply their own.
+         *
+         * Tests start from an empty set rather than the org's records: log level
+         * metadata is deployed configuration, so inheriting it would make every
+         * test that logs pass or fail depending on which levels happen to exist
+         * in the target org. Tests that exercise filtering assign their own rules.
+         */
+        @TestVisible
+        Log_Level__mdt[] logLevelsMdt = Test.isRunningTest()
+            ? new Log_Level__mdt[]{}
+            : Log_Level__mdt.getAll().values();
+
+        /**
+         * Cached, parsed Log_Level__mdt rules used to decide whether a log is
+         * verbose enough to be persisted. Lazily built from logLevelsMdt and
+         * reset by tests by assigning null.
+         */
+        @TestVisible
+        List<LogLevelRule> logLevels {
+            get {
+                if (logLevels == null) {
+                    logLevels = new List<LogLevelRule>();
+                    componentScopedLevelsExist = false;
+                    for (Log_Level__mdt ll : logLevelsMdt) {
+                        LogLevelRule rule;
+                        try {
+                            rule = new LogLevelRule(ll);
+                        } catch (Exception e) {
+                            // Fail-safe: a malformed row (e.g. blank Level__c) becomes
+                            // inert instead of throwing into the host transaction.
+                            continue;
+                        }
+                        logLevels.add(rule);
+                        componentScopedLevelsExist = componentScopedLevelsExist || rule.component != null;
+                    }
+                }
+                return logLevels;
+            }
+            set;
+        }
+
+        /**
+         * Whether any parsed rule is component-scoped. Computed once alongside
+         * logLevels rather than rescanned per log.
+         */
+        private Boolean componentScopedLevelsExist = null;
+
+        /**
+         * True when at least one configured level is scoped to a component.
+         * Resolving a log's component requires deriving the operation from the
+         * stack trace, which is comparatively expensive; this lets callers pay
+         * that cost only when a component-scoped rule could actually match.
+         */
+        public Boolean hasComponentScopedLevels() {
+            // Touch the getter so the flag is populated on first use.
+            if (logLevels.isEmpty()) return false;
+            return componentScopedLevelsExist == true;
+        }
+
+        /**
+         * True when all Triton logging is disabled via the org-level switch.
+         * Fail-safe: any error resolves to false (logging enabled) so a config
+         * read hiccup never silently drops logs.
+         */
+        public Boolean isLoggingDisabled() {
+            try {
+                return settings != null && settings.Disable_Logging__c == true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
+        /**
+         * True when the deferred Flow flush batch is disabled. When disabled,
+         * Flow logs are flushed immediately instead of via the batch.
+         * Fail-safe: any error resolves to false (batch enabled).
+         */
+        public Boolean isFlowFlushBatchDisabled() {
+            try {
+                return settings != null && settings.Disable_Flow_Flush_Batch__c == true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
+        /**
+         * Cache lifetime, in seconds, for Triton's Org Cache entries (the flow-log
+         * buffer and the transaction-id key). Read live from Cache_TTL_Minutes__c
+         * (org defaults) and converted to seconds. A blank/negative value
+         * falls back to the packaged default. Fail-safe: any error resolves
+         * to the default.
+         */
+        public Integer getCacheTtlSeconds() {
+            try {
+                Decimal minutes = TritonSettings__c.getOrgDefaults().Cache_TTL_Minutes__c;
+                return minutes != null && minutes >= 0
+                    ? (Integer) (minutes * 60)
+                    : DEFAULT_CACHE_TTL_SECONDS;
+            } catch (Exception e) {
+                return DEFAULT_CACHE_TTL_SECONDS;
+            }
+        }
+
+        /**
+         * Delay, in minutes, before the deferred Flow flush batch runs. Read live
+         * from Flow_Flush_Batch_Delay_Minutes__c (org defaults). A blank/negative
+         * value falls back to the packaged default. Fail-safe: any error resolves
+         * to the default.
+         */
+        public Integer getFlowFlushBatchDelayMinutes() {
+            try {
+                Decimal minutes = TritonSettings__c.getOrgDefaults().Flow_Flush_Batch_Delay_Minutes__c;
+                return minutes != null && minutes >= 0
+                    ? minutes.intValue()
+                    : DEFAULT_FLOW_FLUSH_BATCH_DELAY_MINUTES;
+            } catch (Exception e) {
+                return DEFAULT_FLOW_FLUSH_BATCH_DELAY_MINUTES;
+            }
+        }
+
+        /**
+        * Checks if a log should be persisted based on the configured log levels.
+        *
+        * A Log_Level__mdt record "targets" a log when every attribute it specifies
+        * (Category, Type, Area, User Id, Component Name) matches the log. Unspecified
+        * (null) attributes act as wildcards, so a record can scope a level as broadly
+        * (a global default) or as narrowly (a single user or component) as needed.
+        *
+        * Rules are resolved by specificity, not additively: among all rules that
+        * target the log, the single most specific one decides, and it overrides
+        * every less specific rule in both directions. A narrow rule can therefore
+        * lower verbosity below a broader rule, not only raise it above -- which is
+        * what makes it possible to silence one noisy component or user while a
+        * permissive global default stays in place.
+        *
+        * Specificity is ranked by which attributes a rule names, from narrowest to
+        * broadest scope: User Id > Component Name > Area > Type > Category. Each
+        * attribute contributes a distinct weight, so any rule naming a User Id
+        * outranks any rule that does not, and the ordering is total -- no two
+        * different attribute combinations can tie. Rules that name the exact same
+        * attributes are equally specific; those resolve to the most restrictive
+        * (least verbose) level so that metadata order never changes the outcome.
+        *
+        * When no configured level targets the log at all, the log is allowed
+        * through by default.
+        * @param log -- Pharos log record to be saved
+        */
+        public Boolean isLogAllowed(pharos__Log__c log) {
+            if (String.isBlank(log.Log_Level__c) || logLevels.isEmpty()) return true;
+
+            TritonTypes.Level currentLevel;
+            try {
+                currentLevel = TritonTypes.Level.valueOf(log.Log_Level__c);
+            } catch (Exception e) {
+                // Fail open: an unparsable log level must never drop the log.
+                return true;
+            }
+
+            String logUserId = normalizeUserId(log.pharos__User_Id__c);
+            String logComponent = getComponentName(log);
+
+            TritonTypes.Level effectiveLevel = null;
+            Integer bestSpecificity = -1;
+            for (LogLevelRule rule : logLevels) {
+                if (!rule.targets(log, logUserId, logComponent)) continue;
+
+                if (rule.specificity > bestSpecificity) {
+                    // A strictly more specific rule replaces whatever we had.
+                    bestSpecificity = rule.specificity;
+                    effectiveLevel = rule.level;
+                } else if (rule.specificity == bestSpecificity && rule.level.ordinal() < effectiveLevel.ordinal()) {
+                    // Equally specific: keep the most restrictive level so that
+                    // the outcome does not depend on metadata ordering.
+                    effectiveLevel = rule.level;
+                }
+            }
+
+            // No configured level targets this log -- allow it through by default.
+            if (effectiveLevel == null) return true;
+
+            return compareLevel(effectiveLevel, currentLevel);
+        }
+    }
+
+    /**
+    * Resolves the component name used for log level matching.
+    * Flows are identified by their API name; Apex/LWC by the class/component
+    * portion of the Apex Name (the text before the first '.').
+    *
+    * Stack-trace-derived Apex Names keep the frame's leading 'Class.' prefix
+    * (for example 'Class.AccountService.updateAccounts'), which is the format
+    * persisted on the log record. That prefix is stripped here so the component
+    * resolves to the class name rather than the literal 'Class'. LWC names
+    * ('myComponent.Proxy.method') and explicitly supplied operations have no
+    * prefix and are unaffected.
+    * @param log -- Pharos log record being evaluated
+    * @return the component name, or null/blank when it cannot be determined
+    */
+    @TestVisible
+    private static String getComponentName(pharos__Log__c log) {
+        if (String.isNotBlank(log.pharos__Flow_API_Name__c)) return log.pharos__Flow_API_Name__c;
+
+        String apexName = log.pharos__Apex_Name__c;
+        if (String.isBlank(apexName)) return apexName;
+
+        if (apexName.startsWith(CLASS_FRAME_PREFIX)) {
+            apexName = apexName.substringAfter(CLASS_FRAME_PREFIX);
+        }
+
+        Integer dotIndex = apexName.indexOf('.');
+        return dotIndex == -1 ? apexName : apexName.substring(0, dotIndex);
+    }
+
+    /**
+    * Salesforce Ids are 18 characters in Apex, but Log Level metadata stores the
+    * 15-character form. Matching is performed on the case-sensitive 15-character
+    * prefix so both representations line up.
+    * @param userId -- a 15 or 18 character user Id (or null)
+    * @return the 15-character prefix, or the original value when shorter/blank
+    */
+    @TestVisible
+    private static String normalizeUserId(String userId) {
+        return String.isNotBlank(userId) && userId.length() > 15 ? userId.substring(0, 15) : userId;
+    }
+
+    /**
+    * Normalizes a Log_Level__mdt scope field to the blank-as-wildcard contract:
+    * rows can arrive with null or ''/whitespace blanks depending on the tooling
+    * that created them, and all must behave the same.
+    * @param value -- raw rule field value
+    * @return null when blank, otherwise the trimmed value
+    */
+    @TestVisible
+    private static String normalizeRuleValue(String value) {
+        return String.isBlank(value) ? null : value.trim();
+    }
+
+    /**
+    * Log level specificity weights, ordered from the narrowest scope to the
+    * broadest: a User Id targets one person, a Component one class/flow/LWC,
+    * while a Category covers an entire technology. Using distinct powers of two
+    * makes a rule's score a bit set, so the ordering is total and any rule naming
+    * a narrower attribute outranks every rule that does not -- for example a
+    * User Id rule (16) beats Category + Type + Area (1 + 2 + 4 = 7).
+    */
+    private static final Integer LEVEL_WEIGHT_USER_ID = 16;
+    private static final Integer LEVEL_WEIGHT_COMPONENT = 8;
+    private static final Integer LEVEL_WEIGHT_AREA = 4;
+    private static final Integer LEVEL_WEIGHT_TYPE = 2;
+    private static final Integer LEVEL_WEIGHT_CATEGORY = 1;
+
+    /**
+    * In-memory representation of a Log_Level__mdt record, parsed once and cached
+    * so that log level checks avoid re-reading and re-parsing metadata per log.
+    */
+    private class LogLevelRule {
+        private final String category;
+        private final String type;
+        private final String area;
+        private final String userId;
+        private final String component;
+        private final TritonTypes.Level level;
+
+        /**
+        * How narrowly this rule is scoped. Higher wins when several rules target
+        * the same log. Computed once at parse time to keep the check allocation
+        * free on the hot path.
+        */
+        private final Integer specificity;
+
+        private LogLevelRule(Log_Level__mdt mdt) {
+            this.category = normalizeRuleValue(mdt.Category__c);
+            this.type = normalizeRuleValue(mdt.Type__c);
+            this.area = normalizeRuleValue(mdt.Area__c);
+            this.userId = normalizeUserId(normalizeRuleValue(mdt.User_Id__c));
+            this.component = normalizeRuleValue(mdt.Component_Name__c);
+            this.level = TritonTypes.Level.valueOf(mdt.Level__c);
+            this.specificity =
+                (this.userId != null ? LEVEL_WEIGHT_USER_ID : 0) +
+                (this.component != null ? LEVEL_WEIGHT_COMPONENT : 0) +
+                (this.area != null ? LEVEL_WEIGHT_AREA : 0) +
+                (this.type != null ? LEVEL_WEIGHT_TYPE : 0) +
+                (this.category != null ? LEVEL_WEIGHT_CATEGORY : 0);
+        }
+
+        /**
+        * True when every attribute specified on this rule matches the log.
+        * Null (unspecified) rule attributes are treated as wildcards.
+        */
+        private Boolean targets(pharos__Log__c log, String logUserId, String logComponent) {
+            // User ids compare case-sensitively (15-char Ids are case-sensitive base 62).
+            return matches(category, log.pharos__Category__c)
+                && matches(type, log.pharos__Type__c)
+                && matches(area, log.pharos__Area__c)
+                && (userId == null || userId.equals(logUserId))
+                && matches(component, logComponent);
+        }
+
+        // Case-insensitive, null-safe comparison: rule values are free text
+        // authored in the console, so matching must be forgiving on case.
+        private Boolean matches(String ruleValue, String logValue) {
+            return ruleValue == null || ruleValue.equalsIgnoreCase(logValue);
+        }
+    }
+
+    /**
+     * ---------------------------
+     * Performance mark support.
+     * ---------------------------
+     *
+     * The stateless half of Triton's performance marks: the literals both paired
+     * records are built from, the name derivation, and the request id the span stack
+     * is rooted at. Triton keeps everything that is mark state -- the span stack, the
+     * open mark list -- and reads its naming and its literals from here.
+     */
+
+    /**
+     * Summary prefixes for a mark's two halves, matched verbatim by the span converter
+     * and identical to the ones the LWC logger emits.
+     */
+    public static final String MARK_STARTED_PREFIX = 'Performance started: ';
+    public static final String MARK_COMPLETED_PREFIX = 'Performance: ';
+    public static final String MARK_DURATION_PREFIX = 'Duration: ';
+    public static final String MARK_DURATION_SUFFIX = 'ms';
+
+    /** Name given to a mark whose name cannot be derived from the stack trace. */
+    private static final String ANONYMOUS_MARK_NAME = 'AnonymousMark';
+
+    /**
+     * Occurrence counter behind the anonymous mark name fallback. Static lifetime is
+     * the execution context, so the numbering restarts with every request -- exactly
+     * as it did while this lived on Triton, and nothing resets it explicitly.
+     */
+    private static Integer anonymousMarkCounter = 0;
+
+    /**
+    * Derives a mark name from a stack trace: the topmost application frame, minus the
+    * 'Class.' prefix getOperation retains. Falls back to a counted anonymous name.
+    * @param stackTrace -- trace captured at the call site
+    * @return the derived mark name, never blank
+    */
+    public static String deriveMarkName(String stackTrace) {
+        String operation = getOperation(stackTrace);
+        if (String.isNotBlank(operation) && operation.startsWith(CLASS_FRAME_PREFIX)) {
+            operation = operation.substringAfter(CLASS_FRAME_PREFIX);
+        }
+        if (String.isNotBlank(operation)) return operation;
+
+        anonymousMarkCounter++;
+        return ANONYMOUS_MARK_NAME + anonymousMarkCounter;
+    }
+
+    /** The request id -- the root sentinel of an execution context's span stack. */
+    public static String requestId() {
+        return System.Request.getCurrent().getRequestId();
     }
 }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Disable_Flow_Flush_Batch__c</fullName>
+    <defaultValue>false</defaultValue>
+    <description>When checked, Flow logs are flushed immediately (synchronously, in-transaction) instead of via the delayed TritonFlowFlushBatch. No logs are lost.</description>
+    <externalId>false</externalId>
+    <inlineHelpText>When checked, Flow logs flush immediately instead of using the delayed batch.</inlineHelpText>
+    <label>Disable Flow Flush Batch</label>
+    <type>Checkbox</type>
+</CustomField>

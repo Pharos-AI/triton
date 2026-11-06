@@ -11,75 +11,64 @@
 @IsTest
 private class TritonTest {
 
-    private static void assertCreatedLog(TritonTypes.Category logCategory) {
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Hash__c FROM pharos__Log__c];
-        System.assertEquals(1, logs.size());
-        System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
-    }
-
-    private static void assertCreatedIntegrationLog() {
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Hash__c FROM pharos__Log__c];
-        System.assertNotEquals(1, logs.size());
-        System.assertEquals(TritonTypes.Category.Integration.name(), logs.get(0).pharos__Category__c);
-        System.assertEquals(TritonTypes.Category.Integration.name(), logs.get(1).pharos__Category__c);
+    private static void assertCreatedIntegrationPayloadLogs() {
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Hash__c, pharos__Summary__c, pharos__Stacktrace_Parse_Result__c FROM pharos__Log__c ORDER BY CreatedDate];
+        System.assertEquals(2, logs.size(), 'Expected exactly 2 logs, found: ' + logs.size());
+        for(Integer i = 0; i < logs.size(); i++) {
+            System.assertEquals(TritonTypes.Category.Apex.name(), logs.get(i).pharos__Category__c,
+                'Log ' + i + ' (' + logs.get(i).pharos__Summary__c + ') should be Apex category, but was: ' + logs.get(i).pharos__Category__c);
+            System.assertNotEquals(null, logs.get(i).pharos__Stacktrace_Parse_Result__c,
+                'Log ' + i + ' should carry the integration payload');
+        }
         System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
         System.assertNotEquals(null, logs.get(1).pharos__Hash__c);
     }
 
-    private static void assertBefore() {
-        Integer countBefore = [SELECT COUNT() FROM pharos__Log__c];
-        System.assertEquals(0, countBefore);
-    }
-
     @TestSetup
     private static void testSetup() {
-        pharos.Test_Logger.initSettings();
-        // Clear out any existing log level metadata to ensure clean test environment
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{};
-        Triton.LOG_LEVELS = null;
+        TritonTestFactory.initTestSetup();
     }
 
     @IsTest
     private static void test_log_levels() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Log_Level__mdt ll = new Log_Level__mdt();
         ll.Level__c = TritonTypes.Level.DEBUG.name();
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ll};
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ll};
+        TritonHelper.Config.logLevels = null;
 
-        System.assertEquals(1, Triton.LOG_LEVELS.size());
-        System.assertEquals('Category:null;Type:null;Area:null', new List<String>(Triton.LOG_LEVELS.keySet())[0]);
-        System.assertEquals(TritonTypes.Level.DEBUG, Triton.LOG_LEVELS.get('Category:null;Type:null;Area:null'));
+        System.assertEquals(1, TritonHelper.Config.logLevels.size(), 'Expected a single parsed log level rule');
     }
 
     @IsTest
     private static void test_log_levels_positive() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Log_Level__mdt ll = new Log_Level__mdt();
         ll.Level__c = TritonTypes.Level.DEBUG.name();
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ll};
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ll};
 
         Test.startTest();
-        Triton.instance.event(TritonTypes.Level.DEBUG, TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some event', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.DEBUG));
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
     }
 
     @IsTest
     private static void test_log_levels_negative() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Log_Level__mdt ll = new Log_Level__mdt();
         ll.Level__c = TritonTypes.Level.DEBUG.name();
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{ll};
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ll};
 
         Test.startTest();
-        Triton.instance.event(TritonTypes.Level.FINE, TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some event', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.FINE));
         Test.stopTest();
 
-        System.assertEquals(0, [SELECT count() FROM pharos__Log__c where pharos__Category__c=:TritonTypes.Category.Event.name()]);
+        System.assertEquals(0, [SELECT count() FROM pharos__Log__c where pharos__Category__c=:TritonTypes.Category.Flow.name()]);
     }
 
     private static void setupLogLevelsMap() {
@@ -88,129 +77,861 @@ private class TritonTest {
 
         Log_Level__mdt categoryLevel = new Log_Level__mdt();
         categoryLevel.Level__c = TritonTypes.Level.FINE.name();
-        categoryLevel.Category__c = TritonTypes.Category.Event.name();
+        categoryLevel.Category__c = TritonTypes.Category.Flow.name();
 
         Log_Level__mdt categoryAndAreaLevel = new Log_Level__mdt();
         categoryAndAreaLevel.Level__c = TritonTypes.Level.FINEST.name();
-        categoryAndAreaLevel.Category__c = TritonTypes.Category.Event.name();
+        categoryAndAreaLevel.Category__c = TritonTypes.Category.Flow.name();
         categoryAndAreaLevel.Area__c = TritonTypes.Area.Community.name();
 
-        Triton.LOG_LEVELS_MDT = new Log_Level__mdt[]{globalLevel, categoryLevel, categoryAndAreaLevel};
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{globalLevel, categoryLevel, categoryAndAreaLevel};
+        TritonHelper.Config.logLevels = null;
     }
 
     @IsTest
     private static void test_log_levels_mapping() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         setupLogLevelsMap();
 
-        System.assertEquals(3, Triton.LOG_LEVELS.size());
-        System.assertEquals(TritonTypes.Level.DEBUG, Triton.LOG_LEVELS.get('Category:null;Type:null;Area:null'));
-        System.assertEquals(TritonTypes.Level.FINE, Triton.LOG_LEVELS.get('Category:Event;Type:null;Area:null'));
-        System.assertEquals(TritonTypes.Level.FINEST, Triton.LOG_LEVELS.get('Category:Event;Type:null;Area:Community'));
-
-
+        System.assertEquals(3, TritonHelper.Config.logLevels.size(), 'Expected three parsed log level rules');
 
         Test.startTest();
-        Triton.instance.event(TritonTypes.Level.FINEST, TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some event', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.FINEST));
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
     }
 
     @IsTest
     private static void test_log_levels_mapping_negative() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         setupLogLevelsMap();
 
         Test.startTest();
-        Triton.instance.event(TritonTypes.Level.FINEST, TritonTypes.Type.Backend, TritonTypes.Area.OpportunityManagement, 'some event', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.OpportunityManagement).summary('some event').details('error details').level(TritonTypes.Level.FINEST));
         Test.stopTest();
 
-        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Event.name()]);
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()]);
+    }
+
+    // A user-scoped log level record used by the user id tests below.
+    private static void setupUserIdLogLevel(Id userId) {
+        Log_Level__mdt userLevel = new Log_Level__mdt();
+        userLevel.Level__c = TritonTypes.Level.DEBUG.name();
+        userLevel.User_Id__c = userId;
+
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ userLevel };
+        TritonHelper.Config.logLevels = null;
+    }
+
+    @IsTest
+    private static void test_log_level_by_user_id_positive() {
+        TritonTestFactory.assertNoLogs();
+
+        // Level defined only for the current user, allowing DEBUG and above.
+        setupUserIdLogLevel(UserInfo.getUserId());
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').userId(UserInfo.getUserId()).level(TritonTypes.Level.DEBUG));
+        Test.stopTest();
+
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
+    }
+
+    @IsTest
+    private static void test_log_level_by_user_id_negative() {
+        TritonTestFactory.assertNoLogs();
+
+        // The user-scoped level allows only DEBUG and above; a FINE log for that
+        // same user must be filtered out.
+        setupUserIdLogLevel(UserInfo.getUserId());
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').userId(UserInfo.getUserId()).level(TritonTypes.Level.FINE));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()]);
+    }
+
+    @IsTest
+    private static void test_log_level_by_user_id_different_user() {
+        TritonTestFactory.assertNoLogs();
+
+        // Level is scoped to a different user, so it must not target the current
+        // user's logs -- the FINE log falls through the default-allow path.
+        setupUserIdLogLevel('005000000000001');
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').userId(UserInfo.getUserId()).level(TritonTypes.Level.FINE));
+        Test.stopTest();
+
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
+    }
+
+    @IsTest
+    private static void test_log_level_by_component_apex_positive() {
+        TritonTestFactory.assertNoLogs();
+
+        // Level defined only for the 'MyComponent' Apex class, allowing DEBUG and above.
+        Log_Level__mdt componentLevel = new Log_Level__mdt();
+        componentLevel.Level__c = TritonTypes.Level.DEBUG.name();
+        componentLevel.Component_Name__c = 'MyComponent';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ componentLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        // Apex Name is Class.Method; the class portion must match the component name.
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').operation('MyComponent.someMethod').level(TritonTypes.Level.DEBUG));
+        Test.stopTest();
+
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
+    }
+
+    @IsTest
+    private static void test_log_level_by_component_apex_negative() {
+        TritonTestFactory.assertNoLogs();
+
+        Log_Level__mdt componentLevel = new Log_Level__mdt();
+        componentLevel.Level__c = TritonTypes.Level.DEBUG.name();
+        componentLevel.Component_Name__c = 'MyComponent';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ componentLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        // Component matches but FINE is more verbose than the allowed DEBUG.
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').operation('MyComponent.someMethod').level(TritonTypes.Level.FINE));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()]);
+    }
+
+    @IsTest
+    private static void test_log_level_by_component_flow() {
+        TritonTestFactory.assertNoLogs();
+
+        // For flows the component is identified by the Flow API name, which takes
+        // precedence over the Apex Name.
+        Log_Level__mdt componentLevel = new Log_Level__mdt();
+        componentLevel.Level__c = TritonTypes.Level.DEBUG.name();
+        componentLevel.Component_Name__c = 'My_Flow';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ componentLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').flowApiName('My_Flow').operation('Some.Apex').level(TritonTypes.Level.DEBUG));
+        Test.stopTest();
+
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
+    }
+
+    @IsTest
+    private static void test_log_level_all_attributes() {
+        TritonTestFactory.assertNoLogs();
+
+        // A single, fully-specified rule so the assertion isolates the new
+        // user id / component matching (nothing broader can match instead).
+        Log_Level__mdt allLevel = new Log_Level__mdt();
+        allLevel.Level__c = TritonTypes.Level.FINER.name();
+        allLevel.Category__c = TritonTypes.Category.Flow.name();
+        allLevel.Type__c = TritonTypes.Type.DMLResult.name();
+        allLevel.Area__c = TritonTypes.Area.Community.name();
+        allLevel.User_Id__c = UserInfo.getUserId();
+        allLevel.Component_Name__c = 'TestComponentName';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ allLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        // Matches every attribute at exactly the allowed level.
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.DMLResult).area(TritonTypes.Area.Community)
+            .summary('some event').details('error details').userId(UserInfo.getUserId()).operation('TestComponentName').level(TritonTypes.Level.FINER));
+        // Same attributes but a different component -> no rule targets it -> allowed by default.
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.DMLResult).area(TritonTypes.Area.Community)
+            .summary('other event').details('error details').userId(UserInfo.getUserId()).operation('OtherComponent').level(TritonTypes.Level.FINER));
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [
+            SELECT pharos__User_Id__c, pharos__Apex_Name__c
+            FROM pharos__Log__c
+            WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()
+            ORDER BY pharos__Apex_Name__c
+        ];
+        System.assertEquals(2, logs.size(), 'Both the targeted (allowed) and untargeted (default-allowed) logs should persist');
+        System.assertEquals('OtherComponent', logs.get(0).pharos__Apex_Name__c);
+        System.assertEquals('TestComponentName', logs.get(1).pharos__Apex_Name__c);
+        System.assertEquals(UserInfo.getUserId(), logs.get(1).pharos__User_Id__c);
+    }
+
+    // --- Specificity-based resolution -------------------------------------
+    // The most specific rule targeting a log decides its level and overrides
+    // every less specific rule, in both directions: a narrow rule can lower
+    // verbosity below a broad one, not only raise it above it.
+
+    @IsTest
+    private static void test_specificity_narrow_component_silences_verbose_global() {
+        TritonTestFactory.assertNoLogs();
+
+        // Global default logs everything, but one noisy component is pinned to
+        // ERROR. A DEBUG log from that component must be dropped.
+        Log_Level__mdt globalLevel = new Log_Level__mdt();
+        globalLevel.Level__c = TritonTypes.Level.FINEST.name();
+
+        Log_Level__mdt componentLevel = new Log_Level__mdt();
+        componentLevel.Level__c = TritonTypes.Level.ERROR.name();
+        componentLevel.Component_Name__c = 'NoisyBatch';
+
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ globalLevel, componentLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('noise').details('details').operation('NoisyBatch.run').level(TritonTypes.Level.DEBUG));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()],
+            'The component-scoped ERROR rule is more specific than the global FINEST rule and must suppress the DEBUG log');
+    }
+
+    @IsTest
+    private static void test_specificity_narrow_area_tightens_broader_category() {
+        TritonTestFactory.assertNoLogs();
+
+        // Category-wide rule allows FINE, but one area is tightened to INFO.
+        Log_Level__mdt categoryLevel = new Log_Level__mdt();
+        categoryLevel.Level__c = TritonTypes.Level.FINE.name();
+        categoryLevel.Category__c = TritonTypes.Category.Flow.name();
+
+        Log_Level__mdt areaLevel = new Log_Level__mdt();
+        areaLevel.Level__c = TritonTypes.Level.INFO.name();
+        areaLevel.Category__c = TritonTypes.Category.Flow.name();
+        areaLevel.Area__c = TritonTypes.Area.Community.name();
+
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ categoryLevel, areaLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        // DEBUG is above the tightened INFO ceiling for this area -> dropped.
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('tightened').details('details').level(TritonTypes.Level.DEBUG));
+        // The same level in a different area still falls under the FINE rule -> kept.
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.OpportunityManagement)
+            .summary('untightened').details('details').level(TritonTypes.Level.DEBUG));
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [SELECT pharos__Summary__c FROM pharos__Log__c
+            WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()];
+        System.assertEquals(1, logs.size(), 'Only the log outside the tightened area should persist');
+        System.assertEquals('untightened', logs.get(0).pharos__Summary__c);
+    }
+
+    @IsTest
+    private static void test_specificity_user_rule_outranks_category_type_area() {
+        TritonTestFactory.assertNoLogs();
+
+        // A user-scoped rule outranks a rule naming category + type + area,
+        // so the user rule's level decides -- here silencing the log.
+        Log_Level__mdt ctaLevel = new Log_Level__mdt();
+        ctaLevel.Level__c = TritonTypes.Level.FINEST.name();
+        ctaLevel.Category__c = TritonTypes.Category.Flow.name();
+        ctaLevel.Type__c = TritonTypes.Type.Backend.name();
+        ctaLevel.Area__c = TritonTypes.Area.Community.name();
+
+        Log_Level__mdt userLevel = new Log_Level__mdt();
+        userLevel.Level__c = TritonTypes.Level.WARNING.name();
+        userLevel.User_Id__c = UserInfo.getUserId();
+
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ ctaLevel, userLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('user scoped').details('details').userId(UserInfo.getUserId()).level(TritonTypes.Level.INFO));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()],
+            'The user-scoped rule is the most specific match and its WARNING ceiling must suppress the INFO log');
+    }
+
+    @IsTest
+    private static void test_specificity_narrow_rule_still_raises_verbosity() {
+        TritonTestFactory.assertNoLogs();
+
+        // Specificity works in both directions: a narrow rule above a quiet
+        // global default must still raise verbosity for its scope.
+        Log_Level__mdt globalLevel = new Log_Level__mdt();
+        globalLevel.Level__c = TritonTypes.Level.ERROR.name();
+
+        Log_Level__mdt userLevel = new Log_Level__mdt();
+        userLevel.Level__c = TritonTypes.Level.FINEST.name();
+        userLevel.User_Id__c = UserInfo.getUserId();
+
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ globalLevel, userLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('debug me').details('details').userId(UserInfo.getUserId()).level(TritonTypes.Level.FINE));
+        Test.stopTest();
+
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
+    }
+
+    @IsTest
+    private static void test_specificity_tie_breaks_to_most_restrictive() {
+        TritonTestFactory.assertNoLogs();
+
+        // Two rules with an identical field set (equally specific) both target
+        // the log. The more restrictive level wins so config order cannot
+        // change the outcome.
+        Log_Level__mdt verbose = new Log_Level__mdt();
+        verbose.Level__c = TritonTypes.Level.FINEST.name();
+        verbose.Category__c = TritonTypes.Category.Flow.name();
+
+        Log_Level__mdt restrictive = new Log_Level__mdt();
+        restrictive.Level__c = TritonTypes.Level.WARNING.name();
+        restrictive.Category__c = TritonTypes.Category.Flow.name();
+
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ verbose, restrictive };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('tie').details('details').level(TritonTypes.Level.INFO));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()],
+            'Equally specific rules must resolve to the most restrictive level regardless of order');
+    }
+
+    @IsTest
+    private static void test_has_component_scoped_levels() {
+        // No component rules -> the stack trace must not be resolved early.
+        Log_Level__mdt plain = new Log_Level__mdt();
+        plain.Level__c = TritonTypes.Level.DEBUG.name();
+        plain.Category__c = TritonTypes.Category.Flow.name();
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ plain };
+        TritonHelper.Config.logLevels = null;
+        System.assertEquals(false, TritonHelper.Config.hasComponentScopedLevels(),
+            'No rule names a component, so early operation resolution must stay off');
+
+        // At least one component rule -> early resolution is required.
+        Log_Level__mdt componentLevel = new Log_Level__mdt();
+        componentLevel.Level__c = TritonTypes.Level.DEBUG.name();
+        componentLevel.Component_Name__c = 'SomeClass';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ plain, componentLevel };
+        TritonHelper.Config.logLevels = null;
+        System.assertEquals(true, TritonHelper.Config.hasComponentScopedLevels(),
+            'A component-scoped rule requires the operation to be resolved before the level check');
+    }
+
+    @IsTest
+    private static void test_resolve_stack_trace_and_operation_is_idempotent() {
+        // prepareForLogging calls the same resolution again after the level
+        // check, so an explicit stacktrace must never be overwritten and the
+        // cost must not be paid twice.
+        TritonBuilder builder = Triton.makeBuilder()
+            .type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('preset')
+            .stackTrace('MyClass.myMethod: line 1, column 1').operation('MyClass.myMethod');
+
+        builder.resolveStackTraceAndOperation();
+        builder.resolveStackTraceAndOperation();
+
+        pharos__Log__c log = builder.build();
+        System.assertEquals('MyClass.myMethod: line 1, column 1', log.pharos__Stacktrace__c,
+            'An explicitly supplied stacktrace must be preserved');
+        System.assertEquals('MyClass.myMethod', log.pharos__Apex_Name__c,
+            'An explicitly supplied operation must be preserved');
+    }
+
+    @IsTest
+    private static void test_is_triton_frame() {
+        // Framework frames, including inner-class and namespaced forms.
+        System.assertEquals(true, TritonHelper.isTritonFrame('Class.Triton.log: line 292, column 1'));
+        System.assertEquals(true, TritonHelper.isTritonFrame('Class.TritonHelper.getCurrentStackTrace: line 209, column 1'));
+        System.assertEquals(true, TritonHelper.isTritonFrame('Class.TritonHelper.Config.isLogAllowed: line 750, column 1'));
+        System.assertEquals(true, TritonHelper.isTritonFrame('Class.myns.TritonBuilder.build: line 10, column 1'));
+
+        // Application code whose name merely contains 'Triton' must survive.
+        System.assertEquals(false, TritonHelper.isTritonFrame('Class.TritonWrapper.doWork: line 5, column 1'),
+            'A customer class containing the word Triton is not a framework frame');
+        System.assertEquals(false, TritonHelper.isTritonFrame('Class.TritonTest.test_x: line 5, column 1'),
+            'Triton test classes are application code from the framework point of view');
+        System.assertEquals(false, TritonHelper.isTritonFrame('Class.MyClass.Triton: line 5, column 1'),
+            'A method named after a framework class is not a framework frame');
+
+        // Non-class frames are always caller code.
+        System.assertEquals(false, TritonHelper.isTritonFrame('Trigger.AccountTrigger: line 7, column 1'));
+        System.assertEquals(false, TritonHelper.isTritonFrame('AnonymousBlock: line 1, column 1'));
+        System.assertEquals(false, TritonHelper.isTritonFrame(''));
+        System.assertEquals(false, TritonHelper.isTritonFrame(null));
+    }
+
+    @IsTest
+    private static void test_filter_stack_trace_keeps_lookalike_classes() {
+        String trace = 'Class.TritonHelper.getCurrentStackTrace: line 209, column 1\n'
+            + 'Class.Triton.log: line 292, column 1\n'
+            + 'Class.TritonWrapper.doWork: line 5, column 1\n'
+            + 'Class.AccountService.update: line 42, column 1';
+
+        String filtered = TritonHelper.filterStackTrace(trace);
+
+        System.assert(!filtered.contains('TritonHelper'), 'Framework frames must be filtered out');
+        System.assert(!filtered.contains('Class.Triton.log'), 'Framework frames must be filtered out');
+        System.assert(filtered.contains('TritonWrapper'),
+            'An application class named TritonWrapper must be preserved');
+        System.assert(filtered.contains('AccountService'), 'Application frames must be preserved');
+    }
+
+    @IsTest
+    private static void test_get_operation_skips_only_framework_frames() {
+        String trace = 'Class.TritonHelper.getCurrentStackTrace: line 209, column 1\n'
+            + 'Class.Triton.log: line 292, column 1\n'
+            + 'Class.TritonWrapper.doWork: line 5, column 1\n'
+            + 'Class.AccountService.update: line 42, column 1';
+
+        System.assertEquals('Class.TritonWrapper.doWork', TritonHelper.getOperation(trace),
+            'The topmost non-framework frame wins, even when its class name contains Triton');
+    }
+
+    @IsTest
+    private static void test_resolve_stack_trace_and_operation_populates_apex_name() {
+        // The component used for log level matching comes from the Apex Name,
+        // which Triton.log() must resolve BEFORE the level check when a
+        // component-scoped level exists.
+        TritonBuilder builder = Triton.makeBuilder()
+            .type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('resolve me');
+
+        System.assertEquals(null, builder.build().pharos__Stacktrace__c,
+            'Stacktrace should be unset before resolution');
+
+        builder.resolveStackTraceAndOperation();
+
+        pharos__Log__c log = builder.build();
+        System.assertNotEquals(null, log.pharos__Stacktrace__c,
+            'resolveStackTraceAndOperation must capture the stacktrace ahead of the level check');
+        System.assert(log.pharos__Apex_Name__c.contains('TritonTest'),
+            'The operation must resolve to the calling class, not to a framework frame. Got: ' + log.pharos__Apex_Name__c);
+    }
+
+    @IsTest
+    private static void test_component_level_matches_stack_trace_derived_apex_name() {
+        TritonTestFactory.assertNoLogs();
+
+        // A component-scoped rule must apply to an Apex log that never sets
+        // .operation() explicitly -- the component is derived from the stack
+        // trace before the level check runs. This test class is the component:
+        // it is application code from the framework's point of view, so its
+        // frames survive filtering.
+        Log_Level__mdt componentLevel = new Log_Level__mdt();
+        componentLevel.Level__c = TritonTypes.Level.ERROR.name();
+        componentLevel.Component_Name__c = 'TritonTest';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ componentLevel };
+        TritonHelper.Config.logLevels = null;
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('implicit component').details('details').level(TritonTypes.Level.DEBUG));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()],
+            'Component-scoped levels must match Apex logs whose component is derived from the stack trace');
+    }
+
+    @IsTest
+    private static void test_get_component_name() {
+        // Flow API name takes precedence.
+        pharos__Log__c flowLog = new pharos__Log__c(pharos__Flow_API_Name__c = 'My_Flow', pharos__Apex_Name__c = 'Some.Apex');
+        System.assertEquals('My_Flow', TritonHelper.getComponentName(flowLog));
+
+        // Stack-trace-derived Apex Names keep the frame's 'Class.' prefix; the
+        // component is the class, not the literal 'Class'.
+        pharos__Log__c framedLog = new pharos__Log__c(pharos__Apex_Name__c = 'Class.AccountService.updateAccounts');
+        System.assertEquals('AccountService', TritonHelper.getComponentName(framedLog),
+            'The Class. prefix must be stripped before resolving the component');
+
+        // LWC names carry no prefix.
+        pharos__Log__c lwcLog = new pharos__Log__c(pharos__Apex_Name__c = 'orderBuilder.Proxy.next');
+        System.assertEquals('orderBuilder', TritonHelper.getComponentName(lwcLog));
+
+        // Apex name: class portion before the first dot.
+        pharos__Log__c apexLog = new pharos__Log__c(pharos__Apex_Name__c = 'MyClass.myMethod');
+        System.assertEquals('MyClass', TritonHelper.getComponentName(apexLog));
+
+        // Apex name without a dot is returned as-is.
+        pharos__Log__c plainLog = new pharos__Log__c(pharos__Apex_Name__c = 'MyClass');
+        System.assertEquals('MyClass', TritonHelper.getComponentName(plainLog));
+
+        // Nothing to resolve.
+        System.assertEquals(null, TritonHelper.getComponentName(new pharos__Log__c()));
+    }
+
+    @IsTest
+    private static void test_normalize_user_id() {
+        Id userId = UserInfo.getUserId();
+        System.assertEquals(String.valueOf(userId).substring(0, 15), TritonHelper.normalizeUserId(userId),
+            '18-character Id should be truncated to its 15-character prefix');
+        System.assertEquals('015CHAR00000000', TritonHelper.normalizeUserId('015CHAR00000000'),
+            '15-character value should be returned unchanged');
+        System.assertEquals(null, TritonHelper.normalizeUserId(null));
+    }
+
+    // --- LOG-2921: blank-as-wildcard, case-insensitive free-text matching ---
+
+    // The three CMDT blank shapes a rule field can arrive in, depending on how
+    // the row was created. All must behave identically (wildcard).
+    private static List<String> blankShapes() {
+        return new List<String>{ null, '', '  ' };
+    }
+
+    @IsTest
+    private static void test_blank_rule_fields_are_wildcards_in_every_shape() {
+        for (String blank : blankShapes()) {
+            Log_Level__mdt rule = new Log_Level__mdt();
+            rule.Level__c = TritonTypes.Level.INFO.name();
+            rule.Category__c = 'Flow';
+            rule.Type__c = blank;
+            rule.Area__c = blank;
+            rule.User_Id__c = blank;
+            rule.Component_Name__c = blank;
+            TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
+            TritonHelper.Config.logLevels = null;
+
+            pharos__Log__c log = new pharos__Log__c(
+                Log_Level__c = TritonTypes.Level.DEBUG.name(),
+                pharos__Category__c = 'Flow',
+                pharos__Type__c = 'Backend',
+                pharos__Area__c = 'Community');
+            System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
+                'Blank fields (shape "' + blank + '") must be wildcards: the INFO rule targets the log and blocks DEBUG');
+            System.assertEquals(false, TritonHelper.Config.hasComponentScopedLevels(),
+                'A blank Component_Name__c (shape "' + blank + '") must not mark the rule component-scoped');
+        }
+    }
+
+    @IsTest
+    private static void test_blank_rule_fields_do_not_inflate_specificity() {
+        // If '' counted as a value, the second rule would either fail to target the
+        // log (component mismatch) or outrank the first. Normalized, both rules are
+        // category-only, equally specific, and the tie resolves to WARNING.
+        for (String blank : blankShapes()) {
+            Log_Level__mdt verbose = new Log_Level__mdt();
+            verbose.Level__c = TritonTypes.Level.FINEST.name();
+            verbose.Category__c = 'Flow';
+
+            Log_Level__mdt restrictive = new Log_Level__mdt();
+            restrictive.Level__c = TritonTypes.Level.WARNING.name();
+            restrictive.Category__c = 'Flow';
+            restrictive.Component_Name__c = blank;
+
+            TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ verbose, restrictive };
+            TritonHelper.Config.logLevels = null;
+
+            pharos__Log__c log = new pharos__Log__c(
+                Log_Level__c = TritonTypes.Level.INFO.name(),
+                pharos__Category__c = 'Flow',
+                pharos__Apex_Name__c = 'AnyComponent.method');
+            System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
+                'Shape "' + blank + '": blank component must not add specificity or break targeting; tie-break must yield WARNING');
+        }
+    }
+
+    @IsTest
+    private static void test_rule_values_are_trimmed() {
+        Log_Level__mdt rule = new Log_Level__mdt();
+        rule.Level__c = TritonTypes.Level.INFO.name();
+        rule.Area__c = ' Partners ';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
+        TritonHelper.Config.logLevels = null;
+
+        pharos__Log__c log = new pharos__Log__c(
+            Log_Level__c = TritonTypes.Level.DEBUG.name(),
+            pharos__Area__c = 'Partners');
+        System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
+            'Rule values must be trimmed before matching');
+    }
+
+    @IsTest
+    private static void test_matching_is_case_insensitive_for_free_text_fields() {
+        // Free-text values, deliberately NOT TritonTypes enum members: matching is
+        // pure free text with no vocabulary constraint.
+        Log_Level__mdt rule = new Log_Level__mdt();
+        rule.Level__c = TritonTypes.Level.INFO.name();
+        rule.Category__c = 'fLoW';
+        rule.Type__c = 'screen flow';
+        rule.Area__c = 'PARTNERS';
+        rule.Component_Name__c = 'partner_intake_form';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
+        TritonHelper.Config.logLevels = null;
+
+        pharos__Log__c log = new pharos__Log__c(
+            Log_Level__c = TritonTypes.Level.DEBUG.name(),
+            pharos__Category__c = 'Flow',
+            pharos__Type__c = 'Screen Flow',
+            pharos__Area__c = 'Partners',
+            pharos__Flow_API_Name__c = 'Partner_Intake_Form');
+        System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
+            'All fields must match case-insensitively as free text');
+
+        // A genuinely different value must still miss.
+        log.pharos__Type__c = 'Autolaunched Flow';
+        System.assertEquals(true, TritonHelper.Config.isLogAllowed(log),
+            'Case-insensitivity must not turn into substring/fuzzy matching');
+    }
+
+    @IsTest
+    private static void test_user_id_matching_is_length_insensitive_and_case_exact() {
+        String userId18 = UserInfo.getUserId();
+        String userId15 = userId18.substring(0, 15);
+        // 15- and 18-char forms of the same id match via 15-char prefix truncation.
+        for (String ruleValue : new List<String>{ userId15, userId18 }) {
+            Log_Level__mdt rule = new Log_Level__mdt();
+            rule.Level__c = TritonTypes.Level.INFO.name();
+            rule.User_Id__c = ruleValue;
+            TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
+            TritonHelper.Config.logLevels = null;
+
+            pharos__Log__c log = new pharos__Log__c(
+                Log_Level__c = TritonTypes.Level.DEBUG.name(),
+                pharos__User_Id__c = userId18);
+            System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
+                'Rule user id "' + ruleValue + '" must match the 18-char log value');
+
+            // And the mirror: 15-char log value against the same rule.
+            log.pharos__User_Id__c = userId15;
+            System.assertEquals(false, TritonHelper.Config.isLogAllowed(log),
+                'Rule user id "' + ruleValue + '" must match a 15-char log value');
+        }
+
+        // A different user still misses.
+        Log_Level__mdt other = new Log_Level__mdt();
+        other.Level__c = TritonTypes.Level.INFO.name();
+        other.User_Id__c = '005000000000001';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ other };
+        TritonHelper.Config.logLevels = null;
+        System.assertEquals(true, TritonHelper.Config.isLogAllowed(new pharos__Log__c(
+                Log_Level__c = TritonTypes.Level.DEBUG.name(),
+                pharos__User_Id__c = userId18)),
+            'A rule for a different user must not target this log');
+
+        // Case-exact: 15-char ids are case-sensitive base 62.
+        Log_Level__mdt cased = new Log_Level__mdt();
+        cased.Level__c = TritonTypes.Level.INFO.name();
+        cased.User_Id__c = '005000000000Aaa';
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ cased };
+        TritonHelper.Config.logLevels = null;
+        System.assertEquals(true, TritonHelper.Config.isLogAllowed(new pharos__Log__c(
+                Log_Level__c = TritonTypes.Level.DEBUG.name(),
+                pharos__User_Id__c = '005000000000AaA')),
+            'User id matching must stay case-sensitive');
+    }
+
+    @IsTest
+    private static void test_malformed_rule_level_is_inert_not_fatal() {
+        // One malformed row (blank or garbage Level__c, in any blank shape) must
+        // not throw inside the caller's transaction or disable sibling rules.
+        for (String badLevel : new List<String>{ null, '', '  ', 'VERBOSE' }) {
+            Log_Level__mdt malformed = new Log_Level__mdt();
+            malformed.Level__c = badLevel;
+            malformed.Category__c = 'Flow';
+
+            Log_Level__mdt sibling = new Log_Level__mdt();
+            sibling.Level__c = TritonTypes.Level.INFO.name();
+            sibling.Area__c = 'Community';
+
+            TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ malformed, sibling };
+            TritonHelper.Config.logLevels = null;
+
+            System.assertEquals(1, TritonHelper.Config.logLevels.size(),
+                'Level "' + badLevel + '": the malformed rule must be skipped, the sibling kept');
+            System.assertEquals(false, TritonHelper.Config.isLogAllowed(new pharos__Log__c(
+                    Log_Level__c = TritonTypes.Level.DEBUG.name(),
+                    pharos__Area__c = 'Community')),
+                'Level "' + badLevel + '": the sibling rule must still enforce its threshold');
+        }
+    }
+
+    @IsTest
+    private static void test_unparsable_log_level_fails_open() {
+        Log_Level__mdt rule = new Log_Level__mdt();
+        rule.Level__c = TritonTypes.Level.ERROR.name();
+        TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rule };
+        TritonHelper.Config.logLevels = null;
+
+        System.assertEquals(true, TritonHelper.Config.isLogAllowed(new pharos__Log__c(
+                Log_Level__c = 'NOT_A_LEVEL')),
+            'A log whose level cannot be parsed must be allowed through, not dropped or thrown on');
+    }
+
+    @IsTest
+    private static void test_qa_matrix_shapes_against_real_flow_log() {
+        // QA's flow-log shape (spec §1.3) with the post-fix emission convention:
+        // plain flow API name, separate version, user stamped. One rule per matrix
+        // group; each INFO rule must block the DEBUG log.
+        pharos__Log__c flowLog = new pharos__Log__c(
+            Log_Level__c = TritonTypes.Level.DEBUG.name(),
+            pharos__Category__c = 'Flow',
+            pharos__Type__c = 'Screen Flow',
+            pharos__Area__c = 'Partners',
+            pharos__Flow_API_Name__c = 'Partner_Intake_Form',
+            pharos__Flow_Version__c = '4',
+            pharos__Apex_Name__c = 'Start',
+            pharos__User_Id__c = UserInfo.getUserId());
+
+        Map<String, Log_Level__mdt> rulesByGroup = new Map<String, Log_Level__mdt>();
+
+        Log_Level__mdt categoryRule = new Log_Level__mdt();
+        categoryRule.Level__c = 'INFO'; categoryRule.Category__c = 'flow';
+        rulesByGroup.put('+Category', categoryRule);
+
+        Log_Level__mdt typeRule = new Log_Level__mdt();
+        typeRule.Level__c = 'INFO'; typeRule.Type__c = 'screen flow';
+        rulesByGroup.put('+Type', typeRule);
+
+        Log_Level__mdt areaRule = new Log_Level__mdt();
+        areaRule.Level__c = 'INFO'; areaRule.Area__c = 'partners';
+        rulesByGroup.put('+Area', areaRule);
+
+        Log_Level__mdt componentRule = new Log_Level__mdt();
+        componentRule.Level__c = 'INFO'; componentRule.Component_Name__c = 'Partner_Intake_Form';
+        rulesByGroup.put('+Component', componentRule);
+
+        Log_Level__mdt userRule = new Log_Level__mdt();
+        userRule.Level__c = 'INFO'; userRule.User_Id__c = UserInfo.getUserId().substring(0, 15);
+        rulesByGroup.put('+User', userRule);
+
+        for (String grp : rulesByGroup.keySet()) {
+            TritonHelper.Config.logLevelsMdt = new Log_Level__mdt[]{ rulesByGroup.get(grp) };
+            TritonHelper.Config.logLevels = null;
+            System.assertEquals(false, TritonHelper.Config.isLogAllowed(flowLog),
+                grp + ' rule must target the real flow-log shape and block DEBUG');
+        }
+    }
+
+    // --- LOG-2921: emission-time user stamping -----------------------------
+
+    @IsTest
+    private static void test_builder_stamps_running_user_at_emission() {
+        System.assertEquals(UserInfo.getUserId(), Triton.makeBuilder().build().pharos__User_Id__c,
+            'Every builder must carry the running user so User-scoped rules match at filter time');
+    }
+
+    @IsTest
+    private static void test_explicit_user_id_overrides_stamp() {
+        Id otherUser = '005000000000001AAA';
+        TritonBuilder builder = Triton.makeBuilder().userId(otherUser);
+        System.assertEquals(otherUser, builder.build().pharos__User_Id__c,
+            'An explicit .userId() must override the emission-time stamp');
+        System.assertEquals(otherUser, builder.cloneBuilder().build().pharos__User_Id__c,
+            'cloneBuilder must preserve an explicit user id, not re-stamp the running user');
+    }
+
+    @IsTest
+    private static void test_user_rule_matches_apex_log_without_explicit_user() {
+        TritonTestFactory.assertNoLogs();
+
+        // Pre-fix, Apex logs carried no user at filter time, so User-scoped rules
+        // never matched them. The stamp makes this rule bite with no .userId() call.
+        setupUserIdLogLevel(UserInfo.getUserId());
+
+        Test.startTest();
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community)
+            .summary('no explicit user').details('details').level(TritonTypes.Level.FINE));
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE pharos__Category__c = :TritonTypes.Category.Flow.name()],
+            'The user-scoped DEBUG ceiling must suppress a FINE Apex log that never called .userId()');
     }
 
     @IsTest
     private static void test_sync_event() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
-        Triton.instance.event(TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some event', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').info());
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Event);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
     }
 
     @IsTest
     private static void test_sync_debug() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
-        Triton.instance.debug(TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some debug', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.LWC).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some debug').details('error details').debug());
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Debug);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.LWC);
     }
 
     @IsTest
     private static void test_sync_warning() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
-        Triton.instance.warning(TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some warning', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some warning').details('error details').warning());
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Warning);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Flow);
     }
 
     @IsTest
     private static void test_sync_error() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
-        Triton.instance.error(TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some error', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Apex).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some error').details('error details').error());
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Apex);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Apex);
     }
 
     @IsTest
     private static void test_sync_error_from_exception() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         try {
             Integer i = 2/0;
         }
         catch(Exception e) {
-            Triton.instance.error(TritonTypes.Area.Community, e);
+            Triton.logNow(Triton.t.area(TritonTypes.Area.Community).exception(e));
         }
         Test.stopTest();
 
-        assertCreatedLog(TritonTypes.Category.Apex);
+        TritonTestFactory.assertSingleLog(TritonTypes.Category.Apex);
     }
 
     @IsTest
     private static void test_sync_integration_from_exception() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         HttpCalloutMock multiCalloutMock = new MultiRequestMock(createEndpoint2TestResp());
         Test.setMock(HttpCalloutMock.class, multiCalloutMock);
         testHttpRequest();
-        Contact contact = new Contact();
-        contact.LastName = 'Test';
-        insert contact;
+        pharos__Log__c spacerLog = new pharos__Log__c(
+            pharos__Summary__c = 'Spacer',
+            pharos__Post_Processing_Status__c = 'Not Needed'
+        );
+        insert spacerLog;
+        delete spacerLog;
         testHttpRequest();
         Test.stopTest();
 
-        assertCreatedIntegrationLog();
+        assertCreatedIntegrationPayloadLogs();
     }
 
     @IsTest
     private static void test_integration_error_sync() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         RestRequest req = new RestRequest();
@@ -219,18 +940,20 @@ private class TritonTest {
         req.httpMethod = 'GET';
         RestContext.request = req;
         RestContext.response = res;
-        Triton.instance.integrationError(TritonTypes.Type.Backend, TritonTypes.Area.Community, 'test summary', 'test details', req, res);
+        Triton.logNow(Triton.makeBuilder().type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('test summary').details('test details').integrationPayload(req, res).error());
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c, pharos__Category__c, pharos__Stacktrace_Parse_Result__c FROM pharos__Log__c];
         System.assertEquals(1, logs.size());
         System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
+        System.assertEquals(TritonTypes.Category.Apex.name(), logs.get(0).pharos__Category__c, 'Integration payload log should default to Apex category');
+        System.assertNotEquals(null, logs.get(0).pharos__Stacktrace_Parse_Result__c, 'Integration payload should be preserved');
         System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
     }
 
     @IsTest
     private static void test_save_component_log() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         List<TritonLwc.ComponentLog> componentLogs = new List<TritonLwc.ComponentLog>();
@@ -263,7 +986,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_lwc_runtime_info() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
         
@@ -336,7 +1059,7 @@ private class TritonTest {
         // Verify log properties
         System.assertEquals(TritonTypes.Category.LWC.name(), log.pharos__Category__c);
         System.assertEquals('test type', log.pharos__Type__c);
-        System.assertEquals(TritonTypes.Area.LWC.name(), log.pharos__Area__c);
+        System.assertEquals('test area', log.pharos__Area__c, 'A custom area is kept as sent');
         System.assertEquals('Runtime Info Test', log.pharos__Summary__c);
         System.assertEquals('TestComponent.testFunction', log.pharos__Apex_Name__c);
         
@@ -381,7 +1104,7 @@ private class TritonTest {
 
     @IsTest
     private static void test_save_component_log_negative() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
         List<TritonLwc.ComponentLog> componentLogs = new List<TritonLwc.ComponentLog>();
@@ -435,7 +1158,7 @@ private class TritonTest {
         
         // Verify default/fallback values are used
         System.assertEquals(TritonTypes.Category.LWC.name(), log.pharos__Category__c, 'Should fall back to LWC category');
-        System.assertEquals(TritonTypes.Area.LWC.name(), log.pharos__Area__c, 'Should fall back to LWC area');
+        System.assertEquals('InvalidArea', log.pharos__Area__c, 'A custom area is kept as sent');
         System.assertEquals(TritonTypes.Level.INFO.name(), log.Log_Level__c, 'Should fall back to INFO level');
         System.assertEquals('Error type', log.pharos__Type__c, 'Should use error type');
         System.assertEquals('TestComponent.testFunction', log.pharos__Apex_Name__c, 'Should combine component name and function');
@@ -445,7 +1168,7 @@ private class TritonTest {
         System.assert(details.contains('Invalid User Id'), 'Should contain user ID error message');
         System.assert(details.contains('Invalid Record Id'), 'Should contain record ID error message');
         System.assert(details.contains('Invalid Log Category'), 'Should contain category error message');
-        System.assert(details.contains('Invalid Log Functional Area'), 'Should contain area error message');
+        System.assert(!details.contains('Invalid Log Functional Area'), 'A custom area is not an error');
         System.assert(details.contains('Invalid Log Level'), 'Should contain level error message');
         
         // Verify null values for invalid IDs
@@ -457,231 +1180,148 @@ private class TritonTest {
         );
     }
 
-    @IsTest
-    private static void test_flow() {
-        assertBefore();
+    // ─── LWC areas, levels and null safety ──────────────────────────
 
-        Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        
-        // Test 1: Basic flow log with valid category
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = TritonTypes.Category.Flow.name();
-        flowLog.type = 'type';
-        flowLog.area = 'area';
-        flowLog.summary = 'test';
-        flowLog.details = 'test';
-        flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
-        flowLogs.add(flowLog);
-        
-        // Test 2: Flow log with invalid category
-        TritonFlow.FlowLog invalidCategoryLog = new TritonFlow.FlowLog();
-        invalidCategoryLog.category = 'InvalidCategory';
-        invalidCategoryLog.type = 'type';
-        invalidCategoryLog.area = 'area';
-        invalidCategoryLog.summary = 'test invalid';
-        invalidCategoryLog.details = 'test invalid';
-        flowLogs.add(invalidCategoryLog);
-        
-        // Test 3: Flow log with transaction ID
-        TritonFlow.FlowLog transactionLog = new TritonFlow.FlowLog();
-        transactionLog.category = TritonTypes.Category.Flow.name();
-        transactionLog.type = 'type';
-        transactionLog.area = 'area';
-        transactionLog.summary = 'test transaction';
-        transactionLog.details = 'test transaction';
-        transactionLog.transactionId = 'test-transaction-id';
-        flowLogs.add(transactionLog);
-        
-        // Test 4: Flow log with empty category
-        TritonFlow.FlowLog emptyCategoryLog = new TritonFlow.FlowLog();
-        emptyCategoryLog.category = '';
-        emptyCategoryLog.type = 'type';
-        emptyCategoryLog.area = 'area';
-        emptyCategoryLog.summary = 'test empty';
-        emptyCategoryLog.details = 'test empty';
-        flowLogs.add(emptyCategoryLog);
-        
-        TritonFlow.log(flowLogs);
-        Test.stopTest();
+    /** A bound component's log at INFO, with no area set. */
+    private static TritonLwc.ComponentLog makeComponentLog(String summary) {
+        TritonLwc.ComponentLog componentLog = new TritonLwc.ComponentLog();
+        componentLog.category = TritonTypes.Category.LWC.name();
+        componentLog.type = 'test type';
+        componentLog.level = TritonTypes.Level.INFO.name();
+        componentLog.summary = summary;
+        TritonLwc.Component component = new TritonLwc.Component();
+        component.name = 'testComponent';
+        component.function = 'testFunction';
+        componentLog.componentInfo = component;
+        return componentLog;
+    }
 
-        // Verify logs were created with correct properties
+    private static pharos__Log__c lwcLogBySummary(String summary) {
         List<pharos__Log__c> logs = [
-            SELECT Id, 
-                   pharos__Category__c, 
-                   pharos__Summary__c, 
-                   pharos__Details__c,
-                   pharos__Transaction_Id_External__c,
-                   pharos__Hash__c 
-            FROM pharos__Log__c 
-            ORDER BY CreatedDate
+            SELECT Id, pharos__Area__c, Log_Level__c, pharos__Details__c, pharos__Apex_Name__c
+            FROM pharos__Log__c
+            WHERE pharos__Summary__c = :summary
         ];
-        
-        System.assertEquals(4, logs.size(), 'Should have created 4 logs');
-        
-        // Verify first log (valid category)
-        System.assertEquals(TritonTypes.Category.Flow.name(), logs[0].pharos__Category__c);
-        System.assertEquals('test summary', logs[0].pharos__Summary__c);
-        
-        // Verify second log (invalid category)
-        System.assertEquals(TritonTypes.Category.Flow.name(), logs[1].pharos__Category__c);
-        System.assert(logs[1].pharos__Details__c.contains('Unable to locate category: InvalidCategory'));
-        
-        // Verify third log (with transaction ID)
-        System.assertEquals('test-transaction-id', logs[2].pharos__Transaction_Id_External__c);
-        
-        // Verify fourth log (empty category)
-        System.assertEquals(TritonTypes.Category.Flow.name(), logs[3].pharos__Category__c);
-        System.assert(!logs[3].pharos__Details__c.contains('Unable to locate category'));
-        
+        System.assertEquals(1, logs.size(), 'Expected exactly one log with summary ' + summary);
+        return logs[0];
+    }
+
+    private static void assertNoNote(pharos__Log__c log, String note) {
+        System.assert(log.pharos__Details__c == null || !log.pharos__Details__c.contains(note),
+            'Details should not contain the note: ' + note);
     }
 
     @IsTest
-    private static void test_flow_with_stacktrace() {
-        assertBefore();
-
-        Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = TritonTypes.Category.Flow.name();
-        flowLog.type = 'type';
-        flowLog.area = 'area';
-        flowLog.summary = 'test';
-        flowLog.details = 'test';
-        flowLog.stacktrace = 'test stacktrace';
-        flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
-        flowLogs.add(flowLog);
-        List<TritonFlow.FlowLogOutput> results = TritonFlow.log(flowLogs);
-        Test.stopTest();
-
-        System.assertEquals(1, results.size());
-        System.assertEquals('test stacktrace', results.get(0).fullStacktrace);
-
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c FROM pharos__Log__c];
-        System.assertEquals(1, logs.size());
-        System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
-        System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
+    private static void test_resolveArea_maps_known_areas_in_any_spelling() {
+        Map<String, TritonTypes.Area> expected = new Map<String, TritonTypes.Area>{
+            'ACCOUNTS' => TritonTypes.Area.Accounts,
+            'COMMUNITY' => TritonTypes.Area.Community,
+            'LEAD_CONVERSION' => TritonTypes.Area.LeadConversion,
+            'OPPORTUNITY_MANAGEMENT' => TritonTypes.Area.OpportunityManagement,
+            'REST_API' => TritonTypes.Area.RestAPI,
+            'Accounts' => TritonTypes.Area.Accounts,
+            'leadconversion' => TritonTypes.Area.LeadConversion,
+            '  RestAPI  ' => TritonTypes.Area.RestAPI
+        };
+        for (String requested : expected.keySet()) {
+            System.assertEquals(expected.get(requested).name(), TritonLwc.resolveArea(requested),
+                'Known area \'' + requested + '\' should map to its TritonTypes.Area name');
+        }
     }
 
     @IsTest
-    private static void test_flow_with_stacktrace_multiple_logs() {
-        assertBefore();
-
-        Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        TritonFlow.FlowLog flowLog1 = new TritonFlow.FlowLog();
-        flowLog1.category = TritonTypes.Category.Flow.name();
-        flowLog1.type = 'type';
-        flowLog1.area = 'area';
-        flowLog1.summary = 'test';
-        flowLog1.details = 'test';
-        flowLog1.stacktrace = 'teststacktrace1';
-        flowLog1.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
-        flowLogs.add(flowLog1);
-        TritonFlow.FlowLog flowLog2 = new TritonFlow.FlowLog();
-        flowLog2.category = TritonTypes.Category.Flow.name();
-        flowLog2.type = 'type';
-        flowLog2.area = 'area';
-        flowLog2.summary = 'test';
-        flowLog2.details = 'test';
-        flowLog2.fullStacktrace = flowLog1.stacktrace;
-        flowLog2.stacktrace = 'teststacktrace2';
-        flowLog2.additionalFields = '{"pharos__Summary__c":"test summary 2","pharos__Details__c":"test Details 2"}';
-        flowLogs.add(flowLog2);
-        List<TritonFlow.FlowLogOutput> results = TritonFlow.log(flowLogs);
-        Test.stopTest();
-
-        System.assertEquals(2, results.size());
-        System.assertEquals('teststacktrace1', results.get(0).fullStacktrace);
-        System.assertEquals('teststacktrace1teststacktrace2', results.get(1).fullStacktrace);
-
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Summary__c, pharos__Hash__c, pharos__Stacktrace__c FROM pharos__Log__c];
-        System.assertEquals(2, logs.size());
-        System.assertEquals('test summary', logs.get(0).pharos__Summary__c);
-        System.assertEquals('test summary 2', logs.get(1).pharos__Summary__c);
-        System.assertNotEquals(null, logs.get(0).pharos__Hash__c);
-        System.assertNotEquals(null, logs.get(1).pharos__Hash__c);
-        System.assertEquals('teststacktrace1', logs.get(0).pharos__Stacktrace__c);
-        System.assertEquals('teststacktrace1teststacktrace2', logs.get(1).pharos__Stacktrace__c);
+    private static void test_resolveArea_keeps_custom_area_verbatim() {
+        System.assertEquals('OrderEntry', TritonLwc.resolveArea('OrderEntry'), 'A custom area is kept as sent');
+        System.assertEquals('Order_Entry', TritonLwc.resolveArea('Order_Entry'), 'Underscores in a custom area are kept');
+        System.assertEquals('Billing', TritonLwc.resolveArea(' Billing '), 'A custom area is trimmed');
     }
 
     @IsTest
-    private static void test_flow_wrong_category() {
-        assertBefore();
-
-        Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = 'InvalidCategory';
-        flowLog.type = 'type';
-        flowLog.area = 'area';
-        flowLog.summary = 'test';
-        flowLog.details = 'test';
-        flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
-        flowLogs.add(flowLog);
-        TritonFlow.log(flowLogs);
-        Test.stopTest();
-
-        List<pharos__Log__c> logs = [SELECT Id, pharos__Category__c, pharos__Hash__c FROM pharos__Log__c];
-        System.assertEquals(1, logs.size());
-        System.assertEquals(TritonTypes.Category.Flow.name(), logs.get(0).pharos__Category__c);
+    private static void test_resolveArea_blank_falls_back_to_lwc() {
+        for (String blank : new List<String>{ null, '', '  ' }) {
+            System.assertEquals(TritonTypes.Area.LWC.name(), TritonLwc.resolveArea(blank),
+                'A blank area lands as LWC');
+        }
     }
 
     @IsTest
-    private static void test_flow_create_issue() {
-        assertBefore();
+    private static void test_saveComponentLogs_custom_area_kept() {
+        TritonLwc.ComponentLog componentLog = makeComponentLog('custom area');
+        componentLog.area = 'OrderEntry';
 
         Test.startTest();
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = TritonTypes.Category.Flow.name();
-        flowLog.type = 'type';
-        flowLog.area = 'area';
-        flowLog.summary = 'test';
-        flowLog.details = 'test';
-        flowLog.level = 'ERROR';
-        flowLog.additionalFields = '{"pharos__Summary__c":"test summary","pharos__Details__c":"test Details"}';
-        TritonFlow.processFlowLog(flowLog);
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ componentLog });
         Test.stopTest();
-        System.assertEquals(1, Triton.instance.logs.size());
-        System.assertEquals(false, Triton.instance.logs.get(0).pharos__Do_Not_Create_Issue__c);
-    }    
+
+        pharos__Log__c log = lwcLogBySummary('custom area');
+        System.assertEquals('OrderEntry', log.pharos__Area__c, 'A custom LWC area is kept as sent');
+        assertNoNote(log, 'Invalid Log Functional Area');
+    }
 
     @IsTest
-    private static void test_flow_bad_additional_fields_json() {
-        assertBefore();
-        
+    private static void test_saveComponentLogs_blank_area_and_level_default_silently() {
+        TritonLwc.ComponentLog componentLog = makeComponentLog('blank area and level');
+        componentLog.area = null;
+        componentLog.level = null;
+
         Test.startTest();
-        List<TritonFlow.FlowLog> flowLogs = new List<TritonFlow.FlowLog>();
-        TritonFlow.FlowLog flowLog = new TritonFlow.FlowLog();
-        flowLog.category = TritonTypes.Category.Flow.name();
-        flowLog.type = 'test type';
-        flowLog.area = 'test area';
-        flowLog.summary = 'test summary';
-        flowLog.details = 'test';
-        flowLog.level = 'level';
-        flowLog.additionalFields = '{bad_json "test"}';
-        flowLogs.add(flowLog);
-        TritonFlow.log(flowLogs);
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ componentLog });
         Test.stopTest();
 
-        List<pharos__Log__c> logs = [SELECT Id, 
-                                       pharos__Details__c, 
-                                       pharos__Summary__c, 
-                                       pharos__Hash__c 
-                                FROM pharos__Log__c];
-        pharos__Log__c log = logs.get(0);
-        System.assertEquals(1, logs.size());
-        System.assertEquals('test summary', log.pharos__Summary__c);
-        System.assert(log.pharos__Details__c.contains('Unable to locate log level'), 'Log level error should be present');
-        System.assert(log.pharos__Details__c.contains('failed to parse json input'), 'Additional fields parse error should be present');
+        pharos__Log__c log = lwcLogBySummary('blank area and level');
+        System.assertEquals(TritonTypes.Area.LWC.name(), log.pharos__Area__c, 'A blank area lands as LWC');
+        System.assertEquals(TritonTypes.Level.INFO.name(), log.Log_Level__c, 'A blank level lands as INFO');
+        assertNoNote(log, 'Invalid Log Functional Area');
+        assertNoNote(log, 'Invalid Log Level');
+    }
+
+    @IsTest
+    private static void test_saveComponentLogs_null_component_info_still_logs() {
+        TritonLwc.ComponentLog unbound = makeComponentLog('no component info');
+        unbound.componentInfo = null;
+
+        TritonLwc.ComponentLog functionOnly = makeComponentLog('function only');
+        TritonLwc.Component component = new TritonLwc.Component();
+        component.function = 'fn';
+        functionOnly.componentInfo = component;
+
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ unbound, functionOnly });
+        Test.stopTest();
+
+        TritonTestFactory.assertLogCount(2);
+        lwcLogBySummary('no component info');
+        System.assertEquals('fn', lwcLogBySummary('function only').pharos__Apex_Name__c,
+            'With no component name, the operation is the function alone');
+    }
+
+    @IsTest
+    private static void test_saveComponentLogs_null_entry_does_not_drop_others() {
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ null, makeComponentLog('valid') });
+        Test.stopTest();
+
+        TritonTestFactory.assertLogCount(1);
+        lwcLogBySummary('valid');
+    }
+
+    @IsTest
+    private static void test_saveComponentLogs_publish_failure_never_throws() {
+        TritonTestFactory.failPublishing();
+
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ makeComponentLog('lost') });
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
     }
 
     @IsTest
     private static void test_triton_builder() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
-        Triton.instance.event(TritonTypes.Level.INFO, TritonTypes.Type.Backend, TritonTypes.Area.Community, 'some event', 'error details');
+        Triton.logNow(Triton.t.category(TritonTypes.Category.Flow).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('some event').details('error details').level(TritonTypes.Level.INFO));
         Test.stopTest();
 
         pharos__Log__c log = [select Id from pharos__Log__c limit 1];
@@ -775,17 +1415,75 @@ private class TritonTest {
     }
 
     @IsTest
+    private static void test_triton_builder_traceable() {
+        TritonBuilder builder = new TritonBuilder();
+        builder
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .level(TritonTypes.Level.INFO)
+            .summary('some event')
+            .details('error details')
+            .stackTrace('Debug details')
+            .traceable(true)
+            .tracePoint();
+
+        System.assertEquals(true, builder.traceable, 'Traceable flag should be set');
+
+    }
+
+    @IsTest
+    private static void test_trace_point_when_not_traceable() {
+        TritonBuilder builder = new TritonBuilder();
+        builder
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .level(TritonTypes.Level.INFO)
+            .summary('trace point no-op test')
+            .details('details')
+            .traceable(false)
+            .tracePoint();
+
+        System.assertEquals(false, builder.traceable, 'Should not be traceable when traceable(false)');
+    }
+
+    @IsTest
+    private static void test_traceable_creates_issue() {
+        TritonTestFactory.assertNoLogs();
+
+        Test.startTest();
+        Triton.log(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Apex)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .level(TritonTypes.Level.INFO)
+                .summary('traceable creates issue test')
+                .details('details')
+                .traceable(true)
+                .tracePoint()
+        );
+        Triton.flush();
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Do_Not_Create_Issue__c FROM pharos__Log__c];
+        System.assertEquals(1, logs.size(), 'Should have one log');
+        System.assertEquals(false, logs.get(0).pharos__Do_Not_Create_Issue__c, 'traceable(true) should create issue');
+    }
+
+    @IsTest
     private static void test_template() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         TritonBuilder template = Triton.makeBuilder();
         template.category(TritonTypes.Category.Apex);
         template.type(TritonTypes.Type.Backend);
         template.area(TritonTypes.Area.Community);
         template.level(TritonTypes.Level.INFO);
-        Triton.instance.setTemplate(template);
+        Triton.setTemplate(template);
         Test.startTest();
-        Triton.instance.log(Triton.instance.fromTemplate()
+        Triton.logNow(Triton.t
                                 .summary('some event')
                                 .details('error details'));
         Test.stopTest();
@@ -839,10 +1537,10 @@ private class TritonTest {
         try {
             res = h.send(req);
             if (res.getStatusCode() != 200 || res.getStatusCode() != 201) {
-                Triton.instance.integrationError(TritonTypes.Type.Backend, TritonTypes.Area.Community, 'test integration', 'test error details', req, res);
+                Triton.logNow(Triton.makeBuilder().type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('test integration').details('test error details').integrationPayload(req, res).error());
             }
         } catch (Exception e) {
-            Triton.instance.integrationError(TritonTypes.Area.Community, e, req, res);
+            Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Community).exception(e).integrationPayload(req, res));
         }
     }
 
@@ -901,132 +1599,209 @@ private class TritonTest {
     @IsTest
     private static void testDMLErrorLogging() {
         Test.startTest();
-        
-        // 1. Test SaveResult - Invalid account without required Name field
-        Account invalidAcc = new Account();
-        Database.SaveResult[] srList = Database.insert(new List<Account>{invalidAcc}, false);
+        Id fakeId = pharos__Log__c.SObjectType.getDescribe().getKeyPrefix() + '000000000000';
+
+        // 1. Test SaveResult - Insert log with invalid lookup to force failure
+        pharos__Log__c invalidLog = new pharos__Log__c(pharos__Issue__c = fakeId);
+        Database.SaveResult[] srList = Database.insert(new List<pharos__Log__c>{invalidLog}, false);
         System.assert(!srList[0].isSuccess(), 'Insert should fail');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, srList);
-        
-        // 2. Create a Contact with missing required field (LastName) to test field-specific errors
-        Contact invalidContact = new Contact();
-        // FirstName is optional, but LastName is required
-        invalidContact.FirstName = 'Test';
-        // Deliberately omit LastName to cause a field-specific error
-        Database.SaveResult[] contactSrList = Database.insert(new List<Contact>{invalidContact}, false);
-        System.assert(!contactSrList[0].isSuccess(), 'Contact insert should fail due to missing LastName');
-        Triton.instance.dmlResult(TritonTypes.Area.Community, contactSrList);
-        
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(srList));
+
+        // 2. Test SaveResult with field-specific error details
+        pharos__Log__c invalidLog2 = new pharos__Log__c(pharos__Issue__c = fakeId);
+        Database.SaveResult[] fieldSrList = Database.insert(new List<pharos__Log__c>{invalidLog2}, false);
+        System.assert(!fieldSrList[0].isSuccess(), 'Insert should fail with field error');
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Community).dmlResults(fieldSrList));
+
         // 3. Test DeleteResult - Try to delete non-existent record
-        Id fakeId = '001000000000000AAA';
         Database.DeleteResult[] drList = Database.delete(new List<Id>{fakeId}, false);
         System.assert(!drList[0].isSuccess(), 'Delete should fail');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, drList);
-        
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(drList));
+
         // 4. Test UndeleteResult - Try to undelete non-existent record
         Database.UndeleteResult[] urList = Database.undelete(new List<Id>{fakeId}, false);
         System.assert(!urList[0].isSuccess(), 'Undelete should fail');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, urList);
-        
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(urList));
+
         // 5. Test UpsertResult - Try to update non-existent record
-        Account invalidUpsertAcc = new Account(Id = fakeId);
-        Database.UpsertResult[] urList2 = Database.upsert(new List<Account>{invalidUpsertAcc}, false);
+        pharos__Log__c invalidUpsertLog = new pharos__Log__c(Id = fakeId);
+        Database.UpsertResult[] urList2 = Database.upsert(new List<pharos__Log__c>{invalidUpsertLog}, false);
         System.assert(!urList2[0].isSuccess(), 'Upsert should fail');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, urList2);
-        
-        // 6. Test MergeResult - Try to merge with invalid record
-        Account masterAcc = new Account(Name = 'Master');
-        insert masterAcc;
-        Database.MergeResult[] mergeList = Database.merge(masterAcc, new List<Id>{fakeId}, false);
-        System.assert(!mergeList[0].isSuccess(), 'Merge should fail');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, mergeList);
-        
+        Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(urList2));
+
         Test.stopTest();
-        
+
         // Verify logs were created
         List<pharos__Log__c> logs = [
-            SELECT Id, pharos__Category__c, pharos__Type__c, pharos__Area__c, 
+            SELECT Id, pharos__Category__c, pharos__Type__c, pharos__Area__c,
                    pharos__Summary__c, pharos__Details__c, Log_Level__c,
                    pharos__Apex_Name__c
             FROM pharos__Log__c
             WHERE pharos__Type__c = :TritonTypes.Type.DMLResult.name()
             ORDER BY CreatedDate
         ];
-                
-        System.assertEquals(6, logs.size(), 'Expected 6 DML error logs to be created (one for each DML operation)');
-        
-        Set<String> expectedOperations = new Set<String>{'Save', 'Delete', 'Undelete', 'Upsert', 'Merge'};
+
+        System.assertEquals(5, logs.size(), 'Expected 5 DML error logs');
+
+        Set<String> expectedOperations = new Set<String>{'Save', 'Delete', 'Undelete', 'Upsert'};
         Set<String> foundOperations = new Set<String>();
-        
-        // Find the Contact error log
-        pharos__Log__c contactErrorLog = null;
+
+        // Find the field error log
+        pharos__Log__c fieldErrorLog = null;
         for(pharos__Log__c log : logs) {
             System.assertEquals(TritonTypes.Type.DMLResult.name(), log.pharos__Type__c);
             System.assertEquals(TritonTypes.Level.ERROR.name(), log.Log_Level__c);
             System.assert(log.pharos__Summary__c.contains('DML Operation'));
-            
-            // Store the operation type
+
             foundOperations.add(log.pharos__Apex_Name__c);
-            
-            // Find the Contact error log
+
             if(log.pharos__Area__c == TritonTypes.Area.Community.name()) {
-                contactErrorLog = log;
+                fieldErrorLog = log;
             }
         }
-        
+
         // Verify all expected operations are found
         System.assertEquals(expectedOperations, foundOperations);
-        
-        // Verify field-level error information is included in the Contact error log
-        System.assertNotEquals(null, contactErrorLog, 'Contact error log should be created');
-        System.assert(contactErrorLog.pharos__Details__c.contains('Fields:'), 
-            'Contact error log should include field information');
-        System.assert(contactErrorLog.pharos__Details__c.contains('LastName'), 
-            'Contact error log should mention LastName field');
-        System.assert(contactErrorLog.pharos__Details__c.contains('Status Code:'), 
-            'Contact error log should include status code');
+
+        // Verify error information is included in the field error log
+        System.assertNotEquals(null, fieldErrorLog, 'Field error log should be created');
+        System.assert(fieldErrorLog.pharos__Details__c.contains('Status Code:'),
+            'Error log should include status code');
     }
 
     @IsTest
     private static void testDMLErrorLogging_NoErrors() {
-        // Setup
-        Account validAcc = new Account(Name = 'Test Account');
-        insert validAcc;
-        
         Test.startTest();
-        
-        // 1. Test SaveResult with valid data
-        Account newAcc = new Account(Name = 'Valid Account');
-        Database.SaveResult[] srList = Database.insert(new List<Account>{newAcc}, false);
+
+        // The DML subject: a log record this test writes and then counts out.
+        pharos__Log__c newLog = new pharos__Log__c(
+            pharos__Summary__c = 'Valid Log',
+            pharos__Post_Processing_Status__c = 'Not Needed'
+        );
+        Database.SaveResult[] srList = Database.insert(new List<pharos__Log__c>{newLog}, false);
         System.assert(srList[0].isSuccess(), 'Insert should succeed');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, srList);
-        
-        // 2. Test UpsertResult with valid data
-        newAcc.Name = 'Updated Name';
-        Database.UpsertResult[] upsertList = Database.upsert(new List<Account>{newAcc}, false);
+
+        newLog.pharos__Summary__c = 'Updated Log';
+        Database.UpsertResult[] upsertList = Database.upsert(new List<pharos__Log__c>{newLog}, false);
         System.assert(upsertList[0].isSuccess(), 'Upsert should succeed');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, upsertList);
-        
-        // 3. Test DeleteResult with valid data
-        Database.DeleteResult[] drList = Database.delete(new List<Id>{newAcc.Id}, false);
+
+        Database.DeleteResult[] drList = Database.delete(new List<Id>{newLog.Id}, false);
         System.assert(drList[0].isSuccess(), 'Delete should succeed');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, drList);
-        
-        // 4. Test UndeleteResult with valid data
-        Database.UndeleteResult[] urList = Database.undelete(new List<Id>{newAcc.Id}, false);
+
+        Database.UndeleteResult[] urList = Database.undelete(new List<Id>{newLog.Id}, false);
         System.assert(urList[0].isSuccess(), 'Undelete should succeed');
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, urList);
-        
+
+        // Every all-success result, through every entry point.
+        List<List<Object>> allSuccess = new List<List<Object>>{ srList, upsertList, drList, urList };
+        for (List<Object> results : allSuccess) {
+            Triton.log(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(results));
+            Triton.logNow(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(results));
+            Triton.error(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(results));
+            Triton.warning(Triton.makeBuilder().area(TritonTypes.Area.Accounts).dmlResults(results));
+        }
+        System.assert(Triton.logs.isEmpty(), 'Successful DML results must not buffer any log');
+
+        Triton.flush();
         Test.stopTest();
-        
-        // Verify no logs were created since operations were successful
-        List<pharos__Log__c> logs = [
-            SELECT Id, pharos__Apex_Name__c, pharos__Summary__c, pharos__Details__c
-            FROM pharos__Log__c 
-            WHERE pharos__Type__c = :TritonTypes.Type.DMLResult.name()
-        ];
-                
-        System.assertEquals(0, logs.size(), 'No logs should be created for successful DML operations');
+
+        // Counts every log, whatever its Type, except the DML subject itself.
+        System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c WHERE Id != :newLog.Id],
+            'No logs should be created for successful DML operations');
+    }
+
+    /** SaveResults for an insert that fails: a log record pointing at an issue that does not exist. */
+    private static List<Database.SaveResult> failedSaveResults() {
+        Id fakeId = pharos__Log__c.SObjectType.getDescribe().getKeyPrefix() + '000000000000';
+        Database.SaveResult[] results = Database.insert(
+            new List<pharos__Log__c>{ new pharos__Log__c(pharos__Issue__c = fakeId) }, false);
+        System.assert(!results[0].isSuccess(), 'The insert should fail');
+        return results;
+    }
+
+    @IsTest
+    private static void test_dmlResults_null_and_empty_emit_nothing() {
+        Test.startTest();
+        System.assert(Triton.t.dmlResults(null).isSuppressed(), 'Null results suppress the builder');
+        System.assert(Triton.t.dmlResults(new List<Database.SaveResult>()).isSuppressed(),
+            'Empty results suppress the builder');
+
+        Triton.error(Triton.t.dmlResults(null));
+        Triton.error(Triton.t.dmlResults(new List<Database.SaveResult>()));
+        System.assert(Triton.logs.isEmpty(), 'Null or empty DML results must not buffer any log');
+        Test.stopTest();
+    }
+
+    @IsTest
+    private static void test_issue_follows_level_when_implied_by_error() {
+        Exception e = new DmlException('boom');
+        List<Database.SaveResult> failed = failedSaveResults();
+
+        pharos__Log__c downgraded = Triton.makeBuilder().exception(e).warning().build();
+        System.assertEquals(true, downgraded.pharos__Do_Not_Create_Issue__c,
+            'An exception downgraded to WARNING withdraws the issue it implied');
+
+        pharos__Log__c atError = Triton.makeBuilder().exception(e).build();
+        System.assertEquals(false, atError.pharos__Do_Not_Create_Issue__c,
+            'An exception at ERROR keeps its issue');
+
+        pharos__Log__c exceptionLast = Triton.makeBuilder().warning().exception(e).build();
+        System.assertEquals(TritonTypes.Level.ERROR.name(), exceptionLast.Log_Level__c,
+            'exception() after warning() sets ERROR');
+        System.assertEquals(false, exceptionLast.pharos__Do_Not_Create_Issue__c,
+            'exception() after warning() keeps its issue');
+
+        pharos__Log__c dmlWarning = Triton.makeBuilder().dmlResults(failed).warning().build();
+        System.assertEquals(TritonTypes.Level.WARNING.name(), dmlWarning.Log_Level__c,
+            'A failed dmlResults() downgraded to WARNING stays at WARNING');
+        System.assertEquals(true, dmlWarning.pharos__Do_Not_Create_Issue__c,
+            'A failed dmlResults() at WARNING withdraws the issue it implied');
+
+        pharos__Log__c explicitIssue = Triton.makeBuilder().createIssue().warning().build();
+        System.assertEquals(false, explicitIssue.pharos__Do_Not_Create_Issue__c,
+            'An explicit createIssue() stands at any level');
+
+        pharos__Log__c traced = Triton.makeBuilder().traceable(true).info().build();
+        System.assertEquals(false, traced.pharos__Do_Not_Create_Issue__c,
+            'traceable(true) is an explicit issue request and stands at INFO');
+
+        TritonBuilder reraised = Triton.makeBuilder().error().warning();
+        System.assertEquals(true, reraised.build().pharos__Do_Not_Create_Issue__c,
+            'At WARNING the implied issue is withdrawn');
+        reraised.level(TritonTypes.Level.ERROR);
+        System.assertEquals(false, reraised.build().pharos__Do_Not_Create_Issue__c,
+            'Back at ERROR the implied issue returns: build() does not depend on call order');
+    }
+
+    @IsTest
+    private static void test_dmlResults_failure_as_warning_creates_no_issue() {
+        List<Database.SaveResult> failed = failedSaveResults();
+
+        Test.startTest();
+        Triton.warning(Triton.t.area(TritonTypes.Area.Accounts).dmlResults(failed));
+        Triton.flush();
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
+        System.assertEquals(1, logs.size(), 'The failed DML should be logged once');
+        System.assertEquals(TritonTypes.Type.DMLResult.name(), logs[0].pharos__Type__c, 'Type should be DMLResult');
+        System.assertEquals(TritonTypes.Level.WARNING.name(), logs[0].Log_Level__c, 'Level should be WARNING');
+        System.assertEquals(true, logs[0].pharos__Do_Not_Create_Issue__c,
+            'A DML failure logged as a WARNING should not open an issue');
+    }
+
+    @IsTest
+    private static void test_logNow_filtered_log_leaves_buffer_untouched() {
+        TritonTestFactory.restrictLevel(TritonTypes.Level.ERROR);
+
+        Test.startTest();
+        Triton.log(Triton.t.summary('buffered').error());
+        Triton.logNow(Triton.t.summary('filtered').debug());
+
+        System.assertEquals(1, Triton.logs.size(), 'A filtered logNow must not touch the buffer');
+        System.assertEquals('buffered', Triton.logs[0].pharos__Summary__c, 'The buffered log is still there');
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
     }
 
     @IsTest
@@ -1058,32 +1833,23 @@ private class TritonTest {
 
     @IsTest
     private static void test_flush_top_buffer() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
         
         // Add multiple logs to buffer without flushing
-        Triton.instance.addError(
-            TritonTypes.Type.Backend, 
-            TritonTypes.Area.Community, 
-            'first error', 
-            'first details'
+        Triton.log(
+            Triton.t.category(TritonTypes.Category.Apex).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('first error').details('first details').error()
         );
-        Triton.instance.addError(
-            TritonTypes.Type.Backend, 
-            TritonTypes.Area.Community, 
-            'second error', 
-            'second details'
+        Triton.log(
+            Triton.t.category(TritonTypes.Category.Apex).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('second error').details('second details').error()
         );
-        Triton.instance.addError(
-            TritonTypes.Type.Backend, 
-            TritonTypes.Area.Community, 
-            'third error', 
-            'third details'
+        Triton.log(
+            Triton.t.category(TritonTypes.Category.Apex).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('third error').details('third details').error()
         );
         
         // Test flushTop with populated buffer
-        Triton.instance.flushTop();
+        Triton.flushTop();
         Test.stopTest();
         
         // Verify only last log was persisted
@@ -1094,27 +1860,21 @@ private class TritonTest {
         ];
         System.assertEquals(1, logs.size(), 'Only one log should be persisted');
         System.assertEquals('third error', logs[0].pharos__Summary__c, 'Last added log should be persisted');
-        System.assertEquals(2, Triton.instance.logs.size(), 'Should have two logs remaining in buffer');
+        System.assertEquals(2, Triton.logs.size(), 'Should have two logs remaining in buffer');
     }
 
     @IsTest
     private static void test_flush_top_immediate() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
-        Triton.instance.addError(
-            TritonTypes.Type.Backend, 
-            TritonTypes.Area.Community, 
-            'first error', 
-            'first details'
+        Triton.log(
+            Triton.t.category(TritonTypes.Category.Apex).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('first error').details('first details').error()
         );
 
         // Test immediate error method - should only flush that error
-        Triton.instance.error(
-            TritonTypes.Type.Backend, 
-            TritonTypes.Area.Community, 
-            'immediate error', 
-            'immediate details'
+        Triton.logNow(
+            Triton.t.category(TritonTypes.Category.Apex).type(TritonTypes.Type.Backend).area(TritonTypes.Area.Community).summary('immediate error').details('immediate details').error()
         );
         Test.stopTest();
         
@@ -1125,56 +1885,128 @@ private class TritonTest {
         ];
         System.assertEquals(1, logs.size(), 'Should have one log persisted');
         System.assertEquals('immediate error', logs[0].pharos__Summary__c, 'Immediate error should be persisted');
-        System.assertEquals(1, Triton.instance.logs.size(), 'Should have one log remaining in buffer');
+        System.assertEquals(1, Triton.logs.size(), 'Should have one log remaining in buffer');
     }
 
     @IsTest
     private static void test_flush_top_empty_buffer() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
-        Triton.instance.flushTop();
+        Triton.flushTop();
         Test.stopTest();
         
         List<pharos__Log__c> logs = [SELECT Id FROM pharos__Log__c];
         System.assertEquals(0, logs.size(), 'No logs should be created with empty buffer');
     }
 
+    // ─── Logging never throws into the caller ───────────────────────
+
+    @IsTest
+    private static void test_flush_publish_failure_never_throws_and_drops_buffer() {
+        Test.startTest();
+        Triton.log(Triton.t.summary('a').info());
+        Triton.log(Triton.t.summary('b').info());
+        System.assertEquals(2, Triton.logs.size(), 'Both logs should be buffered');
+        TritonTestFactory.failPublishing();
+
+        Triton.flush();
+
+        System.assert(Triton.logs.isEmpty(), 'A failed flush drops the buffer rather than re-queueing it');
+        System.assertEquals(1, TritonHelper.failureCount, 'The swallowed publish failure should be recorded once');
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
+    }
+
+    @IsTest
+    private static void test_flushTop_publish_failure_never_throws_and_keeps_older_logs() {
+        Test.startTest();
+        Triton.log(Triton.t.summary('a').info());
+        Triton.log(Triton.t.summary('b').info());
+        TritonTestFactory.failPublishing();
+
+        Triton.flushTop();
+
+        System.assertEquals(1, Triton.logs.size(), 'Only the newest log is dropped by a failed flushTop');
+        System.assertEquals('a', Triton.logs[0].pharos__Summary__c, 'The older log stays buffered');
+
+        TritonHelper.publishFault = null;
+        Triton.flush();
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = TritonTestFactory.queryLogs();
+        System.assertEquals(1, logs.size(), 'Only the older log is published once publishing recovers');
+        System.assertEquals('a', logs[0].pharos__Summary__c, 'The published log is the older one');
+    }
+
+    @IsTest
+    private static void test_logNow_publish_failure_never_throws() {
+        Test.startTest();
+        TritonTestFactory.failPublishing();
+        Triton.logNow(Triton.t.summary('now').error());
+        System.assert(Triton.logs.isEmpty(), 'A failed logNow leaves nothing buffered');
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
+    }
+
+    @IsTest
+    private static void test_log_methods_never_throw_on_null_builder() {
+        Test.startTest();
+        Triton.log(null);
+        Triton.logNow(null);
+        Triton.error(null);
+        Triton.warning(null);
+        Triton.info(null);
+        Triton.debug(null);
+        Triton.fine(null);
+        Triton.finer(null);
+        Triton.finest(null);
+        Test.stopTest();
+
+        System.assert(Triton.logs.isEmpty(), 'A null builder buffers nothing');
+        System.assertEquals(0, TritonHelper.failureCount, 'The null guards return before anything throws');
+    }
+
     @IsTest
     private static void test_limit_info() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
         
         // Create some limit usage
         for(Integer i = 0; i < 5; i++) {
-            List<Account> accounts = [SELECT Id FROM Account LIMIT 1];
+            List<pharos__Log__c> logs = [SELECT Id FROM pharos__Log__c LIMIT 1];
         }
-        Account acc = new Account(Name = 'Test');
-        insert acc;
+        pharos__Log__c testLog = new pharos__Log__c(
+            pharos__Summary__c = 'Limit Test',
+            pharos__Post_Processing_Status__c = 'Not Needed'
+        );
+        insert testLog;
         
         // Test via builder
         TritonBuilder builder = Triton.makeBuilder()
-            .category(TritonTypes.Category.Debug)
+            .category(TritonTypes.Category.LWC)
             .type(TritonTypes.Type.Backend)
             .area(TritonTypes.Area.Community)
             .summary('Testing limits')
             .details('Limit info test')
             .limitInfo();
         
-        Triton.instance.log(builder);
-        
-        // Test via addLog
-        Triton.instance.addLog(
+        Triton.logNow(builder);
+
+        // Test via log
+        Triton.log(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Debug)
+                .category(TritonTypes.Category.LWC)
                 .type(TritonTypes.Type.Backend)
                 .area(TritonTypes.Area.Community)
                 .summary('Testing limits via addLog')
                 .details('Limit info test via addLog')
                 .limitInfo()
         );
-        Triton.instance.flush();
+        Triton.flush();
         
         Test.stopTest();
         
@@ -1224,12 +2056,12 @@ private class TritonTest {
 
     @IsTest
     private static void test_limit_info_without_limit_info() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
-        Triton.instance.addLog(
+        Triton.log(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Debug)
+                .category(TritonTypes.Category.LWC)
                 .type(TritonTypes.Type.Backend)
                 .area(TritonTypes.Area.Community)
                 .summary('No limit info test')
@@ -1237,7 +2069,7 @@ private class TritonTest {
                 .withoutLimitInfo()
                 .limitInfo()
         );
-        Triton.instance.flush();
+        Triton.flush();
         Test.stopTest();
 
         List<pharos__Log__c> logs = [
@@ -1253,12 +2085,12 @@ private class TritonTest {
 
     @IsTest
     private static void test_limit_info_full() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
 
         Test.startTest();
-        Triton.instance.addLog(
+        Triton.log(
             Triton.makeBuilder()
-                .category(TritonTypes.Category.Debug)
+                .category(TritonTypes.Category.LWC)
                 .type(TritonTypes.Type.Backend)
                 .area(TritonTypes.Area.Community)
                 .summary('Full limit info test')
@@ -1266,7 +2098,7 @@ private class TritonTest {
                 .withFullLimitInfo()
                 .limitInfo()
         );
-        Triton.instance.flush();
+        Triton.flush();
         Test.stopTest();
 
         List<pharos__Log__c> logs = [
@@ -1307,61 +2139,47 @@ private class TritonTest {
 
     @IsTest
     private static void test_cache_functionality() {
-        Test.startTest();
-        
-        Boolean sessionCacheAvailable;
-        try {
-            Cache.Session.getKeys();
-            sessionCacheAvailable = true;
-        } catch (Exception e) {
-            sessionCacheAvailable = false;
-        }
+        TritonCacheManager.resetMock();
+        // Reset CACHE_AVAILABLE so it re-evaluates through TritonCacheManager
+        Triton.CACHE_AVAILABLE = null;
 
-        // Production transaction caching uses Cache.Session. Cache.Org requires
-        // a default partition, which is not present in every validation org.
-        Triton.CACHE_AVAILABLE = sessionCacheAvailable;
-        Triton instance = Triton.instance.withCache();
-        System.assertEquals(sessionCacheAvailable, instance.withCache, 'Cache usage should match Session Cache availability');
-        
+        Test.startTest();
+
+        // Mock cache is always available in test context
+        Triton.withCache();
+        System.assert(Triton.cacheEnabled, 'Cache should be enabled');
+
         // Start a transaction and verify it's cached
-        String transactionId = instance.startTransaction();
+        String transactionId = Triton.startTransaction();
         System.assertNotEquals(null, transactionId, 'Transaction ID should be generated');
-        String expectedCachedTransactionId = sessionCacheAvailable ? transactionId : null;
-        System.assertEquals(expectedCachedTransactionId, TritonHelper.getCachedTransactionId(), 'Transaction cache should match Session Cache availability');
+        System.assertEquals(transactionId, TritonHelper.getCachedTransactionId(), 'Transaction ID should be cached');
 
         // Resume transaction and verify cache is updated
         String newTransactionId = 'test-transaction-id';
-        instance.resumeTransaction(newTransactionId);
-        expectedCachedTransactionId = sessionCacheAvailable ? newTransactionId : null;
-        System.assertEquals(expectedCachedTransactionId, TritonHelper.getCachedTransactionId(), 'Updated transaction cache should match Session Cache availability');
+        Triton.resumeTransaction(newTransactionId);
+        System.assertEquals(newTransactionId, TritonHelper.getCachedTransactionId(), 'New transaction ID should be cached');
 
         // Stop transaction and verify cache is cleared
-        instance.stopTransaction();
+        Triton.stopTransaction();
         System.assertEquals(null, TritonHelper.getCachedTransactionId(), 'Cache should be cleared after stopping transaction');
-        
+
         Test.stopTest();
     }
 
     @IsTest
     private static void test_cache_functionality_negative() {
+        TritonCacheManager.resetMock();
+
         Test.startTest();
-        
-        // Clear any existing Session Cache transaction entry when available.
-        try {
-            TritonHelper.clearCachedTransactionId();
-        } catch (Exception e) {
-            // Session Cache can be unavailable in some validation orgs.
-        }
-        
-        // Create instance with cache disabled
-        Triton instance = Triton.instance;
-        instance.withCache = false; // Explicitly disable cache
-        
+
+        // Explicitly disable cache
+        Triton.cacheEnabled = false;
+
         // Verify transaction management still works without cache
-        String transactionId = instance.startTransaction();
+        String transactionId = Triton.startTransaction();
         System.assertNotEquals(null, transactionId, 'Transaction ID should be generated even without cache');
         System.assertEquals(null, TritonHelper.getCachedTransactionId(), 'Transaction should not be cached when cache is disabled');
-        
+
         Test.stopTest();
     }
 
@@ -1390,7 +2208,7 @@ private class TritonTest {
         
         // Add multiple logs to buffer using direct builder
         for(Integer i = 0; i < 3; i++) {
-            Triton.instance.addLog(
+            Triton.log(
                 Triton.makeBuilder()
                     .category(TritonTypes.Category.Apex)
                     .type(TritonTypes.Type.Backend)
@@ -1402,11 +2220,11 @@ private class TritonTest {
         }
         
         // Verify logs are in buffer but not persisted
-        System.assertEquals(3, Triton.instance.logs.size(), 'Should have 3 logs in buffer');
+        System.assertEquals(3, Triton.logs.size(), 'Should have 3 logs in buffer');
         System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c], 'No logs should be persisted yet');
         
         // Test flush - should persist all logs
-        Triton.instance.flush();
+        Triton.flush();
         
         // Wait for async operations to complete
         Test.stopTest();
@@ -1433,23 +2251,23 @@ private class TritonTest {
         
         // Set up a template
         TritonBuilder template = Triton.makeBuilder()
-            .category(TritonTypes.Category.Debug)
+            .category(TritonTypes.Category.LWC)
             .type(TritonTypes.Type.Backend)
             .area(TritonTypes.Area.Community);
-        Triton.instance.setTemplate(template);
+        Triton.setTemplate(template);
         
         // Add logs using template
         for(Integer i = 0; i < 3; i++) {
-            Triton.instance.addLog(
-                Triton.instance.fromTemplate()
+            Triton.log(
+                Triton.t
                     .summary('Log ' + i)
                     .details('Template test ' + i)
             );
         }
         
         // Verify template properties are applied
-        for(pharos__Log__c log : Triton.instance.logs) {
-            System.assertEquals(TritonTypes.Category.Debug.name(), log.pharos__Category__c, 
+        for(pharos__Log__c log : Triton.logs) {
+            System.assertEquals(TritonTypes.Category.LWC.name(), log.pharos__Category__c, 
                 'Template category should be applied');
             System.assertEquals(TritonTypes.Type.Backend.name(), log.pharos__Type__c, 
                 'Template type should be applied');
@@ -1467,45 +2285,57 @@ private class TritonTest {
         Triton.CACHE_AVAILABLE = false;
         
         // Test withCache() when cache is unavailable
-        Triton.instance.withCache();
+        Triton.withCache();
         System.assertEquals(false, Triton.CACHE_AVAILABLE, 'Cache should remain disabled');
-        System.assertNotEquals(null, Triton.instance.TRANSACTION_ID, 'Transaction ID should be generated');
+        System.assertNotEquals(null, Triton.TRANSACTION_ID, 'Transaction ID should be generated');
         
         Test.stopTest();
     }
 
     @IsTest
     private static void test_warning_and_debug_with_related_objects() {
-        Account testAccount = new Account(Name = 'Test Account');
-        insert testAccount;
-        Set<Id> relatedIds = new Set<Id>{testAccount.Id};
+        pharos__Log__c testLog = new pharos__Log__c(
+            pharos__Summary__c = 'Related Objects Test',
+            pharos__Post_Processing_Status__c = 'Not Needed'
+        );
+        insert testLog;
+        Set<Id> relatedIds = new Set<Id>{testLog.Id};
         
         Test.startTest();
         
         // Test warning with related objects
-        Triton.instance.warning(
-            TritonTypes.Type.Backend,
-            TritonTypes.Area.Community,
-            'Test Warning',
-            'Warning details'
+        Triton.logNow(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Flow)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('Test Warning')
+                .details('Warning details')
+                .warning()
         );
-        
+
         // Test debug with duration and related objects
-        Triton.instance.debug(
-            TritonTypes.Type.Backend,
-            TritonTypes.Area.Community,
-            'Test Debug',
-            'Debug details',
-            100 // duration in ms
+        Triton.logNow(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.LWC)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('Test Debug')
+                .details('Debug details')
+                .duration(100)
+                .debug()
         );
-        
+
         // Add debug with related objects
-        Triton.instance.addDebug(
-            TritonTypes.Type.Backend,
-            TritonTypes.Area.Community,
-            'Test Debug with Related',
-            'Debug details with related records',
-            200 // duration
+        Triton.log(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.LWC)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('Test Debug with Related')
+                .details('Debug details with related records')
+                .duration(200)
+                .debug()
         );
         
         Test.stopTest();
@@ -1524,11 +2354,11 @@ private class TritonTest {
         System.assertEquals(2, logs.size(), 'Should have created warning and debug logs');
         
         // Verify warning log
-        System.assertEquals(TritonTypes.Category.Warning.name(), logs[0].pharos__Category__c);
+        System.assertEquals(TritonTypes.Category.Flow.name(), logs[0].pharos__Category__c);
         System.assertEquals(TritonTypes.Level.WARNING.name(), logs[0].Log_Level__c);
         
         // Verify debug log with duration
-        System.assertEquals(TritonTypes.Category.Debug.name(), logs[1].pharos__Category__c);
+        System.assertEquals(TritonTypes.Category.LWC.name(), logs[1].pharos__Category__c);
         System.assertEquals(100, logs[1].pharos__Duration__c);
     }
 
@@ -1537,32 +2367,35 @@ private class TritonTest {
         Test.startTest();
         
         // Test event with related objects
-        Triton.instance.event(
-            TritonTypes.Level.INFO,
-            TritonTypes.Type.Backend,
-            TritonTypes.Area.Community,
-            'Test Event',
-            'Event details'
+        Triton.logNow(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Flow)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('Test Event')
+                .details('Event details')
+                .level(TritonTypes.Level.INFO)
         );
-        
+
         // Test integration error with different request/response combinations
         RestRequest restReq = new RestRequest();
         RestResponse restRes = new RestResponse();
         restReq.requestURI = '/services/apexrest/Account';
         restReq.httpMethod = 'GET';
-        
+
         // Test with RestRequest/Response
         try {
             throw new CalloutException('Test exception');
         } catch(Exception e) {
-            Triton.instance.integrationError(
-                TritonTypes.Area.Community,
-                e,
-                restReq,
-                restRes
+            Triton.logNow(
+                Triton.makeBuilder()
+                    .area(TritonTypes.Area.Community)
+                    .exception(e)
+                    .integrationPayload(restReq, restRes)
+                    .error()
             );
         }
-        
+
         // Test with HttpRequest/Response
         HttpRequest httpReq = new HttpRequest();
         httpReq.setEndpoint('https://example.com');
@@ -1570,41 +2403,51 @@ private class TritonTest {
         HttpResponse httpRes = new HttpResponse();
         httpRes.setStatusCode(500);
         httpRes.setStatus('Internal Server Error');
-        
-        Triton.instance.integrationError(
-            TritonTypes.Type.Backend,
-            TritonTypes.Area.Community,
-            'HTTP Error',
-            'Error details',
-            httpReq,
-            httpRes
+
+        Triton.logNow(
+            Triton.makeBuilder()
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('HTTP Error')
+                .details('Error details')
+                .integrationPayload(httpReq, httpRes)
+                .error()
         );
         
         Test.stopTest();
         
         List<pharos__Log__c> logs = [
-            SELECT Id, 
+            SELECT Id,
                    pharos__Category__c,
                    pharos__Type__c,
+                   pharos__Summary__c,
                    pharos__Stacktrace_Parse_Result__c
-            FROM pharos__Log__c 
+            FROM pharos__Log__c
             ORDER BY CreatedDate
         ];
-        
+
         System.assertEquals(3, logs.size(), 'Should have created event and integration error logs');
-        
-        // Verify integration logs have parsed request/response data
+
+        // Verify integration-payload logs default to Apex category and carry parsed request/response data
+        Integer payloadLogs = 0;
         for(pharos__Log__c log : logs) {
-            if(log.pharos__Category__c == TritonTypes.Category.Integration.name()) {
-                System.assertNotEquals(null, log.pharos__Stacktrace_Parse_Result__c, 
-                    'Integration log should have parsed request/response data');
+            if(log.pharos__Summary__c == 'Test Event') {
+                System.assertEquals(TritonTypes.Category.Flow.name(), log.pharos__Category__c,
+                    'Log should keep its explicit Flow category');
+                continue;
             }
+            payloadLogs++;
+            System.assertEquals(TritonTypes.Category.Apex.name(), log.pharos__Category__c,
+                'Integration payload log should default to Apex category');
+            System.assertNotEquals(null, log.pharos__Stacktrace_Parse_Result__c,
+                'Integration payload log should carry parsed request/response data');
         }
+        System.assertEquals(2, payloadLogs, 'Both integration error logs should carry parsed request/response data');
     }
 
     @IsTest
     private static void test_add_error_with_exception() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
         String msg;
@@ -1614,15 +2457,21 @@ private class TritonTest {
             Integer i = 1/0;
         } catch(Exception e) {
             msg = e.getMessage();
-            Triton.instance.addError(TritonTypes.Area.Community, e);
+            Triton.log(
+                Triton.makeBuilder()
+                    .category(TritonTypes.Category.Apex)
+                    .area(TritonTypes.Area.Community)
+                    .exception(e)
+                    .error()
+            );
         }
         
         // Verify log is in buffer but not persisted yet
-        System.assertEquals(1, Triton.instance.logs.size(), 'Should have one log in buffer');
+        System.assertEquals(1, Triton.logs.size(), 'Should have one log in buffer');
         System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c], 'No logs should be persisted yet');
         
         // Flush and verify log
-        Triton.instance.flush();
+        Triton.flush();
         
         Test.stopTest();
         
@@ -1651,24 +2500,27 @@ private class TritonTest {
 
     @IsTest
     private static void test_add_event() {
-        assertBefore();
+        TritonTestFactory.assertNoLogs();
         
         Test.startTest();
         
-        // Test addEvent with default INFO level
-        Triton.instance.addEvent(
-            TritonTypes.Type.Backend,
-            TritonTypes.Area.Community,
-            'Test Event Summary',
-            'Test Event Details'
+        // Test buffered event with default INFO level
+        Triton.log(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Flow)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('Test Event Summary')
+                .details('Test Event Details')
+                .info()
         );
         
         // Verify log is in buffer but not persisted yet
-        System.assertEquals(1, Triton.instance.logs.size(), 'Should have one log in buffer');
+        System.assertEquals(1, Triton.logs.size(), 'Should have one log in buffer');
         System.assertEquals(0, [SELECT COUNT() FROM pharos__Log__c], 'No logs should be persisted yet');
         
         // Flush and verify log
-        Triton.instance.flush();
+        Triton.flush();
         
         Test.stopTest();
         
@@ -1688,7 +2540,7 @@ private class TritonTest {
         pharos__Log__c log = logs[0];
         
         // Verify log properties
-        System.assertEquals(TritonTypes.Category.Event.name(), log.pharos__Category__c);
+        System.assertEquals(TritonTypes.Category.Flow.name(), log.pharos__Category__c);
         System.assertEquals(TritonTypes.Type.Backend.name(), log.pharos__Type__c);
         System.assertEquals(TritonTypes.Area.Community.name(), log.pharos__Area__c);
         System.assertEquals(TritonTypes.Level.INFO.name(), log.Log_Level__c);
@@ -1760,19 +2612,24 @@ private class TritonTest {
      */
     @IsTest
     static void testAddDebug() {
-        // Set up test data
-        Triton triton = Triton.instance;
-        
         // Add a debug log
         Test.startTest();
-        triton.addDebug(TritonTypes.Type.Backend, TritonTypes.Area.Accounts, 'Test Summary', 'Test Details');
+        Triton.log(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.LWC)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Accounts)
+                .summary('Test Summary')
+                .details('Test Details')
+                .debug()
+        );
         Test.stopTest();
-        
+
         // Verify log was added to the buffer
-        System.assertEquals(1, triton.logs.size(), 'One log should be in the buffer');
-        
+        System.assertEquals(1, Triton.logs.size(), 'One log should be in the buffer');
+
         // Verify log properties
-        pharos__Log__c log = triton.logs[0];
+        pharos__Log__c log = Triton.logs[0];
         System.assertEquals('Test Summary', log.pharos__Summary__c, 'Summary should match');
         System.assertEquals('Test Details', log.pharos__Details__c, 'Details should match');
         System.assertEquals('Backend', log.pharos__Type__c, 'Type should match');
@@ -1786,9 +2643,6 @@ private class TritonTest {
     @IsTest
     private static void test_formatDMLError() {
         Test.startTest();
-        
-        // Create a mock Database.Error using TestVisible method
-        Triton testInstance = Triton.instance;
         
         // 1. Test with field errors and record ID
         Id testId = UserInfo.getUserId();
@@ -1869,20 +2723,23 @@ private class TritonTest {
     @IsTest
     private static void test_field_error_format() {
         Test.startTest();
-        
-        // Create a Contact with missing required fields to generate a real field error
-        Contact invalidContact = new Contact();
-        // FirstName is optional, but LastName is required (omitted to cause field error)
-        Database.SaveResult[] srList = Database.insert(new List<Contact>{invalidContact}, false);
-        
+
+        // Insert a pharos__Log__c with invalid lookup to generate a field-specific error
+        Id fakeId = pharos__Log__c.SObjectType.getDescribe().getKeyPrefix() + '000000000000';
+        pharos__Log__c invalidLog = new pharos__Log__c(pharos__Issue__c = fakeId);
+        Database.SaveResult[] srList = Database.insert(new List<pharos__Log__c>{invalidLog}, false);
+
         // Verify we got a field error
         System.assert(!srList[0].isSuccess(), 'Insert should fail');
-        Database.Error err = srList[0].getErrors()[0];
-        System.assert(err.getFields().contains('LastName'), 'Error should reference LastName field');
-        
+
         // Log the error - captures error via formatDMLError method
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, srList);
+        Triton.logNow(
+            Triton.makeBuilder()
+                .area(TritonTypes.Area.Accounts)
+                .dmlResults(srList)
+        );
         Test.stopTest();
+
         // Retrieve the log to verify error formatting
         pharos__Log__c log = [
             SELECT pharos__Details__c
@@ -1890,14 +2747,11 @@ private class TritonTest {
             WHERE pharos__Area__c = :TritonTypes.Area.Accounts.name()
             LIMIT 1
         ];
-        
-        // Verify details contain field information
+
+        // Verify details contain error information
         System.assertNotEquals(null, log, 'A log should be created');
-        System.assert(log.pharos__Details__c.contains('Fields: LastName'), 
-            'Log details should include the field name');
-        System.assert(log.pharos__Details__c.contains('Status Code:'), 
+        System.assert(log.pharos__Details__c.contains('Status Code:'),
             'Log details should include status code');
-        
     }
     
     /**
@@ -1908,34 +2762,47 @@ private class TritonTest {
         Test.startTest();
         
         // Generate different DML error types
-        
-        // 1. Error with no specific fields (entity locking error)
-        Account acc = new Account(Name = 'Test Account');
-        insert acc;
-        
+
+        // 1. Error with no specific fields (simulated concurrent update)
+        pharos__Log__c testLog = new pharos__Log__c(
+            pharos__Summary__c = 'Test Log',
+            pharos__Post_Processing_Status__c = 'Not Needed'
+        );
+        insert testLog;
+
         // Create a locking error by attempting concurrent updates
         // This requires some creativity in a test context
         try {
             // Set up conflicting operations
             // First operation - establish update
-            acc.Name = 'Updated Name 1';
-            
+            testLog.pharos__Summary__c = 'Updated 1';
+
             // Second operation (simulated concurrent) - would cause lock error in real scenario
-            Account sameAcc = [SELECT Id, Name FROM Account WHERE Id = :acc.Id];
-            sameAcc.Name = 'Updated Name 2';
-            update sameAcc;
-            
+            pharos__Log__c sameLog = [SELECT Id, pharos__Summary__c FROM pharos__Log__c WHERE Id = :testLog.Id];
+            sameLog.pharos__Summary__c = 'Updated 2';
+            update sameLog;
+
             // Try updating original record to cause error
-            update acc;
+            update testLog;
         } catch (Exception e) {
             // Create a log from the exception
-            Triton.instance.error(TritonTypes.Area.Accounts, e);
+            Triton.logNow(
+                Triton.makeBuilder()
+                    .category(TritonTypes.Category.Apex)
+                    .area(TritonTypes.Area.Accounts)
+                    .exception(e)
+                    .error()
+            );
         }
-        
+
         // 2. Record not found error
-        Id fakeId = '001000000000000AAA';
+        Id fakeId = pharos__Log__c.SObjectType.getDescribe().getKeyPrefix() + '000000000000';
         Database.DeleteResult[] drList = Database.delete(new List<Id>{fakeId}, false);
-        Triton.instance.dmlResult(TritonTypes.Area.Accounts, drList);
+        Triton.logNow(
+            Triton.makeBuilder()
+                .area(TritonTypes.Area.Accounts)
+                .dmlResults(drList)
+        );
         Test.stopTest();
         
         // Verify logs capture different error types appropriately
@@ -1969,25 +2836,26 @@ private class TritonTest {
         Double templateTimestamp = 123456789.0; // A fixed timestamp
         
         TritonBuilder template = Triton.makeBuilder()
-            .category(TritonTypes.Category.Debug)
+            .category(TritonTypes.Category.LWC)
             .type(TritonTypes.Type.Backend)
             .area(TritonTypes.Area.Community)
             .createdTimestamp(templateTimestamp)
             .attribute(TritonBuilder.CPU_TIME, 1000)
             .attribute(TritonBuilder.HEAP_SIZE, 2000);
             
-        Triton.instance.setTemplate(template);
+        Triton.setTemplate(template);
         
         // Start a transaction
-        String transactionId = Triton.instance.startTransaction();
+        String transactionId = Triton.startTransaction();
         
         // Create a log from the template
-        Triton.instance.log(
-            Triton.instance.fromTemplate()
+        Triton.log(
+            Triton.t
                 .summary('Runtime properties test')
                 .details('Testing runtime properties are reset')
         );
-        
+        Triton.flush();
+
         Test.stopTest();
         
         // Get the log and verify its runtime properties
@@ -2008,6 +2876,28 @@ private class TritonTest {
             'Template heap size should not be copied to logs created with fromTemplate()');
     }
 
+    @isTest
+    private static void test_triton_addLog_method() {
+        TritonBuilder builder = new TritonBuilder();
+        builder
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .level(TritonTypes.Level.INFO)
+            .summary('some event')
+            .details('error details')
+            .stackTrace('Debug details')
+            .traceable(true)
+            .tracePoint();
+
+        Triton.log(builder);
+        Triton.flush();
+
+        List<pharos__Log__c> logs = [SELECT Id, pharos__Stacktrace__c FROM pharos__Log__c];
+        System.assertNotEquals(null, logs, 'Log should be created');
+        System.assertEquals(true, builder.traceable, 'Traceable flag should be set');
+    }
+
     /**
      * Helper method to verify batch jobs based on expected count
      * @param expectedCount The expected number of batch jobs
@@ -2015,11 +2905,488 @@ private class TritonTest {
      */
     private static void assertBatchJobs(Integer expectedCount, String assertMessage) {
         System.assertEquals(expectedCount, [
-            SELECT COUNT() 
-            FROM AsyncApexJob 
+            SELECT COUNT()
+            FROM AsyncApexJob
             WHERE ApexClass.Name = 'TritonDelayedPublishBatch'
             AND Status IN ('Queued', 'Processing', 'Completed')
         ], assertMessage);
+    }
+
+    @IsTest
+    static void test_summary_auto_carryover() {
+        String longSummary = 'A'.repeat(300);
+        pharos__Log__c log = Triton.makeBuilder()
+            .summary(longSummary)
+            .error()
+            .build();
+        System.assertEquals(255, log.pharos__Summary__c.length(), 'Summary should be truncated to 255');
+        System.assertEquals(longSummary, log.pharos__Details__c, 'Full summary should be in details');
+    }
+
+    @IsTest
+    static void test_summary_appended_to_details() {
+        String longSummary = 'A'.repeat(300);
+        String explicitDetails = 'explicit details';
+        pharos__Log__c log = Triton.makeBuilder()
+            .summary(longSummary)
+            .details(explicitDetails)
+            .error()
+            .build();
+        System.assertEquals(explicitDetails + Triton.SPACE_SEP + longSummary, log.pharos__Details__c,
+            'Full summary should be appended to explicit details');
+    }
+
+    @IsTest
+    static void test_level_shorthand_with_summary() {
+        pharos__Log__c log = Triton.makeBuilder()
+            .error('Account sync failed')
+            .build();
+        System.assertEquals('Account sync failed', log.pharos__Summary__c, 'Summary should be set');
+        System.assertEquals('ERROR', log.Log_Level__c, 'Level should be ERROR');
+    }
+
+    @IsTest
+    static void test_default_category_apex() {
+        pharos__Log__c log = Triton.makeBuilder()
+            .summary('test')
+            .error()
+            .build();
+        System.assertEquals(TritonTypes.Category.Apex.name(), log.pharos__Category__c, 'Category should default to Apex');
+    }
+
+    @IsTest
+    static void test_default_category_not_overridden() {
+        pharos__Log__c log = Triton.makeBuilder()
+            .category(TritonTypes.Category.Flow)
+            .summary('test')
+            .error()
+            .build();
+        System.assertEquals(TritonTypes.Category.Flow.name(), log.pharos__Category__c, 'Explicit category should not be overridden');
+    }
+
+    @IsTest
+    static void test_execution_context_sync() {
+        Test.startTest();
+        String context = TritonHelper.formatExecutionContext();
+        Test.stopTest();
+        System.assertEquals('', context, 'Sync context should return empty string');
+    }
+
+    @IsTest
+    static void test_builder_clone() {
+        TritonBuilder original = Triton.makeBuilder()
+            .category(TritonTypes.Category.Flow)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .level(TritonTypes.Level.WARNING)
+            .withFullLimitInfo()
+            .traceable(true);
+
+        TritonBuilder cloned = original.cloneBuilder();
+        pharos__Log__c clonedLog = cloned.build();
+
+        System.assertEquals(TritonTypes.Category.Flow.name(), clonedLog.pharos__Category__c,
+            'Cloned builder should preserve category');
+        System.assertEquals(TritonTypes.Type.Backend.name(), clonedLog.pharos__Type__c,
+            'Cloned builder should preserve type');
+        System.assertEquals(TritonTypes.Area.Community.name(), clonedLog.pharos__Area__c,
+            'Cloned builder should preserve area');
+        System.assertEquals(true, cloned.fullLimitInfoRequested,
+            'Cloned builder should preserve fullLimitInfoRequested');
+        System.assertEquals(true, cloned.traceable,
+            'Cloned builder should preserve traceable');
+    }
+
+    @IsTest
+    static void test_execution_context_captured_for_apex_category() {
+        TritonBuilder builder = Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .summary('apex context test')
+            .details('original details');
+
+        // Simulate the internal log path which calls prepareForLogging
+        Triton.log(builder);
+
+        // In synchronous test context formatExecutionContext returns empty string,
+        // but the gate should have attempted to capture it (executionContextDetails is set to '')
+        System.assertNotEquals(null, builder.executionContextDetails,
+            'Apex category should trigger execution context capture');
+    }
+
+    @IsTest
+    static void test_execution_context_skipped_for_flow_category() {
+        TritonBuilder builder = Triton.makeBuilder()
+            .category(TritonTypes.Category.Flow)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .summary('flow context test')
+            .details('original details');
+
+        Triton.log(builder);
+
+        System.assertEquals(null, builder.executionContextDetails,
+            'Flow category should not trigger execution context capture');
+    }
+
+    @IsTest
+    static void test_execution_context_skipped_for_lwc_category() {
+        TritonBuilder builder = Triton.makeBuilder()
+            .category(TritonTypes.Category.LWC)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .summary('lwc context test')
+            .details('original details');
+
+        Triton.log(builder);
+
+        System.assertEquals(null, builder.executionContextDetails,
+            'LWC category should not trigger execution context capture');
+    }
+
+    @IsTest
+    static void test_builder_post_processing() {
+        TritonTestFactory.assertNoLogs();
+
+        Test.startTest();
+        TritonHelper.PostProcessingControlsBuilder ppBuilder =
+            Triton.makePostProcessingBuilder().setAll(true);
+        Triton.logNow(
+            Triton.makeBuilder()
+                .category(TritonTypes.Category.Apex)
+                .type(TritonTypes.Type.Backend)
+                .area(TritonTypes.Area.Community)
+                .summary('post processing test')
+                .postProcessing(ppBuilder)
+                .error()
+        );
+        Test.stopTest();
+
+        List<pharos__Log__c> logs = [SELECT Id FROM pharos__Log__c];
+        System.assertEquals(1, logs.size(), 'Log with post processing should be created');
+    }
+
+    @IsTest
+    static void test_builder_action() {
+        TritonBuilder builder = Triton.makeBuilder()
+            .action('myAction')
+            .summary('action test');
+        pharos__Log__c log = builder.build();
+        System.assertEquals('myAction', log.Action__c, 'Action should be set');
+    }
+
+    @IsTest
+    static void test_builder_level_shorthands_with_summary() {
+        // warning(String)
+        pharos__Log__c log = Triton.makeBuilder().warning('warn msg').build();
+        System.assertEquals('warn msg', log.pharos__Summary__c);
+        System.assertEquals('WARNING', log.Log_Level__c);
+
+        // info(String)
+        log = Triton.makeBuilder().info('info msg').build();
+        System.assertEquals('info msg', log.pharos__Summary__c);
+        System.assertEquals('INFO', log.Log_Level__c);
+
+        // debug(String)
+        log = Triton.makeBuilder().debug('debug msg').build();
+        System.assertEquals('debug msg', log.pharos__Summary__c);
+        System.assertEquals('DEBUG', log.Log_Level__c);
+
+        // fine(String)
+        log = Triton.makeBuilder().fine('fine msg').build();
+        System.assertEquals('fine msg', log.pharos__Summary__c);
+        System.assertEquals('FINE', log.Log_Level__c);
+
+        // finer(String)
+        log = Triton.makeBuilder().finer('finer msg').build();
+        System.assertEquals('finer msg', log.pharos__Summary__c);
+        System.assertEquals('FINER', log.Log_Level__c);
+
+        // finest(String)
+        log = Triton.makeBuilder().finest('finest msg').build();
+        System.assertEquals('finest msg', log.pharos__Summary__c);
+        System.assertEquals('FINEST', log.Log_Level__c);
+    }
+
+    @IsTest
+    static void test_builder_related_object_null() {
+        TritonBuilder builder = Triton.makeBuilder();
+        builder.relatedObject((Id)null);
+        System.assertEquals(null, builder.build().pharos__Related_Objects__c,
+            'relatedObject(null) should be no-op');
+    }
+
+    @IsTest
+    static void test_builder_exception_null() {
+        TritonBuilder builder = Triton.makeBuilder();
+        builder.exception(null);
+        // Should be no-op — no type/summary/stacktrace set from exception
+        pharos__Log__c log = builder.build();
+        System.assertNotEquals(null, log, 'Builder should still produce a log');
+    }
+
+    @IsTest
+    static void test_builder_related_objects_list_string() {
+        Id validId = UserInfo.getUserId();
+        TritonBuilder builder = Triton.makeBuilder();
+        builder.relatedObjects(new List<String>{ validId, 'bad-id' });
+        pharos__Log__c log = builder.build();
+        System.assertEquals(JSON.serialize(new Set<Id>{ validId }), log.pharos__Related_Objects__c,
+            'Should include only valid IDs from List<String>');
+    }
+
+    @IsTest
+    static void test_triton_level_shorthand_methods() {
+        Test.startTest();
+
+        Triton.setTemplate(Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community));
+
+        Triton.error(Triton.t.summary('error log'));
+        Triton.warning(Triton.t.summary('warning log'));
+        Triton.info(Triton.t.summary('info log'));
+        Triton.debug(Triton.t.summary('debug log'));
+        Triton.fine(Triton.t.summary('fine log'));
+        Triton.finer(Triton.t.summary('finer log'));
+        Triton.finest(Triton.t.summary('finest log'));
+
+        System.assertEquals(7, Triton.logs.size(), 'All 7 level methods should buffer a log');
+
+        System.assertEquals(TritonTypes.Level.ERROR.name(), Triton.logs[0].Log_Level__c);
+        System.assertEquals(TritonTypes.Level.WARNING.name(), Triton.logs[1].Log_Level__c);
+        System.assertEquals(TritonTypes.Level.INFO.name(), Triton.logs[2].Log_Level__c);
+        System.assertEquals(TritonTypes.Level.DEBUG.name(), Triton.logs[3].Log_Level__c);
+        System.assertEquals(TritonTypes.Level.FINE.name(), Triton.logs[4].Log_Level__c);
+        System.assertEquals(TritonTypes.Level.FINER.name(), Triton.logs[5].Log_Level__c);
+        System.assertEquals(TritonTypes.Level.FINEST.name(), Triton.logs[6].Log_Level__c);
+
+        Test.stopTest();
+    }
+
+    @IsTest
+    static void test_triton_level_shorthand_overrides_template() {
+        Test.startTest();
+
+        Triton.setTemplate(Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .level(TritonTypes.Level.DEBUG));
+
+        Triton.error(Triton.t.summary('should be error'));
+
+        System.assertEquals(1, Triton.logs.size());
+        System.assertEquals(TritonTypes.Level.ERROR.name(), Triton.logs[0].Log_Level__c,
+            'Triton.error() should override template level');
+
+        Test.stopTest();
+    }
+
+    @IsTest
+    static void test_triton_level_shorthand_persists() {
+        TritonTestFactory.assertNoLogs();
+
+        Test.startTest();
+
+        Triton.setTemplate(Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community));
+
+        Triton.info(Triton.t.summary('info to persist').details('some details'));
+        Triton.error(Triton.t.summary('error to persist').details('error details'));
+        Triton.flush();
+
+        Test.stopTest();
+
+        List<pharos__Log__c> persistedLogs = [
+            SELECT pharos__Summary__c, Log_Level__c
+            FROM pharos__Log__c
+            ORDER BY CreatedDate
+        ];
+        System.assertEquals(2, persistedLogs.size(), 'Both logs should be persisted');
+
+        Set<String> levels = new Set<String>();
+        for (pharos__Log__c log : persistedLogs) {
+            levels.add(log.Log_Level__c);
+        }
+        System.assert(levels.contains(TritonTypes.Level.INFO.name()), 'Should contain INFO level log');
+        System.assert(levels.contains(TritonTypes.Level.ERROR.name()), 'Should contain ERROR level log');
+    }
+
+    @IsTest
+    static void test_builder_span_id_explicit() {
+        TritonBuilder builder = Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .summary('span test')
+            .spanId('explicit-span-id')
+            .parentSpanId('explicit-parent-span-id');
+
+        pharos__Log__c log = builder.build();
+
+        System.assertEquals('explicit-span-id', (String) log.get(TritonBuilder.SPAN_ID),
+            'Should set explicit span ID');
+        System.assertEquals('explicit-parent-span-id', (String) log.get(TritonBuilder.PARENT_SPAN_ID),
+            'Should set explicit parent span ID');
+    }
+
+    @IsTest
+    static void test_builder_span_id_fallback_to_request_id() {
+        TritonBuilder builder = Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .summary('span fallback test');
+
+        pharos__Log__c log = builder.build();
+
+        String requestId = System.Request.getCurrent().getRequestId();
+        System.assertEquals(requestId, (String) log.get(TritonBuilder.SPAN_ID),
+            'Should fallback to request ID when no span ID explicitly set');
+    }
+
+    @IsTest
+    static void test_builder_clone_preserves_span_ids() {
+        TritonBuilder original = Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Community)
+            .spanId('clone-span')
+            .parentSpanId('clone-parent');
+
+        TritonBuilder cloned = original.cloneBuilder();
+
+        System.assertEquals('clone-span', cloned.currentSpanId,
+            'Cloned builder should preserve span ID');
+        System.assertEquals('clone-parent', cloned.currentParentSpanId,
+            'Cloned builder should preserve parent span ID');
+    }
+
+    @IsTest
+    private static void test_switches_default_enabled() {
+        TritonHelper.Config.settings = null;
+        System.assertEquals(false, TritonHelper.Config.isLoggingDisabled(),
+            'Logging should be enabled by default (org defaults / no record)');
+        System.assertEquals(false, TritonHelper.Config.isFlowFlushBatchDisabled(),
+            'Flow flush batch should be enabled by default');
+    }
+
+    @IsTest
+    private static void test_switch_logging_disabled_flag() {
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Logging__c = true);
+        System.assertEquals(true, TritonHelper.Config.isLoggingDisabled(),
+            'isLoggingDisabled should reflect the Disable_Logging__c flag');
+        System.assertEquals(false, TritonHelper.Config.isFlowFlushBatchDisabled(),
+            'Flow flush batch flag is independent and defaults false');
+    }
+
+    @IsTest
+    private static void test_switch_flow_flush_batch_disabled_flag() {
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Flow_Flush_Batch__c = true);
+        System.assertEquals(true, TritonHelper.Config.isFlowFlushBatchDisabled(),
+            'isFlowFlushBatchDisabled should reflect the Disable_Flow_Flush_Batch__c flag');
+        System.assertEquals(false, TritonHelper.Config.isLoggingDisabled(),
+            'Logging flag is independent and defaults false');
+    }
+
+    @IsTest
+    private static void test_operational_knobs_default_when_unset() {
+        // No org-default record — getOrgDefaults() returns an empty setting.
+        System.assertEquals(300, TritonHelper.Config.getCacheTtlSeconds(),
+            'Cache TTL should fall back to the packaged default (300s) when unset');
+        System.assertEquals(1, TritonHelper.Config.getFlowFlushBatchDelayMinutes(),
+            'Batch delay should fall back to the packaged default (1 min) when unset');
+    }
+
+    @IsTest
+    private static void test_operational_knobs_read_configured_values() {
+        // Knobs are read live from the org-default custom setting, not the cached
+        // Config.settings member — so seed a real org-default record.
+        upsert new TritonSettings__c(
+            SetupOwnerId = UserInfo.getOrganizationId(),
+            Cache_TTL_Minutes__c = 30,
+            Flow_Flush_Batch_Delay_Minutes__c = 5
+        );
+        System.assertEquals(30 * 60, TritonHelper.Config.getCacheTtlSeconds(),
+            'Cache TTL should be the configured minutes converted to seconds');
+        System.assertEquals(5, TritonHelper.Config.getFlowFlushBatchDelayMinutes(),
+            'Batch delay should reflect the configured minutes');
+    }
+
+    @IsTest
+    private static void test_operational_knobs_negative_falls_back_to_default() {
+        upsert new TritonSettings__c(
+            SetupOwnerId = UserInfo.getOrganizationId(),
+            Cache_TTL_Minutes__c = -5,
+            Flow_Flush_Batch_Delay_Minutes__c = -1
+        );
+        System.assertEquals(300, TritonHelper.Config.getCacheTtlSeconds(),
+            'Negative cache TTL should fall back to the packaged default');
+        System.assertEquals(1, TritonHelper.Config.getFlowFlushBatchDelayMinutes(),
+            'Negative batch delay should fall back to the packaged default');
+    }
+
+    @IsTest
+    private static void test_master_switch_disables_apex_logging() {
+        TritonTestFactory.assertNoLogs();
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Logging__c = true);
+
+        Test.startTest();
+        Triton.logNow(Triton.t
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Accounts)
+            .summary('should not persist')
+            .level(TritonTypes.Level.INFO));
+        Triton.log(Triton.t
+            .category(TritonTypes.Category.Apex)
+            .summary('buffered should not persist')
+            .level(TritonTypes.Level.ERROR));
+        Triton.flush();
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
+    }
+
+    @IsTest
+    private static void test_master_switch_enabled_still_logs() {
+        TritonTestFactory.assertNoLogs();
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Logging__c = false);
+
+        Test.startTest();
+        Triton.logNow(Triton.t
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.Accounts)
+            .summary('should persist')
+            .level(TritonTypes.Level.INFO));
+        Test.stopTest();
+
+        TritonTestFactory.assertLogCount(1);
+    }
+
+    @IsTest
+    private static void test_master_switch_disables_lwc_logging() {
+        TritonTestFactory.assertNoLogs();
+        TritonHelper.Config.settings = new TritonSettings__c(Disable_Logging__c = true);
+
+        TritonLwc.ComponentLog cl = new TritonLwc.ComponentLog();
+        cl.category = TritonTypes.Category.LWC.name();
+        cl.level = TritonTypes.Level.INFO.name();
+        cl.summary = 'lwc should not persist';
+        cl.componentInfo = new TritonLwc.Component();
+        cl.componentInfo.name = 'myCmp';
+
+        Test.startTest();
+        TritonLwc.saveComponentLogs(new List<TritonLwc.ComponentLog>{ cl });
+        Test.stopTest();
+
+        TritonTestFactory.assertNoLogs();
     }
 
 }

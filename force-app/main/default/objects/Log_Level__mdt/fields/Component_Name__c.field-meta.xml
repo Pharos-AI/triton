@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Component_Name__c</fullName>
+    <description>Optional. Scopes this log level to a single component. For Apex enter the class name, for LWC the component name, for Flows the Flow API name. Leave blank to apply to all components. Apex logs match whether the operation was set explicitly or derived from the stack trace. While any component-scoped level exists, Apex logs capture their stack trace before the level check.</description>
+    <externalId>false</externalId>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <inlineHelpText>Apex class name, LWC component name, or Flow API name this log level applies to. Leave blank to apply to all components. Apex logs match by class name whether or not they set an operation explicitly.</inlineHelpText>
+    <label>Component Name</label>
+    <length>255</length>
+    <required>false</required>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>
