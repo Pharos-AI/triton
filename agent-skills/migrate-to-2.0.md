@@ -12,28 +12,71 @@ Mechanically convert Triton **1.x** singleton usage (`Triton.instance.*`) to the
 
 ## Step 0 — Prerequisites
 
-`sf`/`sfdx` and a default org only if you intend to `--deploy`; otherwise the rewrite is static. Confirm the target `<path>` exists (a `.cls`/`.trigger` file or a directory to sweep).
+`sf`/`sfdx` and a default org only if you intend to `--deploy`; otherwise the rewrite is static. Confirm the target `<path>` exists (a single file or a directory to sweep).
 
-**If the repo vendors Triton as source** (the `Triton*.cls` files live in the repo rather than arriving as a package), the library upgrade is part of this change: 2.0 removes `Triton.instance` entirely, so callers and library must land together or nothing compiles. Three things to settle before rewriting a single caller:
+### 0a — Determine the install path
 
-- **Diff the local `TritonTypes` against the incoming 2.0 one and re-add any org-local enum values.** A wholesale copy drops them and every reference fails to compile. This is the one shipped file expected to carry a local delta — see the note in Step 5. Org-local `Category` values are the exception: prefer retiring them per the severity-category note in Step 3 rather than preserving them.
+How Triton reaches the org decides how org-local taxonomy is handled and in what order things deploy, so settle it first and state it in the summary:
+
+- **Source** — Triton's own `Triton*.cls` files (`Triton.cls`, `TritonBuilder.cls`, `TritonHelper.cls`, `TritonTypes.cls`, …) are vendored into the repo.
+- **Package** — they are not; Triton is installed as the `Pharos Triton` package.
+- **Both signals** — Triton is vendored *and* `sfdx-project.json` lists a `Pharos Triton` package dependency: ask the user which one the org actually runs.
+
+`--install source|package` overrides the detection.
+
+### 0b — Both install paths
+
 - **Confirm the branch you are sweeping actually contains every caller.** The sweep is only as complete as its `<path>` and its branch. In a promotion-pipeline repo the integration branch can sit well ahead of the default branch; a sweep run against the wrong one removes `Triton.instance` from the library while live references survive elsewhere.
-- **Add `**/__tests__/**` to `.forceignore` before any deploy.** 2.0 ships four LWC modules (`triton`, `tritonBuilder`, `tritonUtils`, `logLimits`), three of which carry Jest tests under `__tests__/`. Jest tests are not deployable metadata — they rely on Jest globals and test-only module mocks — so the Step 6 `sf project deploy` can reject the bundle unless the folder is ignored. Salesforce documents this entry alongside the `**/jsconfig.json` and `**/.eslintrc.json` ones many repos already have, so it is often the only line missing. The tests stay in version control; they are just never pushed to an org. Triton's own repository already ignores them — its `.forceignore` excludes `**/__tests__/**` and `**/__mocks__/**` from 2.0.0 — but a `.forceignore` only governs the project it sits in: once `force-app` is vendored into your repo, your project's `.forceignore` is the one that applies.
+- **Add `**/__tests__/**` to `.forceignore` before any deploy.** This applies to every source install, and to any repo that keeps its own LWC Jest tests. 2.0 ships four LWC modules (`triton`, `tritonBuilder`, `tritonUtils`, `logLimits`), three of which carry Jest tests under `__tests__/`. Jest tests are not deployable metadata — they rely on Jest globals and test-only module mocks — so the Step 6 `sf project deploy` can reject the bundle unless the folder is ignored. Salesforce documents this entry alongside the `**/jsconfig.json` and `**/.eslintrc.json` ones many repos already have, so it is often the only line missing. The tests stay in version control; they are just never pushed to an org. Triton's own repository already ignores them — its `.forceignore` excludes `**/__tests__/**` and `**/__mocks__/**` from 2.0.0 — but a `.forceignore` only governs the project it sits in: once `force-app` is vendored into your repo, your project's `.forceignore` is the one that applies.
+
+### 0c — Source install
+
+The library upgrade is part of this change: 2.0 removes `Triton.instance` entirely, so callers and library must land together or nothing compiles. Before rewriting a single caller:
+
+- **Diff the local `TritonTypes` against the incoming 2.0 one and re-add any org-local `Area` and `Type` values.** A wholesale copy drops them and every reference fails to compile. This is the one shipped file expected to carry a local delta — see the note in Step 5. Org-local `Category` values are the exception: prefer retiring them per the severity-category note in Step 3 rather than preserving them.
+
+### 0d — Package install
+
+Triton installed as the `Pharos Triton` package (2.0.0-1 is version `04tg5000000GnHhAAK`):
+
+- **Org-local `Area` and `Type` values cannot be kept.** The package replaces `TritonTypes` with its own, so any value a customer added fails the install with `Variable does not exist: <value>`. Move each one to a `public static final String` in the customer's own class (for example `AppAreas.BILLING = 'Billing'`) and rewrite `TritonTypes.Area.Billing` → `AppAreas.BILLING`. `.area(String)` and `.type(String)` accept any String on every tier, and keeping the same string keeps existing `Log_Level__mdt` rules and dashboards matching. Org-local `Category` values: retire them, as for a source install.
+- **Migrate first, then install.** Only Apex classes and triggers that use removed 1.x members block the package install; a 1.x LWC or an active 1.x Flow does not. The supported path is one combined deployment of the 2.0 source plus the migrated callers, then the package install. Point the user to [Upgrading an Org from 1.x](https://triton.pharos.ai/migration/upgrading-an-org) for the full procedure rather than restating it.
+- **`--deploy` against an org still on 1.x fails** — the migrated callers reference 2.0 members that org does not have. With a package install, `--deploy` first asks whether the target org already runs Triton 2.0; if it does not, skip the deploy and print the upgrade-page pointer instead.
+- **A failed install lists at most six classes.** The error is capped; it is not the full set of blocking callers. This skill's sweep is the full set — trust it over the install error.
 
 ## Step 1 — Parse arguments
 
-- **`<path>`** — required; a file or a directory (sweep every `.cls`/`.trigger`, **including `@isTest` classes**).
+- **`<path>`** — required; a file or a directory. A directory sweeps four artifact types:
+  - **Apex** — every `*.cls` and `*.trigger`, **including `@isTest` classes** (Steps 2–4b);
+  - **LWC** — every `lwc/**/*.js`, including the project's own `__tests__/` (Step 5);
+  - **Flow** — every `*.flow-meta.xml` (Step 6);
+  - **`Log_Level__mdt`** — every `customMetadata/Log_Level.*.md-meta.xml` (Step 7).
+
+  **Exclude Triton's own shipped files**: `Triton*.cls` and their tests, the `triton`, `tritonBuilder`, `tritonUtils` and `logLimits` LWC modules, and any sample `Log_Level` records Triton shipped. They are replaced wholesale by the 2.0 library (Step 0c) or the package (Step 0d), not migrated; sweeping a vendored 1.x copy produces hundreds of false hits.
+- **`--tech apex,lwc,flow,mdt`** — limit the sweep to these artifact types (default: all four). Use it to stage a large migration into reviewable passes; the Step 9 checks then cover only the types swept, and the summary says which were left.
+- **`--install source|package`** — override the install-path detection (Step 0a).
 - **`--collapse-exceptions`** — collapse hand-assembled error logs to `.exception(e)`. **On by default**; `--no-collapse-exceptions` keeps them verbatim.
 - **`--collapse-dml`** — collapse hand-built bulk-DML failure logs to `.dmlResults(results)`.
 - **`--deploy`** — deploy after the diff is accepted.
 
 ## Step 2 — Find 1.x usage
 
-Scan for `Triton.instance` and any legacy patterns. For each file, list the calls to migrate. If a file has none, skip it and say so. (`@isTest` classes: migrate the logging calls too — 1.x usage in tests still won't compile against 2.0.)
+Scan the Apex in scope for `Triton.instance` and any legacy patterns. For each file, list the calls to migrate. If a file has none, skip it and say so. (`@isTest` classes: migrate the logging calls too — 1.x usage in tests still won't compile against 2.0.)
 
-**Completeness gate.** Enumerate every distinct `Triton.instance.<member>` in scope — including property reads such as `TRANSACTION_ID` and `logs`, which are not call-shaped and are missed by a regex expecting `(` — then match each against the Step 3 table **by member name *and* argument shape**. Matching on the name alone is not enough: most 1.x logging methods are overloaded, and the overloads map differently (`addError(area, e)` and `addError(area, e, relatedObjectIds)` produce different builders). **If a call's exact overload is absent from the table, stop and report it. Do not infer a mapping.**
+**Completeness gate.** Enumerate every distinct member accessed through **any expression that holds the 1.x instance** — including property reads such as `TRANSACTION_ID` and `logs`, which are not call-shaped and are missed by a regex expecting `(`. That means:
 
-1.x exposes roughly two dozen logging overloads, and an immediate twin of every `add*` method (`error`, `warning`, `debug`, `event`, `dmlResult`, `integrationError`, `log`) plus `flushTop` and `withCache`. `makeBuilder`, `makePostProcessingBuilder` and `isLogAllowedForLogLevel` are already `static` in 1.x, so they are never written as `Triton.instance.*` and need no migration.
+- `Triton.instance.<member>`;
+- a local variable, field or property assigned from `Triton.instance` — `Triton logger = Triton.instance;`, `private static final Triton LOG = Triton.instance;`, then `logger.<member>`, `LOG.<member>`, `this.logger.<member>` (Step 3a);
+- a getter or method that returns the instance, and any parameter or return value typed `Triton` (Step 3a).
+
+Match each against the Step 3 table **by member name *and* argument shape**. Matching on the name alone is not enough: most 1.x logging methods are overloaded, and the overloads map differently (`addError(area, e)` and `addError(area, e, relatedObjectIds)` produce different builders). **If a call's exact overload is absent from the table, stop and report it. Do not infer a mapping.**
+
+The gate also covers 1.x members that never appear behind the instance:
+
+- **removed static members** — `Triton.isLogAllowedForLogLevel(`, `TritonHelper.buildLogLevelKey(`, `Triton.LOG_LEVELS`, `Triton.LOG_LEVELS_MDT` (Step 3b);
+- **removed category values** — `TritonTypes.Category.Warning`, `.Event`, `.Debug`, `.Integration` (compile errors in 2.0), and `TritonTypes.Category.valueOf(...)` fed a removed value. The `valueOf` form is the dangerous one: it still compiles and throws `NoSuchElementException` at runtime. Rewrite both per the severity-category note in Step 3; if the `valueOf` argument is computed rather than a literal, flag it and say which values are gone.
+
+1.x exposes roughly two dozen logging overloads, and an immediate twin of every `add*` method (`error`, `warning`, `debug`, `event`, `dmlResult`, `integrationError`, `log`) plus `flushTop` and `withCache`. `makeBuilder` and `makePostProcessingBuilder` are already `static` in 1.x and unchanged in 2.0, so they need no migration. `isLogAllowedForLogLevel` is also `static` in 1.x, but 2.0 **removes** it — see Step 3b.
 
 ## Step 3 — Apply the method mapping
 
@@ -85,6 +128,56 @@ When a field has a dedicated builder method, use it — `.duration(d)`, `.userId
 § **Http and Rest payloads share one mapping.** Each 1.x integration-error overload exists twice, once taking `HttpRequest`/`HttpResponse` and once taking `RestRequest`/`RestResponse`. 2.0's `integrationPayload(...)` is overloaded for both pairs, so the rewrite is identical either way — pass the request/response through unchanged.
 
 Transaction/template methods are safe renames. The **logging** methods change shape — and hide one gotcha (Step 4), plus a second that Triton 2.0.0 handles for you once the library is current (Step 4b).
+
+## Step 3a — The instance held in a variable
+
+1.x code often keeps the singleton in a variable rather than writing `Triton.instance` at every call:
+
+```apex
+private static final Triton LOG = Triton.instance;   // field
+Triton logger = Triton.instance;                      // local
+logger.addError(TritonTypes.Area.Accounts, e);
+```
+
+Every access through such a variable is a 1.x call.
+
+- **Rewrite `<var>.<member>(…)` exactly as if it were `Triton.instance.<member>(…)`** — the same Step 3 row, the same overload matching, the same Step 4 A/B decision for bare methods, the same Step 4b rule. Then delete the declaration and assignment, which are now unused: 2.0 has no instance to hold.
+- **Local variables and `private` fields or properties:** rewrite as above, in the reviewed diff.
+- **The instance escapes** — it is passed as an argument, returned, stored in a non-`private` member, or a `public`/`global` method declares a `Triton` parameter or return type: **stop and report the site.** Rewriting it changes a signature, which this skill never does (Constraints). Recommend the user drop the parameter or return value in a follow-up change; 2.0 needs no instance, so every caller can log through the static API directly.
+- **`withCache()` chained off a variable** (`logger.withCache().addError(...)`): split it, as the `withCache` row of the Step 3 table says.
+
+## Step 3b — Removed log-level members
+
+1.x exposed its `Log_Level__mdt` evaluation as static members. 2.0 moves it behind `TritonHelper.Config` and removes the old names:
+
+| Triton 1.x | Triton 2.0 |
+|------------|------------|
+| `Triton.isLogAllowedForLogLevel(log)` | `TritonHelper.Config.isLogAllowed(log)` — rewrite. **Resolution changed; say so in the summary:** 1.x allowed a log if *any* matching rule permitted it, checking keys in a fixed order with case-sensitive matching; 2.0 lets the *most specific* matching rule decide (User > Component > Area > Type > Category; equally specific rules resolve to the most restrictive level), and matching is case-insensitive. With overlapping rules, 2.0 can drop a log 1.x kept. |
+| `TritonHelper.buildLogLevelKey(category, type, area)` | **No public replacement** — classify each caller by purpose (below). |
+| `Triton.LOG_LEVELS_MDT = x` (tests) | `TritonHelper.Config.logLevelsMdt = x` |
+| `Triton.LOG_LEVELS = null` (tests) | `TritonHelper.Config.logLevels = null` — always emit the pair, `logLevelsMdt` first, then `logLevels = null`. Setting only `logLevelsMdt` after the rules were parsed has no effect. |
+| `Triton.LOG_LEVELS.size()` / `.isEmpty()` | `TritonHelper.Config.logLevels.size()` / `.isEmpty()` |
+| `Triton.LOG_LEVELS.get(key)` / `.containsKey(key)` / `.keySet()` / `.values()` | **No equivalent** — 2.0 holds a `List` of parsed rules, not a key map. Flag it and propose a behavioral assertion through `TritonHelper.Config.isLogAllowed(...)` instead. |
+
+`TritonHelper.Config` is `public static`, `isLogAllowed` is `public`, and `logLevelsMdt` / `logLevels` are `@TestVisible`. Triton has no namespace, so the customer's own test classes reach them in both source and package installs.
+
+**`buildLogLevelKey` callers.** Read each call site, decide what the key is for, and act:
+
+- **(a) It builds a key to look up `Triton.LOG_LEVELS`** — the caller is re-implementing the level check. Replace the lookup with `TritonHelper.Config.isLogAllowed(<probe>)`, where `<probe>` is a `pharos__Log__c` carrying the same category, type and area (`pharos__Category__c`, `pharos__Type__c`, `pharos__Area__c`) plus the level being tested in `Log_Level__c`.
+- **(b) It builds keys for the caller's own map, cache or comparison** — inline a `private` helper in the caller that returns `String.format('Category:{0};Type:{1};Area:{2}', new String[]{ category, type, area })`. That is the 1.x method body, so the output is identical and the caller no longer depends on Triton for it.
+- **(c) A test asserts the key format or the keys in `Triton.LOG_LEVELS`** — rewrite it as a behavioral assertion: give the test its own rules (Step 3c) and assert what `TritonHelper.Config.isLogAllowed(...)` returns for a probe log.
+- **The purpose is unclear** — stop and ask.
+
+Never re-add `buildLogLevelKey` (or any removed member) to `TritonHelper`: it forks the shipped library, and a package install cannot do it at all.
+
+## Step 3c — Tests and org log-level rules
+
+Under `Test.isRunningTest()`, 2.0 starts with **no** log-level rules (`TritonHelper.Config.logLevelsMdt` is empty). 1.x read the org's `Log_Level__mdt` records, so a 1.x test could pass or fail depending on what was deployed.
+
+- **Find tests that assert on log persistence or absence** — they query `pharos__Log__c` or assert on `Triton.logs` — **without** assigning `TritonHelper.Config.logLevelsMdt` themselves. Flag each:
+  - it expected a log to be **dropped** by an org rule → it now fails. Rewrite it to assign its own rule with the `logLevelsMdt` / `logLevels = null` pair from Step 3b;
+  - it expected a log to **persist** only because the org had a permissive rule → it now passes without testing anything about filtering. Note it in the summary.
+- **1.x tests that mocked rules** (`Triton.LOG_LEVELS_MDT = …`) keep working after the Step 3b rename, unless they depended on 1.x resolution (the `isLogAllowedForLogLevel` row). Running the tests is what catches those — tell the user to run them with no `Log_Level__mdt` records in the org, as Step 9 does.
 
 ## Step 4 — The publishing gotcha (NEVER auto-decide)
 
