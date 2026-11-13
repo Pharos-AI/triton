@@ -30,7 +30,7 @@ Read (never modify) every non-test `*.cls`/`*.trigger`, every `lwc/**/<name>.js`
 | Finding key | Detect | Rule |
 |-------------|--------|------|
 | `system-debug` | `System.debug(` in non-test Apex | Should be `Triton.debug(...)`. |
-| `triton-instance` | `Triton.instance` anywhere | Removed 1.x singleton → route to [`migrate-to-2.0`](migrate-to-2.0.md). |
+| `triton-instance` | `Triton.instance` anywhere | Removed 1.x singleton → route to [`migrate-to-2.0`](migrate-to-2.0.md), which also sweeps LWC, Flow and `Log_Level__mdt` for 1.x residue. |
 | `catch-not-logged` | `catch (...)` block with no `Triton.` call | Errors going dark. |
 | `missing-flush` | Method that calls `Triton.log/info/debug/...` (buffered) with no `Triton.flush()` at its boundary or a `finally` | Buffered logs dropped. |
 | `entrypoint-unlogged` | `@AuraEnabled`, `@RestResource`/`@Http*`, `@InvocableMethod`, Queueable/Batch `start`/`finish` with no `Triton.` call | No visibility at the boundary. |
@@ -68,7 +68,7 @@ Coverage
 
 Hard findings (block-worthy)
   system-debug ............ 213 in 47 classes
-  triton-instance (1.x) ... 12 classes  → migrate-to-2.0
+  triton-instance (1.x) ... 12 classes  → migrate-to-2.0 (Apex, LWC, Flow, mdt)
   catch-not-logged ........ 88 blocks
   missing-flush ........... 34 methods
   entrypoint-unlogged ..... 51

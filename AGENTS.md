@@ -15,7 +15,7 @@ This repo ships an **agent-agnostic** set of instrumentation skills under [`agen
 | instrument-flows | [`agent-skills/instrument-flows.md`](agent-skills/instrument-flows.md) | One Flow's metadata XML. |
 | instrument-org | [`agent-skills/instrument-org.md`](agent-skills/instrument-org.md) | A whole project / "instrument everything". |
 | audit-logging | [`agent-skills/audit-logging.md`](agent-skills/audit-logging.md) | Read-only coverage & gap report. |
-| migrate-to-2.0 | [`agent-skills/migrate-to-2.0.md`](agent-skills/migrate-to-2.0.md) | Convert 1.x `Triton.instance` code. |
+| migrate-to-2.0 | [`agent-skills/migrate-to-2.0.md`](agent-skills/migrate-to-2.0.md) | Migrate 1.x Apex, LWC, Flow and `Log_Level__mdt`. |
 | setup-standards | [`agent-skills/setup-standards.md`](agent-skills/setup-standards.md) | Wire CI guardrails + log-level config. |
 | **the agent** | [`agent-skills/instrumentation-agent.md`](agent-skills/instrumentation-agent.md) | Run the full audit → migrate → instrument → guard sequence. |
 

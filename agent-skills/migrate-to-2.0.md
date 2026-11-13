@@ -1,12 +1,12 @@
 ---
 name: migrate-to-2.0
-summary: Convert Triton 1.x singleton code (Triton.instance) to the 2.0 static, builder-first API, surfacing the immediate-vs-buffered gotcha for human confirmation.
-usage: migrate-to-2.0 <path> [--collapse-exceptions] [--collapse-dml] [--deploy]
+summary: Migrate a project from Triton 1.x to 2.0 — Apex (Triton.instance, removed log-level APIs, test mocks), LWC, Flow XML and Log_Level__mdt records — surfacing the immediate-vs-buffered gotcha and every log-retention decision for human confirmation.
+usage: migrate-to-2.0 <path> [--tech apex,lwc,flow,mdt] [--install source|package] [--collapse-exceptions] [--collapse-dml] [--deploy]
 ---
 
 # Migrate to 2.0
 
-Mechanically convert Triton **1.x** singleton usage (`Triton.instance.*`) to the **2.0** static, builder-first API. This converts *existing* logging; it does not add new logging (that's [`instrument-apex`](instrument-apex.md)). Because one 1.x → 2.0 rename can silently change publishing behavior, this skill **stops and asks** on those calls rather than guessing.
+Move a project's *existing* Triton **1.x** usage to **2.0**: Apex singleton calls (`Triton.instance.*`, including an instance held in a variable) become the static, builder-first API; removed log-level members and test mocks move to their 2.0 homes; and LWC code, Flow XML and `Log_Level__mdt` records lose their references to removed categories and 1.x values. It does not add new logging (that's [`instrument-apex`](instrument-apex.md)). Because one 1.x → 2.0 rename can silently change publishing behavior, and a log-level rule edit can silently change which logs the org keeps, this skill **stops and asks** on those rather than guessing.
 
 > **Agent-agnostic skill.** Invoke it as your agent invokes skills (`/pharos:migrate-to-2.0 <path>`, an `@`-mentioned instruction, or a pasted prompt).
 
