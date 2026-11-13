@@ -27,13 +27,13 @@ How Triton reaches the org decides how org-local taxonomy is handled and in what
 ### 0b — Both install paths
 
 - **Confirm the branch you are sweeping actually contains every caller.** The sweep is only as complete as its `<path>` and its branch. In a promotion-pipeline repo the integration branch can sit well ahead of the default branch; a sweep run against the wrong one removes `Triton.instance` from the library while live references survive elsewhere.
-- **Add `**/__tests__/**` to `.forceignore` before any deploy.** This applies to every source install, and to any repo that keeps its own LWC Jest tests. 2.0 ships four LWC modules (`triton`, `tritonBuilder`, `tritonUtils`, `logLimits`), three of which carry Jest tests under `__tests__/`. Jest tests are not deployable metadata — they rely on Jest globals and test-only module mocks — so the Step 6 `sf project deploy` can reject the bundle unless the folder is ignored. Salesforce documents this entry alongside the `**/jsconfig.json` and `**/.eslintrc.json` ones many repos already have, so it is often the only line missing. The tests stay in version control; they are just never pushed to an org. Triton's own repository already ignores them — its `.forceignore` excludes `**/__tests__/**` and `**/__mocks__/**` from 2.0.0 — but a `.forceignore` only governs the project it sits in: once `force-app` is vendored into your repo, your project's `.forceignore` is the one that applies.
+- **Add `**/__tests__/**` to `.forceignore` before any deploy.** This applies to every source install, and to any repo that keeps its own LWC Jest tests. 2.0 ships four LWC modules (`triton`, `tritonBuilder`, `tritonUtils`, `logLimits`), three of which carry Jest tests under `__tests__/`. Jest tests are not deployable metadata — they rely on Jest globals and test-only module mocks — so the Step 9 `sf project deploy` can reject the bundle unless the folder is ignored. Salesforce documents this entry alongside the `**/jsconfig.json` and `**/.eslintrc.json` ones many repos already have, so it is often the only line missing. The tests stay in version control; they are just never pushed to an org. Triton's own repository already ignores them — its `.forceignore` excludes `**/__tests__/**` and `**/__mocks__/**` from 2.0.0 — but a `.forceignore` only governs the project it sits in: once `force-app` is vendored into your repo, your project's `.forceignore` is the one that applies.
 
 ### 0c — Source install
 
 The library upgrade is part of this change: 2.0 removes `Triton.instance` entirely, so callers and library must land together or nothing compiles. Before rewriting a single caller:
 
-- **Diff the local `TritonTypes` against the incoming 2.0 one and re-add any org-local `Area` and `Type` values.** A wholesale copy drops them and every reference fails to compile. This is the one shipped file expected to carry a local delta — see the note in Step 5. Org-local `Category` values are the exception: prefer retiring them per the severity-category note in Step 3 rather than preserving them.
+- **Diff the local `TritonTypes` against the incoming 2.0 one and re-add any org-local `Area` and `Type` values.** A wholesale copy drops them and every reference fails to compile. This is the one shipped file expected to carry a local delta — see the note in Step 8. Org-local `Category` values are the exception: prefer retiring them per the severity-category note in Step 3 rather than preserving them.
 
 ### 0d — Package install
 
@@ -204,7 +204,7 @@ Getting this wrong is how a migrated log silently disappears when the transactio
 
 Timing is one axis of behavior change; **whether a log is emitted at all** is the other. 1.x `addDMLResult` and `dmlResult` emitted only when a row failed. From Triton **2.0.0** the mapped form keeps that contract by itself: `dmlResults(results)` marks the builder as skipped when every row succeeded — or the list is null or empty — and `Triton.error`, `Triton.logNow`, `Triton.log` and `Triton.warning` then emit nothing: no blank record, no issue. The Step 3 rows are therefore correct as written, whether or not the call site sits behind a failure check.
 
-What to verify is the library you are migrating **to**. A snapshot of the 2.0 source vendored before 2.0.0 has no skip, and there the same rewrite buffers a blank ERROR record and opens an issue on every successful DML. Check the vendored `TritonBuilder.cls` for an `isSuppressed()` method: if it is missing, upgrade the library to 2.0.0 or later in this change (Step 0) rather than adding guards at each call site, and say so in the summary.
+What to verify is the library you are migrating **to**. A snapshot of the 2.0 source vendored before 2.0.0 has no skip, and there the same rewrite buffers a blank ERROR record and opens an issue on every successful DML. Check the vendored `TritonBuilder.cls` for an `isSuppressed()` method: if it is missing, upgrade the library to 2.0.0 or later in this change (Step 0c) rather than adding guards at each call site, and say so in the summary.
 
 ## Step 5 — LWC
 
@@ -241,25 +241,46 @@ Read every `customMetadata/Log_Level.*.md-meta.xml` in scope: `Category__c`, `Ty
 
 Record every rule deleted, re-keyed or kept for the summary.
 
-## Step 5 — Audit flush coverage & collapse
+## Step 8 — Audit flush coverage & collapse
 
 - **Flush coverage.** Now that level methods buffer, flag every path that logs but has no `Triton.flush()` at its boundary/`finally`. Report these alongside the diff (fixing them may require a boundary flush — propose it).
 - **`--collapse-exceptions`.** Replace hand-set error fields (`.type(...).summary(e.getMessage()).details(e.getStackTraceString())`) with a single `.exception(e)` (which also sets ERROR level and issue creation). Put any custom `.summary(...)` **after** `.exception(e)`.
 - **`--collapse-dml`.** Replace hand-built DML failure summaries with `.dmlResults(results)`.
-- **Ad-hoc taxonomy.** Flag `.area('X')` / `.type('X')` string literals; suggest promoting them to `public static final String` constants rather than adding new values to the shipped `TritonTypes` enums — see the Custom Classifications guidance in the docs. This is about *adding* classifications; it does not mean an existing org-local `Area` or `Type` value may be dropped when re-vendoring the library (Step 0).
+- **Ad-hoc taxonomy.** Flag `.area('X')` / `.type('X')` string literals; suggest promoting them to `public static final String` constants rather than adding new values to the shipped `TritonTypes` enums — see the Custom Classifications guidance in the docs. How this meets *existing* org-local values depends on the install path:
+  - **Source install** — this is about *adding* classifications. It does not mean an existing org-local `Area` or `Type` value may be dropped when re-vendoring the library: preserve those (Step 0c), and promote only *new* ones to String constants.
+  - **Package install** — every org-local `Area` and `Type` value becomes a String constant, because the package's `TritonTypes` cannot carry them (Step 0d).
 
-## Step 6 — Verify, review, write, deploy
+## Step 9 — Verify, review, write, deploy
 
-**Verify before presenting.** Both checks are greppable and catch the failure modes a human reviewer reading a diff will not:
+**Verify before presenting.** These checks are greppable and catch the failure modes a human reviewer reading a diff will not. Each requires **zero** matches in scope, with Triton's own shipped files excluded (Step 1); with `--tech`, run only the checks for the types swept.
 
-1. **No 1.x member survives.** Zero matches for `Triton.instance` in scope, and zero static calls to methods 2.0 does not have (`Triton.addError(`, `Triton.addEvent(`, `Triton.dmlResult(` and friends — a half-migrated call that merely dropped `.instance` compiles under neither version).
-2. **Every enum reference resolves.** Each `TritonTypes.<enum>.<value>` in scope must exist in the post-migration `TritonTypes`. This is the check that catches both a vendored-library overwrite dropping org-local values and a mapping that emits a retired value such as `Category.Event`.
+1. **Apex: no 1.x member survives.** Zero matches for `Triton.instance`; for any `Triton`-typed variable, field or property assigned from it; for `isLogAllowedForLogLevel`, `buildLogLevelKey` and `Triton.LOG_LEVELS` (which also catches `LOG_LEVELS_MDT`); for `TritonTypes.Category.Warning`, `.Event`, `.Debug` and `.Integration`; and zero static calls to methods 2.0 does not have (`Triton.addError(`, `Triton.addEvent(`, `Triton.dmlResult(` and friends — a half-migrated call that merely dropped `.instance` compiles under neither version). Escaping instances reported under Step 3a are the only allowed survivors, and each is listed in the summary.
+2. **LWC: no removed category.** Zero `CATEGORY.WARNING`, `CATEGORY.DEBUG` or `CATEGORY.EVENT`, and no literal `'Warning'`, `'Debug'`, `'Event'` or `'Integration'` passed to `.category(...)`.
+3. **Flow: no removed category literal.** No TritonFlow `category` input whose `<stringValue>` is `Warning`, `Debug`, `Event` or `Integration`.
+4. **`Log_Level__mdt`: no removed category.** No `Category__c` of `Warning`, `Debug`, `Event` or `Integration` — unless the user chose to keep that rule, which the summary records.
+5. **Every enum reference resolves.** Each `TritonTypes.<enum>.<value>` in scope must exist in the post-migration `TritonTypes`. This is the check that catches both a vendored-library overwrite dropping org-local values and a mapping that emits a retired value such as `Category.Event`. For a package install, the post-migration `TritonTypes` is the shipped one, so there must be zero references to org-local values.
+
+**Run the project's tests with no `Log_Level__mdt` records in the org.** 2.0 tests start with no rules (Step 3c), so this shows whether any test relied on the org's rules — and whether a test that mocks rules depended on 1.x resolution (Step 3b).
 
 **Re-run check 1 immediately before merge, not just before presenting the diff.** Because 2.0 removes `Triton.instance`, the library and every caller have to land together — so on an active integration branch a caller that merges *after* your sweep but *before* yours lands leaves the branch with the 2.0 library and live 1.x references, which does not compile. The window is the review period, and it is easy to lose: verifying at sweep time proves nothing about merge time.
 
 For anything beyond a one-off, recommend a CI check rather than a habit: the `setup-standards` skill adds one that fails the build on any `Triton.instance`, so a late 1.x caller breaks its own pull request instead of the branch.
 
-Then present a summary — calls migrated, bare-method decisions (A/B) taken, the Step 4b library-version check, collapses applied, flush gaps found, any `.attribute(...)` fallbacks, whether a `setup-standards` CI check is in place, and any `Category` reporting change implied by the severity-category note — then the diff, with `yes` / `modify` / `skip`. On `yes`, write back to the original file. With `--deploy` (or on confirmation), run `sf project deploy start --source-dir <path> --json` (or the `sfdx` equivalent).
+Then present a summary, then the diff, with `yes` / `modify` / `skip`. The summary covers:
+
+- the install path (Step 0a) and, with `--tech`, which artifact types were left for a later pass;
+- per-type counts — Apex calls migrated, LWC sites rewritten, Flow actions rewritten, `Log_Level__mdt` rules changed;
+- bare-method decisions (A/B) taken, the Step 4b library-version check, collapses applied, flush gaps found, any `.attribute(...)` fallbacks;
+- every flagged item and the decision taken — escaping instances, `buildLogLevelKey` purposes, `LOG_LEVELS` reads, tests that relied on org rules, LWC `AREA` comparisons and `.catch` handlers, computed Flow categories and versioned `flowApiName` values;
+- `Log_Level__mdt` rules deleted, re-keyed or kept, and the resolution-change note (Step 3b) where rules overlap;
+- whether a `setup-standards` CI check is in place, and any `Category` reporting change implied by the severity-category note.
+
+On `yes`, write back to the original file.
+
+**Deploy** with `--deploy` (or on confirmation):
+
+- **Source install** — `sf project deploy start --source-dir <path> --json` (or the `sfdx` equivalent), with the 2.0 library and the migrated callers in the same deployment.
+- **Package install** — first ask whether the target org already runs Triton 2.0. If it does, deploy as above. If it does not, do **not** deploy: the migrated callers do not compile against 1.x. Print the pointer to [Upgrading an Org from 1.x](https://triton.pharos.ai/migration/upgrading-an-org) instead (Step 0d).
 
 > After deploying 2.0, remind the user to re-assign the `Triton_Read` / `Triton_Write` permission sets so the new fields are visible.
 
@@ -267,8 +288,10 @@ Then present a summary — calls migrated, bare-method decisions (A/B) taken, th
 
 - Never auto-convert a bare-method call — always present the immediate (`logNow`) vs. buffer (+flush) choice.
 - Rely on the `dmlResults` rows only when the target library is Triton 2.0.0 or later (Step 4b); otherwise upgrade the library in the same change.
-- Stop and report any `Triton.instance` member *or overload* that is not in the Step 3 table rather than inferring a mapping.
+- Stop and report any `Triton.instance` member *or overload* that is not in the Step 3 table rather than inferring a mapping — and any instance that escapes through a signature (Step 3a).
 - Never change program behavior beyond the logging call itself; preserve control flow, throws, signatures.
-- Do not add new values to the shipped `TritonTypes` enums; route org-specific values to `String` constants. Do, however, preserve org-local `Area` and `Type` values when re-vendoring the library (Step 0).
+- Never auto-edit a `Log_Level__mdt` rule, except renaming a 1.x LWC area value (Step 7). Never auto-edit an LWC `AREA` comparison, and never remove a `.catch` or `try … catch` around `flush()` / `logNow()` (Step 5).
+- Never re-add a removed 1.x member (`buildLogLevelKey`, `isLogAllowedForLogLevel`, `LOG_LEVELS`, …) to the library.
+- Do not add new values to the shipped `TritonTypes` enums; route new org-specific values to `String` constants. On a **source install**, preserve existing org-local `Area` and `Type` values when re-vendoring the library (Step 0c). On a **package install**, move them all to `String` constants (Step 0d).
 - Report (don't silently invent) flush gaps introduced by the buffering default.
-- Idempotent: a file with no `Triton.instance` usage is left untouched.
+- Idempotent across all four artifact types: a file with no 1.x usage — Apex, LWC, Flow or `Log_Level__mdt` — is left untouched, and a second run over migrated output changes nothing.
