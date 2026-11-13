@@ -206,6 +206,41 @@ Timing is one axis of behavior change; **whether a log is emitted at all** is th
 
 What to verify is the library you are migrating **to**. A snapshot of the 2.0 source vendored before 2.0.0 has no skip, and there the same rewrite buffers a blank ERROR record and opens an issue on every successful DML. Check the vendored `TritonBuilder.cls` for an `isSuppressed()` method: if it is missing, upgrade the library to 2.0.0 or later in this change (Step 0) rather than adding guards at each call site, and say so in the summary.
 
+## Step 5 — LWC
+
+Find the project's own components (Step 1 excludes Triton's) that import from `c/triton` or `c/tritonBuilder`, and check each against this table. 2.0's JavaScript API keeps the 1.x method names, so most components need nothing; what changed is a few constants and one promise contract.
+
+| 1.x pattern | Handling |
+|-------------|----------|
+| `.category(CATEGORY.WARNING)`, `.category(CATEGORY.DEBUG)`, `.category(CATEGORY.EVENT)`, or a literal `'Warning'`, `'Debug'`, `'Event'` or `'Integration'` passed to `.category(...)` | **Rewrite:** remove the `.category(...)` call. `makeBuilder()` and the level helpers (`error()`, `warning()`, `debug()`, `info()`, `exception()`) already stamp `LWC`. If the chain does not start from a Triton factory — a bare `new TritonBuilder()` — replace the argument with `CATEGORY.LWC` instead (importing `CATEGORY` if needed). Why it is safe: in 2.0 these keys are `undefined`, and the server already re-categorises such logs to `LWC` with an "Invalid Log Category" note in Details, so the rewrite only removes the note. **Do not add a level:** 1.x recorded these logs at whatever level the chain set (INFO if none), and so does the rewrite. List each site in the summary and suggest `.level(LEVEL.WARNING)` / `.level(LEVEL.DEBUG)` where the old category was really expressing severity. |
+| An `AREA.*` constant compared to or switched on against a string (`AREA.ACCOUNTS === 'ACCOUNTS'`), used as a map key, sent to the project's own Apex, or stored | **Flag, never auto-apply.** 2.0 changed the values: `'Accounts'`, `'Community'`, `'LeadConversion'`, `'OpportunityManagement'`, `'RestAPI'` (1.x: `'ACCOUNTS'`, `'COMMUNITY'`, `'LEAD_CONVERSION'`, `'OPPORTUNITY_MANAGEMENT'`, `'REST_API'`). Propose the fix — compare against the constant itself, or against the new value — but the comparison is program logic, so each site needs its own `yes`. Passing `AREA.*` to `.area(...)` needs nothing: the server maps any casing or underscore form. |
+| `.catch(...)` on, or `try … catch` around, `flush()` or `logNow()` | **Flag, never auto-remove.** It is dead code: 2.0's `flush()` and `logNow()` never reject — a failed flush re-buffers the logs and drops them after `MAX_FLUSH_ATTEMPTS` failures. Recommend removing a handler that only handles a logging failure; keep one that also guards other awaited work in the same chain. |
+| Profiling calls — `timeBackendCall`, `timeUserInteraction`, `startPerformanceMark` / `endPerformanceMark`, `trackComponentLifecycle`, `trackComponentRender` | **No code change.** List them for Step 7: 2.0 records them at FINE, FINER or FINEST (failures at ERROR), where 1.x used INFO, so existing `Log_Level__mdt` rules may now drop them. |
+| `exception()` on the JavaScript builder | No change. Note in the summary that it now also sets ERROR. |
+
+## Step 6 — Flow XML
+
+Find every Triton Log action: an `<actionCalls>` element with `<actionName>TritonFlow</actionName>` and `<actionType>apex</actionType>`.
+
+- **`category` input set to a literal `Warning`, `Debug`, `Event` or `Integration`** (`<stringValue>`) → **rewrite:** remove that `<inputParameters>` element. The invocable then defaults to `Flow`. 2.0 already does this at runtime and appends an "Unable to locate category" note to Details; the rewrite only removes the note. As in Step 5, do not add a `level`; if the action has no `level` input, suggest `WARNING` or `DEBUG` in the summary where the category was expressing severity.
+- **`category` input from an `<elementReference>` or a formula** → **flag.** The value is computed, so it cannot be rewritten statically. Tell the user which values 2.0 removed, so they can fix whatever feeds it.
+- **`flowApiName` with a version suffix** (`My_Flow-3`) → **flag**, no edit. 2.0 matches `Component_Name__c` log-level rules on the plain API name and takes the version in the new optional `flowVersion` input. This is not a 1.x break, only a rule-matching improvement the user may want.
+- Note in the summary: deploying a changed `.flow-meta.xml` whose `<status>` is `Active` creates and activates a new flow version.
+
+## Step 7 — `Log_Level__mdt` records
+
+Read every `customMetadata/Log_Level.*.md-meta.xml` in scope: `Category__c`, `Type__c`, `Area__c`, `Level__c`, and 2.0's `Component_Name__c` and `User_Id__c`. These rules decide **which logs the org keeps**, so only one shape is ever rewritten automatically; every other finding is flagged with a recommended option and needs the user's decision.
+
+| Rule shape | Handling |
+|------------|----------|
+| `Category__c` is `Warning`, `Debug`, `Event` or `Integration` | **Flag.** In 2.0 it matches nothing — the field is free text, so there is no error; the rule just goes inert. The logs it governed now land as `Apex` (from the Apex helpers), `Flow` or `LWC`. Offer two options: **delete** it (recommended when it only existed to raise or lower one severity, which 2.0 expresses through Level), or **re-key** it to the producing category *narrowed* by `Type__c` or `Area__c` — for example, integration logs → `Category__c = Apex` plus the integration `Area__c`. Never re-key to a bare category: `Category__c = Apex, Level__c = ERROR` drops every Apex INFO log in the org. |
+| `Area__c` is a 1.x LWC area value — `ACCOUNTS`, `COMMUNITY`, `LEAD_CONVERSION`, `OPPORTUNITY_MANAGEMENT`, `REST_API` | **Rewrite** to the 2.0 value: `Accounts`, `Community`, `LeadConversion`, `OpportunityManagement`, `RestAPI`. Rule matching is case-insensitive but not underscore-insensitive, so `LEAD_CONVERSION` would no longer match. This is the only rule edit this skill applies automatically. |
+| `Area__c` is `LWC` | **Flag.** 1.x filed every LWC log whose area was not an Apex `Area` name under `LWC`; 2.0 keeps the real area, so this rule now covers far fewer logs. Ask whether to re-key it (to `Category__c = LWC`, or to the real areas) or keep it. |
+| A rule that targets LWC logs — `Category__c = LWC` or blank — with `Level__c` of ERROR, WARNING, INFO or DEBUG, when Step 5 found profiling calls | **Flag.** It now drops the profiling records that 1.x kept at INFO. Ask: keep dropping them (recommended in production — the volume is high), or add a narrower rule at FINE, FINER or FINEST (`Category__c = LWC`, `Type__c = BackendCall`, `UserInteraction`, `ComponentLifecycle`, `ComponentRender` or `Performance`, optionally `Component_Name__c`). |
+| Any rule, where several rules overlap | Note the resolution change from Step 3b: the most specific matching rule now decides, so an overlap that 1.x resolved permissively can now drop logs. |
+
+Record every rule deleted, re-keyed or kept for the summary.
+
 ## Step 5 — Audit flush coverage & collapse
 
 - **Flush coverage.** Now that level methods buffer, flag every path that logs but has no `Triton.flush()` at its boundary/`finally`. Report these alongside the diff (fixing them may require a boundary flush — propose it).
