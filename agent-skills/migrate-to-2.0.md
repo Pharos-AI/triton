@@ -179,7 +179,7 @@ Under `Test.isRunningTest()`, 2.0 starts with **no** log-level rules (`TritonHel
 - **Find tests that assert on log persistence or absence** — they query `pharos__Log__c` or assert on `Triton.logs` — **without** assigning `TritonHelper.Config.logLevelsMdt` themselves. Flag each:
   - it expected a log to be **dropped** by an org rule → it now fails. Rewrite it to assign its own rule with the `logLevelsMdt` / `logLevels = null` pair from Step 3b;
   - it expected a log to **persist** only because the org had a permissive rule → it now passes without testing anything about filtering. Note it in the summary.
-- **1.x tests that mocked rules** (`Triton.LOG_LEVELS_MDT = …`) keep working after the Step 3b rename, unless they depended on 1.x resolution (the `isLogAllowedForLogLevel` row). Running the tests is what catches those — tell the user to run them with no `Log_Level__mdt` records in the org, as Step 9 does.
+- **1.x tests that mocked rules** (`Triton.LOG_LEVELS_MDT = …`) keep working after the Step 3b rename, unless they depended on 1.x resolution (the `isLogAllowedForLogLevel` row). Running the project's tests against 2.0 is what catches those (Step 9). Org `Log_Level__mdt` records don't affect them, since 2.0 tests start with no rules, so a failure means the test relied on org rules or on 1.x resolution. Never delete org records for this.
 
 ## Step 4 — The publishing gotcha (NEVER auto-decide)
 
@@ -231,17 +231,18 @@ Find every Triton Log action: an `<actionCalls>` element with `<actionName>Trito
 
 ## Step 7 — `Log_Level__mdt` records
 
-Read every `customMetadata/Log_Level.*.md-meta.xml` in scope: `Category__c`, `Type__c`, `Area__c`, `Level__c`, and 2.0's `Component_Name__c` and `User_Id__c`. These rules decide **which logs the org keeps**, so only one shape is ever rewritten automatically; every other finding is flagged with a recommended option and needs the user's decision.
+Read every `customMetadata/Log_Level.*.md-meta.xml` in scope: `Category__c`, `Type__c`, `Area__c`, `Level__c`, and 2.0's `Component_Name__c` and `User_Id__c`. These rules decide **which logs the org keeps**, so none is ever rewritten automatically: every finding is flagged with a recommended option and needs the user's decision.
 
 | Rule shape | Handling |
 |------------|----------|
-| `Category__c` is `Warning`, `Debug`, `Event` or `Integration` | **Flag.** In 2.0 it matches nothing — the field is free text, so there is no error; the rule just goes inert. The logs it governed now land as `Apex` (from the Apex helpers), `Flow` or `LWC`. Offer two options: **delete** it — recommended for `Warning`, `Debug` and `Event`, which only existed to raise or lower one severity, now expressed through Level — or **re-key** it to the producing category *narrowed* by `Type__c` or `Area__c` — recommended for `Integration`, whose logs still exist and now land as `Apex`: re-key to `Category__c = Apex` plus the integration `Area__c` the callouts use. Never re-key to a bare category: `Category__c = Apex, Level__c = ERROR` drops every Apex INFO log in the org. |
-| `Area__c` is a 1.x LWC area value — `ACCOUNTS`, `COMMUNITY`, `LEAD_CONVERSION`, `OPPORTUNITY_MANAGEMENT`, `REST_API` | **Rewrite** to the 2.0 value: `Accounts`, `Community`, `LeadConversion`, `OpportunityManagement`, `RestAPI`. Rule matching is case-insensitive but not underscore-insensitive, so `LEAD_CONVERSION` would no longer match. This is the only rule edit this skill applies automatically. |
+| `Category__c` is `Warning`, `Debug`, `Event` or `Integration` | **Flag.** In 2.0 it matches nothing — the field is free text, so there is no error; the rule just goes inert. The logs it governed now land as `Apex` (from the Apex helpers), `Flow` or `LWC`, outside this rule, so whatever it dropped in 1.x — for example `addDebug` logs under a `Debug` rule at INFO — 2.0 keeps unless another rule drops it. Tell the user that this holds whether they delete the rule or keep it. Recommend **delete** for all four: `Warning`, `Debug` and `Event` only raised or lowered one severity, which 2.0 expresses through Level, and an `Integration` rule never dropped an Apex integration log, because the 1.x Apex integration helpers logged only at ERROR, which passes any rule. Offer **re-key** only as optional new filtering, to the producing category *narrowed* by `Type__c` or `Area__c` (for example `Category__c = Apex` plus the `Area__c` the callouts use), and warn that `Category__c = Apex` plus an `Area__c` governs every Apex log in that area, not just the ones 1.x tagged: at the usual ERROR it drops every non-error Apex log there. Never re-key to a bare category: `Category__c = Apex, Level__c = ERROR` drops every Apex INFO log in the org. |
+| `Area__c` is a 1.x LWC area value — `ACCOUNTS`, `COMMUNITY`, `LEAD_CONVERSION`, `OPPORTUNITY_MANAGEMENT`, `REST_API` | **Flag.** In 1.x the rule matched nothing: rules matched case-sensitively, and no log carried these strings as its area — Apex logs used the `Area` enum names (`Accounts`, `LeadConversion`, …), and the server filed an LWC log whose area was not an Apex `Area` name under `LWC`. In 2.0 matching is case-insensitive and the server maps LWC areas to the enum name, so a rule on the 2.0 value governs every log in that area, Apex **and** LWC alike. `ACCOUNTS` and `COMMUNITY` rules already do, unrenamed, since they differ from `Accounts` and `Community` only in case. Offer two options: **delete** it — recommended, as it keeps what the org kept in 1.x — or **rename** it to the 2.0 value (`Accounts`, `Community`, `LeadConversion`, `OpportunityManagement`, `RestAPI`), which is new filtering for that area. If the user keeps an `ACCOUNTS` or `COMMUNITY` rule unchanged, say that it now filters too. |
 | `Area__c` is `LWC` | **Flag.** 1.x filed every LWC log whose area was not an Apex `Area` name under `LWC`; 2.0 keeps the real area, so this rule now covers far fewer logs. Ask whether to re-key it (to `Category__c = LWC`, or to the real areas) or keep it. |
-| A rule that targets LWC logs — `Category__c = LWC` or blank — with `Level__c` of ERROR, WARNING, INFO or DEBUG, when Step 5 found profiling calls | **Flag.** It now drops the profiling records that 1.x kept at INFO. Ask: keep dropping them (recommended in production — the volume is high), or add a narrower rule at FINE, FINER or FINEST (`Category__c = LWC`, `Type__c = BackendCall`, `UserInteraction`, `ComponentLifecycle`, `ComponentRender` or `Performance`, optionally `Component_Name__c`). |
+| A rule that targets LWC logs — `Category__c = LWC` or blank — with `Level__c` of INFO or DEBUG, when Step 5 found profiling calls | **Flag.** It now drops the profiling records that 1.x kept at INFO. Ask: keep dropping them (recommended in production — the volume is high), or add a narrower rule at FINE, FINER or FINEST (`Category__c = LWC`, `Type__c = BackendCall`, `UserInteraction`, `ComponentLifecycle`, `ComponentRender` or `Performance`, optionally `Component_Name__c`). |
+| A rule that targets LWC logs, as above, with `Level__c` of ERROR or WARNING, when Step 5 found profiling calls | **Note only**, no decision needed. It already dropped the INFO profiling records in 1.x and still drops them. One change goes the other way: 2.0 records a failed profiled call at ERROR, where 1.x recorded it at INFO, so those failure records now persist. |
 | Any rule, where several rules overlap | Note the resolution change from Step 3b: the most specific matching rule now decides, so an overlap that 1.x resolved permissively can now drop logs. |
 
-Record every rule deleted, re-keyed or kept for the summary.
+Record every rule deleted, re-keyed, renamed or kept, and every note, for the summary.
 
 ## Step 8 — Audit flush coverage & collapse
 
@@ -262,7 +263,7 @@ Record every rule deleted, re-keyed or kept for the summary.
 4. **`Log_Level__mdt`: no removed category.** No `Category__c` of `Warning`, `Debug`, `Event` or `Integration` — unless the user chose to keep that rule, which the summary records.
 5. **Every enum reference resolves.** Each `TritonTypes.<enum>.<value>` in scope must exist in the post-migration `TritonTypes`. This is the check that catches both a vendored-library overwrite dropping org-local values and a mapping that emits a retired value such as `Category.Event`. For a package install, the post-migration `TritonTypes` is the shipped one, so there must be zero references to org-local values.
 
-**Run the project's tests with no `Log_Level__mdt` records in the org.** 2.0 tests start with no rules (Step 3c), so this shows whether any test relied on the org's rules — and whether a test that mocks rules depended on 1.x resolution (Step 3b).
+**Run the project's tests against 2.0.** Org `Log_Level__mdt` records don't affect them, since 2.0 tests start with no rules (Step 3c), so a failure means the test relied on org rules — or, for a test that mocks rules, on 1.x resolution (Step 3b). Never delete org records for this.
 
 **Re-run check 1 immediately before merge, not just before presenting the diff.** Because 2.0 removes `Triton.instance`, the library and every caller have to land together — so on an active integration branch a caller that merges *after* your sweep but *before* yours lands leaves the branch with the 2.0 library and live 1.x references, which does not compile. The window is the review period, and it is easy to lose: verifying at sweep time proves nothing about merge time.
 
@@ -274,7 +275,7 @@ Then present a summary, then the diff, with `yes` / `modify` / `skip`. The summa
 - per-type counts — Apex calls migrated, LWC sites rewritten, Flow actions rewritten, `Log_Level__mdt` rules changed;
 - bare-method decisions (A/B) taken, the Step 4b library-version check, collapses applied, flush gaps found, any `.attribute(...)` fallbacks;
 - every flagged item and the decision taken — escaping instances, `buildLogLevelKey` purposes, `LOG_LEVELS` reads, tests that relied on org rules, LWC `AREA` comparisons and `.catch` handlers, computed Flow categories and versioned `flowApiName` values;
-- `Log_Level__mdt` rules deleted, re-keyed or kept, and the resolution-change note (Step 3b) where rules overlap;
+- `Log_Level__mdt` rules deleted, re-keyed, renamed or kept, the Step 7 notes, and the resolution-change note (Step 3b) where rules overlap;
 - whether a `setup-standards` CI check is in place, and any `Category` reporting change implied by the severity-category note.
 
 On `yes`, write back to the original file.
@@ -292,7 +293,7 @@ On `yes`, write back to the original file.
 - Rely on the `dmlResults` rows only when the target library is Triton 2.0.0 or later (Step 4b); otherwise upgrade the library in the same change.
 - Stop and report any `Triton.instance` member *or overload* that is not in the Step 3 table rather than inferring a mapping — and any instance that escapes through a signature (Step 3a).
 - Never change program behavior beyond the logging call itself; preserve control flow, throws, signatures.
-- Never auto-edit a `Log_Level__mdt` rule, except renaming a 1.x LWC area value (Step 7). Never auto-edit an LWC `AREA` comparison, and never remove a `.catch` or `try … catch` around `flush()` / `logNow()` (Step 5).
+- Never auto-edit a `Log_Level__mdt` rule (Step 7). Never auto-edit an LWC `AREA` comparison, and never remove a `.catch` or `try … catch` around `flush()` / `logNow()` (Step 5).
 - Never re-add a removed 1.x member (`buildLogLevelKey`, `isLogAllowedForLogLevel`, `LOG_LEVELS`, …) to the library.
 - Do not add new values to the shipped `TritonTypes` enums; route new org-specific values to `String` constants. On a **source install**, preserve existing org-local `Area` and `Type` values when re-vendoring the library (Step 0c). On a **package install**, move them all to `String` constants (Step 0d).
 - Report (don't silently invent) flush gaps introduced by the buffering default.

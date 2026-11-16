@@ -7,4 +7,4 @@ Read the canonical skill definition at `agent-skills/migrate-to-2.0.md` (relativ
 
 Treat the following as the skill's arguments (path and flags): $ARGUMENTS
 
-The canonical file is the single source of truth. Critically: **never auto-decide** the immediate-vs-buffered publishing change — every old bare-method call (`Triton.instance.error/warning/debug`) must be presented to the user as `logNow` (immediate) vs. buffer + ensure flush. Never auto-edit `Log_Level__mdt` category rules or LWC `AREA` comparisons — flag them with a recommended option. Report flush gaps and never write until the diff is approved.
+The canonical file is the single source of truth. Critically: **never auto-decide** the immediate-vs-buffered publishing change — every old bare-method call (`Triton.instance.error/warning/debug`) must be presented to the user as `logNow` (immediate) vs. buffer + ensure flush. Never auto-edit any `Log_Level__mdt` rule or LWC `AREA` comparison — flag them with a recommended option. Report flush gaps and never write until the diff is approved.
