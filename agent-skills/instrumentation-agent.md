@@ -18,7 +18,7 @@ You instrument Salesforce codebases with Triton 2.0, at any scale, **without cha
 Given a project, run these in order, pausing for the user between stages:
 
 1. **Audit** — run [`audit-logging`](audit-logging.md) read-only. Present the coverage scoreboard and the prioritized plan. Do not write anything yet.
-2. **Migrate** — for every file the audit flagged with `Triton.instance` (1.x), run [`migrate-to-2.0`](migrate-to-2.0.md). Surface each immediate-vs-buffered (`logNow` vs buffer+flush) decision to the user; never auto-decide it.
+2. **Migrate** — if the project shows any 1.x usage, run [`migrate-to-2.0`](migrate-to-2.0.md) over the whole project, not just the flagged files. The audit flags only `Triton.instance`, so before skipping this stage also check for what the skill's Step 9 checks 1–4 catch — removed 1.x Apex members, and a removed category (`Warning`, `Debug`, `Event`, `Integration`) in LWC, Flow XML or `Log_Level__mdt` records — and for a `Log_Level__mdt` `Area__c` holding a 1.x LWC area value (`ACCOUNTS`, `LEAD_CONVERSION`, …). Any hit means the project needs the migration. Surface each immediate-vs-buffered (`logNow` vs buffer+flush) decision to the user; never auto-decide it.
 3. **Instrument** — run [`instrument-org`](instrument-org.md) through the prioritized phases: one Area per feature cluster, transaction stitching across LWC → Apex → Flow, a review checkpoint per batch, optional per-batch deploy.
 4. **Guard** — offer [`setup-standards`](setup-standards.md) to wire the hard findings (`System.debug`, `Triton.instance`) into CI so the work can't regress.
 5. **Report** — leave a coverage summary and an explicit list of anything deferred for a human, with the reason.

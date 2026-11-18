@@ -15,7 +15,7 @@ These are the **canonical, portable definitions**. They are plain Markdown playb
 | [`instrument-flows`](instrument-flows.md) | Instrument a Flow's metadata XML. |
 | [`instrument-org`](instrument-org.md) | Orchestrate the three across a whole project/org. |
 | [`audit-logging`](audit-logging.md) | Read-only coverage & gap report (writes nothing). |
-| [`migrate-to-2.0`](migrate-to-2.0.md) | Convert 1.x singleton code to the 2.0 static API. |
+| [`migrate-to-2.0`](migrate-to-2.0.md) | Migrate 1.x code to 2.0: Apex, LWC, Flow and `Log_Level__mdt`. |
 | [`setup-standards`](setup-standards.md) | Scaffold CI guardrails and `Log_Level__mdt` config. |
 | [`instrumentation-agent`](instrumentation-agent.md) | The persona that runs the whole catalog end to end. |
 
