@@ -13,6 +13,97 @@
 @isTest
 private class LogLimitsControllerTest {
     
+    private static final String USERNAME_DOMAIN = '@loglimits.triton.test';
+    private static final String READER_LAST_NAME = 'LogLimitsReader';
+    private static final String NO_FLS_LAST_NAME = 'LogLimitsNoFls';
+
+    /**
+     * Creates two users so the tests do not depend on the permissions of whoever runs them:
+     * a reader (object Read on pharos__Log__c + Triton_Read) and a user with object Read only.
+     */
+    @TestSetup
+    static void createUsers() {
+        // Setup-object DML inside runAs avoids mixed-DML errors with the log records.
+        System.runAs(new User(Id = UserInfo.getUserId())) {
+            PermissionSet logRead = new PermissionSet(Name = 'LogLimitsTest_Log_Read', Label = 'LogLimitsTest Log Read');
+            insert logRead;
+            // View All Records so the log is visible regardless of its owner and the org-wide default.
+            insert new ObjectPermissions(
+                ParentId = logRead.Id,
+                SobjectType = 'pharos__Log__c',
+                PermissionsRead = true,
+                PermissionsViewAllRecords = true
+            );
+
+            Id profileId = profileWithoutLimitFieldAccess();
+            User reader = makeUser(profileId, READER_LAST_NAME);
+            User noFls = makeUser(profileId, NO_FLS_LAST_NAME);
+            insert new List<User>{ reader, noFls };
+
+            Id tritonRead = [SELECT Id FROM PermissionSet WHERE Name = 'Triton_Read' LIMIT 1].Id;
+            insert new List<PermissionSetAssignment>{
+                new PermissionSetAssignment(AssigneeId = reader.Id, PermissionSetId = logRead.Id),
+                new PermissionSetAssignment(AssigneeId = reader.Id, PermissionSetId = tritonRead),
+                new PermissionSetAssignment(AssigneeId = noFls.Id, PermissionSetId = logRead.Id)
+            };
+        }
+    }
+
+    /**
+     * Returns a Salesforce-licence profile whose own FLS does not grant read on the limit fields,
+     * preferring Minimum Access - Salesforce, then Standard User.
+     */
+    private static Id profileWithoutLimitFieldAccess() {
+        Set<Id> grantingProfiles = new Set<Id>();
+        for (FieldPermissions fp : [
+            SELECT Parent.ProfileId
+            FROM FieldPermissions
+            WHERE SobjectType = 'pharos__Log__c'
+                AND Field = 'pharos__Log__c.CPU_Time__c'
+                AND PermissionsRead = true
+                AND Parent.IsOwnedByProfile = true
+        ]) {
+            grantingProfiles.add(fp.Parent.ProfileId);
+        }
+
+        Map<String, Id> candidates = new Map<String, Id>();
+        for (Profile p : [
+            SELECT Id, Name
+            FROM Profile
+            WHERE UserLicense.Name = 'Salesforce' AND Id NOT IN :grantingProfiles
+            ORDER BY Name
+        ]) {
+            candidates.put(p.Name, p.Id);
+        }
+        for (String preferred : new List<String>{ 'Minimum Access - Salesforce', 'Standard User' }) {
+            if (candidates.containsKey(preferred)) {
+                return candidates.get(preferred);
+            }
+        }
+        System.assert(!candidates.isEmpty(), 'No Salesforce-licence profile without read access to pharos__Log__c.CPU_Time__c');
+        return candidates.values()[0];
+    }
+
+    private static User makeUser(Id profileId, String lastName) {
+        String username = lastName + '.' + UserInfo.getOrganizationId() + '.' + System.now().getTime() + USERNAME_DOMAIN;
+        return new User(
+            ProfileId = profileId,
+            Username = username,
+            Email = username,
+            LastName = lastName,
+            Alias = lastName.left(8),
+            TimeZoneSidKey = 'America/Los_Angeles',
+            LocaleSidKey = 'en_US',
+            EmailEncodingKey = 'UTF-8',
+            LanguageLocaleKey = 'en_US'
+        );
+    }
+
+    private static User testUser(String lastName) {
+        String usernamePattern = '%' + USERNAME_DOMAIN;
+        return [SELECT Id FROM User WHERE LastName = :lastName AND Username LIKE :usernamePattern LIMIT 1];
+    }
+
     /**
      * Tests the getLimitUsage method with a complete set of limit values.
      * Verifies that:
@@ -75,8 +166,11 @@ private class LogLimitsControllerTest {
         // Query for the log ID after platform events are processed
         pharos__Log__c log = [SELECT Id FROM pharos__Log__c WHERE pharos__Summary__c = 'Test Log with Limits' LIMIT 1];
         
-        // Call the method to test
-        List<LogLimitsController.LimitUsage> results = LogLimitsController.getLimitUsage(log.Id);
+        // Call the method to test as a user with Triton Read
+        List<LogLimitsController.LimitUsage> results;
+        System.runAs(testUser(READER_LAST_NAME)) {
+            results = LogLimitsController.getLimitUsage(log.Id);
+        }
         
         // Verify results
         System.assertNotEquals(null, results, 'Results should not be null');
@@ -153,8 +247,11 @@ private class LogLimitsControllerTest {
         // Query for the log ID after platform events are processed
         pharos__Log__c log = [SELECT Id FROM pharos__Log__c WHERE pharos__Summary__c = 'Test Log with Partial Limits' LIMIT 1];
         
-        // Call the method to test
-        List<LogLimitsController.LimitUsage> results = LogLimitsController.getLimitUsage(log.Id);
+        // Call the method to test as a user with Triton Read
+        List<LogLimitsController.LimitUsage> results;
+        System.runAs(testUser(READER_LAST_NAME)) {
+            results = LogLimitsController.getLimitUsage(log.Id);
+        }
         
         // Verify results
         System.assertNotEquals(null, results, 'Results should not be null');
@@ -174,7 +271,41 @@ private class LogLimitsControllerTest {
         System.assertEquals(expectedLimitNames, actualLimitNames, 
                            'Only Batch Jobs and DML Rows should be included');
     }
-    
+
+    /**
+     * Tests that getLimitUsage enforces field-level security: a user who can read the log
+     * but has no access to the limit fields gets a QueryException listing inaccessible fields.
+     */
+    @isTest
+    static void testGetLimitUsageWithoutFieldAccess() {
+        Test.startTest();
+        Triton.logs.add(Triton.makeBuilder()
+            .category(TritonTypes.Category.Apex)
+            .type(TritonTypes.Type.Backend)
+            .area(TritonTypes.Area.OpportunityManagement)
+            .summary('Test Log without Field Access')
+            .level(TritonTypes.Level.DEBUG)
+            .attribute(TritonBuilder.CPU_TIME, 5000)
+            .attribute(TritonBuilder.CPU_TIME_LIMIT, 10000)
+            .build());
+        Triton.flushTop();
+        Test.stopTest();
+
+        pharos__Log__c log = [SELECT Id FROM pharos__Log__c WHERE pharos__Summary__c = 'Test Log without Field Access' LIMIT 1];
+
+        QueryException caught;
+        System.runAs(testUser(NO_FLS_LAST_NAME)) {
+            try {
+                LogLimitsController.getLimitUsage(log.Id);
+            } catch (QueryException e) {
+                caught = e;
+            }
+        }
+        System.assertNotEquals(null, caught, 'A user without FLS on the limit fields should get a QueryException');
+        System.assert(!caught.getInaccessibleFields().isEmpty(),
+                      'Expected an access failure with inaccessible fields, got: ' + caught.getMessage());
+    }
+
     /**
      * Tests the Comparable implementation of the LimitUsage class.
      * Verifies that:
