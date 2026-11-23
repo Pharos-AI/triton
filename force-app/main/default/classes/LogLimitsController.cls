@@ -66,6 +66,7 @@ public with sharing class LogLimitsController {
                 SOSL_Queries__c, SOSL_Queries_Limit__c
             FROM pharos__Log__c 
             WHERE Id = :logId
+            WITH USER_MODE
         ];
         
         addLimit(limits, 'Batch Jobs', log.Batch_Jobs__c, log.Batch_Jobs_Limit__c);
